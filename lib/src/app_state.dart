@@ -1,0 +1,594 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import 'api.dart';
+import 'models.dart';
+
+class AppState extends ChangeNotifier {
+  AppState({
+    this.config = const AppConfig(),
+    ApiClient? apiClient,
+    RealtimeClient? publicRealtimeClient,
+    RealtimeClient? privateRealtimeClient,
+    this.offline = false,
+  }) : api = apiClient ?? ApiClient(config),
+       publicRealtime = publicRealtimeClient ?? RealtimeClient(config),
+       privateRealtime = privateRealtimeClient ?? RealtimeClient(config) {
+    instruments = fallbackInstruments();
+    selectedSymbol = instruments.first.symbol;
+    orderBook = OrderBook.empty(selectedSymbol);
+    candles = fallbackCandles();
+  }
+
+  final AppConfig config;
+  final ApiClient api;
+  final RealtimeClient publicRealtime;
+  final RealtimeClient privateRealtime;
+  final bool offline;
+
+  AuthSession? session;
+  late List<Instrument> instruments;
+  late String selectedSymbol;
+  ProductMode mode = ProductMode.linear;
+  String period = '1m';
+  late OrderBook orderBook;
+  late List<Candle> candles;
+  List<ProductBalance> balances = const [];
+  List<Position> positions = const [];
+  List<OrderModel> openOrders = const [];
+  List<PositionRisk> positionRisks = const [];
+  List<LiquidationOrder> liquidationOrders = const [];
+  AccountRisk? accountRisk;
+  final Map<String, double> latestPrices = {};
+  bool loadingPublic = false;
+  bool loadingPrivate = false;
+  String? lastError;
+  String? lastNotice;
+  final List<String> realtimeLog = [];
+  Timer? _realtimeNotifyTimer;
+
+  bool get isLoggedIn => session != null;
+
+  int? get userId => session?.user.userId;
+
+  Instrument get selectedInstrument {
+    return instruments.firstWhere(
+      (instrument) => instrument.symbol == selectedSymbol,
+      orElse: () => fallbackInstruments().first,
+    );
+  }
+
+  List<Instrument> get visibleInstruments {
+    final filtered = instruments
+        .where((instrument) => instrument.mode == mode)
+        .toList();
+    if (filtered.isNotEmpty) return filtered;
+    return instruments;
+  }
+
+  double? latestPriceFor(Instrument instrument) {
+    final direct = latestPrices[instrument.symbol];
+    if (direct != null && direct > 0) return direct;
+    if (instrument.symbol == selectedSymbol && candles.isNotEmpty) {
+      return candles.last.close;
+    }
+    if (instrument.symbol == orderBook.symbol) {
+      final bestBid = orderBook.bids.isNotEmpty ? orderBook.bids.first : null;
+      final bestAsk = orderBook.asks.isNotEmpty ? orderBook.asks.first : null;
+      if (bestBid != null && bestAsk != null) {
+        return instrument.priceFromTicks(
+          ((bestBid.priceTicks + bestAsk.priceTicks) / 2).round(),
+        );
+      }
+      if (bestBid != null) return instrument.priceFromTicks(bestBid.priceTicks);
+      if (bestAsk != null) return instrument.priceFromTicks(bestAsk.priceTicks);
+    }
+    return null;
+  }
+
+  Future<void> bootstrap() async {
+    if (offline) return;
+    await refreshInstruments();
+    await refreshPublicData();
+    await _connectPublicRealtime();
+  }
+
+  Future<void> refreshInstruments() async {
+    if (offline) return;
+    try {
+      final loaded = await api.instruments();
+      if (loaded.isNotEmpty) {
+        instruments = loaded;
+        final candidates = visibleInstruments;
+        if (!loaded.any((instrument) => instrument.symbol == selectedSymbol)) {
+          selectedSymbol = candidates.isNotEmpty
+              ? candidates.first.symbol
+              : loaded.first.symbol;
+        }
+      }
+      lastError = null;
+    } catch (error) {
+      lastError = '加载交易对失败：$error';
+    }
+    _scheduleRealtimeNotify();
+  }
+
+  void _scheduleRealtimeNotify() {
+    if (_realtimeNotifyTimer?.isActive ?? false) return;
+    _realtimeNotifyTimer = Timer(const Duration(milliseconds: 200), () {
+      _realtimeNotifyTimer = null;
+      notifyListeners();
+    });
+  }
+
+  Future<void> refreshPublicData() async {
+    if (offline) return;
+    loadingPublic = true;
+    notifyListeners();
+    try {
+      final symbol = selectedSymbol;
+      final results = await Future.wait([
+        api.orderBook(symbol),
+        api.candles(symbol, period),
+      ]);
+      orderBook = results[0] as OrderBook;
+      final loadedCandles = results[1] as List<Candle>;
+      candles = loadedCandles.isEmpty ? fallbackCandles() : loadedCandles;
+      if (candles.isNotEmpty) latestPrices[symbol] = candles.last.close;
+      lastError = null;
+    } catch (error) {
+      lastError = '加载行情失败：$error';
+    } finally {
+      loadingPublic = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshPrivateData() async {
+    final id = userId;
+    if (offline || id == null) return;
+    loadingPrivate = true;
+    notifyListeners();
+    try {
+      final results = await Future.wait([
+        api.productBalances(id),
+        api.positions(id),
+        api.openOrders(id, symbol: selectedSymbol),
+        api.accountRisk(id, selectedInstrument.settleAsset),
+        api.positionRisks(id),
+        api.liquidationOrders(id),
+      ]);
+      balances = results[0] as List<ProductBalance>;
+      positions = results[1] as List<Position>;
+      openOrders = results[2] as List<OrderModel>;
+      accountRisk = results[3] as AccountRisk?;
+      positionRisks = results[4] as List<PositionRisk>;
+      liquidationOrders = results[5] as List<LiquidationOrder>;
+      lastError = null;
+    } catch (error) {
+      lastError = '加载账户失败：$error';
+    } finally {
+      loadingPrivate = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> login(String username, String password) async {
+    if (offline) return;
+    loadingPrivate = true;
+    notifyListeners();
+    try {
+      session = await api.login(username: username, password: password);
+      lastNotice = '登录成功';
+      await _connectPrivateRealtime();
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '登录失败：$error';
+    } finally {
+      loadingPrivate = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> register(String username, String password, String email) async {
+    if (offline) return;
+    loadingPrivate = true;
+    notifyListeners();
+    try {
+      session = await api.register(
+        username: username,
+        password: password,
+        email: email,
+      );
+      lastNotice = '注册成功';
+      await _connectPrivateRealtime();
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '注册失败：$error';
+    } finally {
+      loadingPrivate = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> logout() async {
+    await privateRealtime.close();
+    session = null;
+    balances = const [];
+    positions = const [];
+    openOrders = const [];
+    accountRisk = null;
+    positionRisks = const [];
+    liquidationOrders = const [];
+    notifyListeners();
+  }
+
+  Future<void> selectMode(ProductMode nextMode) async {
+    mode = nextMode;
+    final candidates = visibleInstruments;
+    if (candidates.isNotEmpty &&
+        !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
+      selectedSymbol = candidates.first.symbol;
+    }
+    notifyListeners();
+    await refreshPublicData();
+    await refreshPrivateData();
+    _subscribePublicSelected();
+    _subscribePrivateSelected();
+  }
+
+  Future<void> selectSymbol(String symbol) async {
+    selectedSymbol = symbol;
+    notifyListeners();
+    await refreshPublicData();
+    await refreshPrivateData();
+    _subscribePublicSelected();
+    _subscribePrivateSelected();
+  }
+
+  Future<void> selectPeriod(String nextPeriod) async {
+    period = nextPeriod;
+    notifyListeners();
+    await refreshPublicData();
+    _subscribePublicSelected();
+  }
+
+  Future<void> placeOrder({
+    required String side,
+    required String orderType,
+    required String timeInForce,
+    required double price,
+    required int quantitySteps,
+    required String marginMode,
+    required String positionSide,
+    required bool reduceOnly,
+    required bool postOnly,
+  }) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再下单';
+      notifyListeners();
+      return;
+    }
+    try {
+      final instrument = selectedInstrument;
+      final order = await api.placeOrder(
+        userId: id,
+        symbol: selectedSymbol,
+        side: side,
+        orderType: orderType,
+        timeInForce: timeInForce,
+        priceTicks: orderType == 'MARKET'
+            ? 0
+            : instrument.ticksFromPrice(price),
+        quantitySteps: quantitySteps,
+        marginMode: marginMode,
+        positionSide: positionSide,
+        reduceOnly: reduceOnly,
+        postOnly: postOnly,
+      );
+      _upsertOrder(order);
+      lastNotice = '订单已提交 #${order.orderId}';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '下单失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> cancelOrder(OrderModel order) async {
+    final id = userId;
+    if (id == null) return;
+    try {
+      final cancelled = await api.cancelOrder(id, order.orderId);
+      _upsertOrder(cancelled);
+      lastNotice = '撤单已提交 #${order.orderId}';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '撤单失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> closePosition(Position position) async {
+    final instrument = instruments.firstWhere(
+      (item) => item.symbol == position.symbol,
+      orElse: () => selectedInstrument,
+    );
+    selectedSymbol = position.symbol;
+    await placeOrder(
+      side: position.signedQuantitySteps >= 0 ? 'SELL' : 'BUY',
+      orderType: 'MARKET',
+      timeInForce: 'IOC',
+      price: 0,
+      quantitySteps: position.signedQuantitySteps.abs(),
+      marginMode: position.marginMode,
+      positionSide: instrument.mode == ProductMode.spot
+          ? 'NET'
+          : position.positionSide,
+      reduceOnly: instrument.mode != ProductMode.spot,
+      postOnly: false,
+    );
+  }
+
+  Future<void> transfer({
+    required String sourceAccountType,
+    required String targetAccountType,
+    required String asset,
+    required double amount,
+  }) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再划转';
+      notifyListeners();
+      return;
+    }
+    try {
+      await api.transfer(
+        userId: id,
+        sourceAccountType: sourceAccountType,
+        targetAccountType: targetAccountType,
+        asset: asset,
+        amountUnits: decimalToUnits(amount),
+      );
+      lastNotice = '划转已完成';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '划转失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> _connectPublicRealtime() async {
+    try {
+      await publicRealtime.connect(
+        onEvent: handleRealtimeMessage,
+        onError: (error) {
+          lastError = '公共行情 WebSocket：$error';
+          notifyListeners();
+        },
+      );
+      _subscribePublicSelected();
+    } catch (error) {
+      lastError = '实时行情连接失败：$error';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _connectPrivateRealtime() async {
+    final current = session;
+    if (current == null) return;
+    try {
+      await privateRealtime.connect(
+        userId: current.user.userId,
+        accessToken: current.accessToken,
+        onEvent: handleRealtimeMessage,
+        onError: (error) {
+          lastError = '账户 WebSocket：$error';
+          notifyListeners();
+        },
+      );
+      _subscribePrivateSelected();
+    } catch (error) {
+      lastError = '账户实时连接失败：$error';
+      notifyListeners();
+    }
+  }
+
+  void _subscribePublicSelected() {
+    final symbols = <String>{
+      selectedSymbol,
+      for (final instrument in visibleInstruments) instrument.symbol,
+    };
+    for (final symbol in symbols) {
+      publicRealtime.subscribe('trades', symbol: symbol);
+    }
+    publicRealtime.subscribe('depth', symbol: selectedSymbol);
+    publicRealtime.subscribe('candles', symbol: selectedSymbol, period: period);
+  }
+
+  void _subscribePrivateSelected() {
+    if (!isLoggedIn) return;
+    privateRealtime.subscribe('orders', symbol: selectedSymbol);
+    privateRealtime.subscribe('matches', symbol: selectedSymbol);
+    privateRealtime.subscribe('positions', symbol: selectedSymbol);
+    privateRealtime.subscribe('positionRisk', symbol: selectedSymbol);
+    privateRealtime.subscribe('accountRisk');
+  }
+
+  void handleRealtimeMessage(Map<String, dynamic> message) {
+    final op = asString(message['op']);
+    final channel = asString(message['channel']);
+    final data = asMap(message['data']);
+    if (op == 'error') {
+      lastError = asString(message['error'], fallback: '实时消息错误');
+      notifyListeners();
+      return;
+    }
+    if (op != 'event') return;
+    realtimeLog.insert(0, '$channel ${DateTime.now().toIso8601String()}');
+    if (realtimeLog.length > 20) realtimeLog.removeLast();
+    final symbol = asString(
+      message['symbol'],
+      fallback: asString(data['symbol'], fallback: selectedSymbol),
+    );
+    if (channel == 'depth') {
+      if (symbol != selectedSymbol) return;
+      _applyDepthUpdate(symbol, data);
+    } else if (channel == 'trades') {
+      final price = _tradePrice(symbol, data);
+      if (price != null && price > 0) latestPrices[symbol] = price;
+    } else if (channel == 'candles') {
+      if (symbol != selectedSymbol) return;
+      final messagePeriod = asString(
+        message['period'],
+        fallback: asString(data['period'], fallback: period),
+      );
+      if (messagePeriod != period) return;
+      final candle = Candle.fromJson(data);
+      final index = candles.indexWhere(
+        (item) => item.openTime == candle.openTime,
+      );
+      if (index >= 0) {
+        candles = [...candles]..[index] = candle;
+      } else {
+        candles = [...candles, candle]
+          ..sort((a, b) => a.openTime.compareTo(b.openTime));
+      }
+      if (candles.length > 300) candles = candles.sublist(candles.length - 300);
+      latestPrices[symbol] = candle.close;
+    } else if (channel == 'orders') {
+      _upsertOrder(OrderModel.fromJson(data));
+    } else if (channel == 'positions') {
+      final position = Position.fromJson(data);
+      positions = [
+        for (final item in positions)
+          if (item.symbol != position.symbol) item,
+        if (position.signedQuantitySteps != 0) position,
+      ];
+    } else if (channel == 'accountRisk') {
+      accountRisk = AccountRisk.fromJson(data);
+    } else if (channel == 'positionRisk') {
+      final risk = PositionRisk.fromJson(data);
+      positionRisks = [
+        for (final item in positionRisks)
+          if (item.symbol != risk.symbol) item,
+        risk,
+      ];
+    }
+    notifyListeners();
+  }
+
+  void _applyDepthUpdate(String symbol, Map<String, dynamic> data) {
+    final sequence = asInt(
+      data['sequence'] ?? data['lastSequence'] ?? data['eventSequence'],
+    );
+    final updateType = asString(data['updateType'], fallback: 'SNAPSHOT');
+    final depth = asInt(data['depth'], fallback: 50);
+    if (updateType != 'DELTA') {
+      orderBook = OrderBook.fromJson({
+        'symbol': symbol,
+        'sequence': sequence,
+        'bids': data['bids'] ?? data['bidLevels'] ?? const [],
+        'asks': data['asks'] ?? data['askLevels'] ?? const [],
+      });
+      return;
+    }
+    final previousSequence = asInt(
+      data['previousSequence'],
+      fallback: orderBook.sequence,
+    );
+    if (orderBook.symbol != symbol ||
+        orderBook.sequence == 0 ||
+        previousSequence != orderBook.sequence) {
+      unawaited(refreshPublicData());
+      return;
+    }
+    orderBook = OrderBook(
+      symbol: symbol,
+      sequence: sequence,
+      bids: _mergeDepthLevels(
+        orderBook.bids,
+        data['bids'] ?? data['bidLevels'] ?? const [],
+        descending: true,
+        depth: depth,
+      ),
+      asks: _mergeDepthLevels(
+        orderBook.asks,
+        data['asks'] ?? data['askLevels'] ?? const [],
+        descending: false,
+        depth: depth,
+      ),
+    );
+  }
+
+  double? _tradePrice(String symbol, Map<String, dynamic> data) {
+    final decimalPrice = asDouble(data['price']);
+    if (decimalPrice > 0) return decimalPrice;
+    final priceTicks = asInt(data['priceTicks']);
+    if (priceTicks <= 0) return null;
+    return _instrumentForSymbol(symbol).priceFromTicks(priceTicks);
+  }
+
+  Instrument _instrumentForSymbol(String symbol) {
+    return instruments.firstWhere(
+      (instrument) => instrument.symbol == symbol,
+      orElse: () => selectedInstrument,
+    );
+  }
+
+  void _upsertOrder(OrderModel order) {
+    final mutable = [...openOrders];
+    final index = mutable.indexWhere((item) => item.orderId == order.orderId);
+    if (index >= 0) {
+      if (order.remainingQuantitySteps <= 0 ||
+          order.status == 'CANCELED' ||
+          order.status == 'FILLED') {
+        mutable.removeAt(index);
+      } else {
+        mutable[index] = order;
+      }
+    } else if (order.remainingQuantitySteps > 0 &&
+        order.status != 'CANCELED' &&
+        order.status != 'FILLED') {
+      mutable.insert(0, order);
+    }
+    openOrders = mutable;
+  }
+
+  @override
+  void dispose() {
+    _realtimeNotifyTimer?.cancel();
+    unawaited(publicRealtime.close());
+    unawaited(privateRealtime.close());
+    super.dispose();
+  }
+}
+
+List<OrderBookLevel> _mergeDepthLevels(
+  List<OrderBookLevel> current,
+  Object? updates, {
+  required bool descending,
+  required int depth,
+}) {
+  final byPrice = <int, OrderBookLevel>{
+    for (final level in current) level.priceTicks: level,
+  };
+  for (final item in asList(updates)) {
+    final level = OrderBookLevel.fromJson(asMap(item));
+    if (level.quantitySteps <= 0) {
+      byPrice.remove(level.priceTicks);
+    } else {
+      byPrice[level.priceTicks] = level;
+    }
+  }
+  final levels = byPrice.values.toList()
+    ..sort(
+      (left, right) => descending
+          ? right.priceTicks.compareTo(left.priceTicks)
+          : left.priceTicks.compareTo(right.priceTicks),
+    );
+  if (depth > 0 && levels.length > depth) return levels.take(depth).toList();
+  return levels;
+}

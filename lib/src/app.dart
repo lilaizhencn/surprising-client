@@ -8,16 +8,17 @@ import 'package:kline_chart/kline_chart.dart';
 import 'app_state.dart';
 import 'models.dart';
 
-const _ink = Color(0xFF1F2430);
-const _muted = Color(0xFF7C8598);
-const _paper = Color(0xFFFFFBF7);
-const _panel = Color(0xFFFFFFFF);
-const _line = Color(0xFFE8DFEA);
-const _pink = Color(0xFFFF7AB6);
-const _violet = Color(0xFF8F7CFF);
-const _mint = Color(0xFF00B894);
-const _red = Color(0xFFFF5B6E);
-const _amber = Color(0xFFFFB84D);
+const _ink = Color(0xFFE7EDF8);
+const _muted = Color(0xFF8EA0B8);
+const _paper = Color(0xFF050914);
+const _panel = Color(0xFF111827);
+const _panelSoft = Color(0xFF1E293B);
+const _line = Color(0xFF24324A);
+const _pink = Color(0xFF3B82F6);
+const _violet = Color(0xFF14B8A6);
+const _mint = Color(0xFF00C076);
+const _red = Color(0xFFF6465D);
+const _amber = Color(0xFFF0B90B);
 
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({
@@ -68,16 +69,19 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
         debugShowCheckedModeBanner: false,
         title: 'Surprising',
         theme: ThemeData(
+          brightness: Brightness.dark,
           useMaterial3: true,
           scaffoldBackgroundColor: _paper,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: _pink,
+          colorScheme: const ColorScheme.dark(
             primary: _pink,
             secondary: _violet,
             tertiary: _mint,
             surface: _panel,
+            surfaceContainerHighest: _panelSoft,
             error: _red,
           ),
+          canvasColor: _paper,
+          dividerColor: _line,
           textTheme: const TextTheme(
             titleLarge: TextStyle(
               fontSize: 22,
@@ -91,6 +95,80 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
             ),
             bodyMedium: TextStyle(fontSize: 13, color: _ink),
             labelMedium: TextStyle(fontSize: 12, color: _muted),
+          ),
+          snackBarTheme: const SnackBarThemeData(
+            backgroundColor: _panel,
+            contentTextStyle: TextStyle(color: _ink, fontSize: 13),
+          ),
+          bottomSheetTheme: const BottomSheetThemeData(
+            backgroundColor: _panel,
+            surfaceTintColor: Colors.transparent,
+            dragHandleColor: _line,
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            backgroundColor: _panel,
+            indicatorColor: _pink.withValues(alpha: .18),
+            surfaceTintColor: Colors.transparent,
+            labelTextStyle: WidgetStateProperty.resolveWith(
+              (states) => TextStyle(
+                color: states.contains(WidgetState.selected) ? _ink : _muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            iconTheme: WidgetStateProperty.resolveWith(
+              (states) => IconThemeData(
+                color: states.contains(WidgetState.selected) ? _pink : _muted,
+              ),
+            ),
+          ),
+          chipTheme: ChipThemeData(
+            backgroundColor: _panelSoft,
+            selectedColor: _pink.withValues(alpha: .20),
+            side: const BorderSide(color: _line),
+            labelStyle: const TextStyle(
+              color: _ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+            secondaryLabelStyle: const TextStyle(
+              color: _ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          iconButtonTheme: IconButtonThemeData(
+            style: IconButton.styleFrom(
+              backgroundColor: _panelSoft,
+              foregroundColor: _ink,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(color: _line),
+              ),
+            ),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _panelSoft,
+              disabledForegroundColor: _muted,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _ink,
+              side: const BorderSide(color: _line),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
           ),
         ),
         home: const ClientShell(),
@@ -777,18 +855,24 @@ class _WalletPageState extends State<WalletPage> {
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
+                          color: _ink,
                         ),
                         decoration: InputDecoration(
                           labelText: '到账地址',
+                          labelStyle: const TextStyle(color: _muted),
                           isDense: true,
                           filled: true,
-                          fillColor: const Color(0xFFFCFAFF),
+                          fillColor: _panelSoft,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(6),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(6),
                             borderSide: const BorderSide(color: _line),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: const BorderSide(color: _pink),
                           ),
                         ),
                       ),
@@ -1088,7 +1172,7 @@ class _KlinePanelState extends State<KlinePanel> {
       ..showSubIndicators = [IndicatorType.vol, IndicatorType.macd]
       ..chartStyle = const KLineChartStyle(
         backgroundColor: Colors.transparent,
-        gridLineColor: Color(0xFFEFE7F0),
+        gridLineColor: _line,
         gridLineWidth: 0.6,
         rulerTextStyle: TextStyle(color: _muted, fontSize: 10),
       )
@@ -1629,9 +1713,9 @@ class Panel extends StatelessWidget {
         border: Border.all(color: _line),
         boxShadow: [
           BoxShadow(
-            color: _pink.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -1651,8 +1735,8 @@ class GradientPanel extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFF1F7), Color(0xFFF2F8FF), Color(0xFFFFFAE8)],
+        gradient: LinearGradient(
+          colors: [_panel, _panelSoft, _violet.withValues(alpha: .22)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1696,6 +1780,27 @@ class ModeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<ProductMode>(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? _pink.withValues(alpha: .20)
+              : _panelSoft,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? _ink : _muted,
+        ),
+        side: WidgetStateProperty.resolveWith(
+          (states) => BorderSide(
+            color: states.contains(WidgetState.selected) ? _pink : _line,
+          ),
+        ),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        textStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+        ),
+      ),
       segments: ProductMode.values
           .map((mode) => ButtonSegment(value: mode, label: Text(mode.label)))
           .toList(),
@@ -1730,6 +1835,19 @@ class SymbolStrip extends StatelessWidget {
           final item = instruments[index];
           return ChoiceChip(
             selected: item.symbol == selected,
+            selectedColor: _pink.withValues(alpha: .20),
+            backgroundColor: _panelSoft,
+            side: BorderSide(
+              color: item.symbol == selected ? _pink : _line,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            labelStyle: TextStyle(
+              color: item.symbol == selected ? _ink : _muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
             label: Text(item.displayName),
             onSelected: (_) => onSelected(item.symbol),
           );
@@ -1756,7 +1874,9 @@ class BuySellSwitch extends StatelessWidget {
         Expanded(
           child: FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: value == 'BUY' ? _mint : const Color(0xFFEAF7F3),
+              backgroundColor: value == 'BUY'
+                  ? _mint
+                  : _panelSoft.withValues(alpha: .86),
               foregroundColor: value == 'BUY' ? Colors.white : _mint,
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
@@ -1769,7 +1889,9 @@ class BuySellSwitch extends StatelessWidget {
         Expanded(
           child: FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: value == 'SELL' ? _red : const Color(0xFFFFEEF1),
+              backgroundColor: value == 'SELL'
+                  ? _red
+                  : _panelSoft.withValues(alpha: .86),
               foregroundColor: value == 'SELL' ? Colors.white : _red,
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.horizontal(
@@ -1806,12 +1928,14 @@ class SmallDropdown extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: _line),
-        color: const Color(0xFFFCFAFF),
+        color: _panelSoft,
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
+          dropdownColor: _panel,
+          iconEnabledColor: _muted,
           style: const TextStyle(
             fontSize: 12,
             color: _ink,
@@ -1860,16 +1984,29 @@ class AppTextField extends StatelessWidget {
       enabled: enabled,
       obscureText: obscure,
       onChanged: onChanged,
-      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        color: _ink,
+      ),
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: const TextStyle(color: _muted),
         isDense: true,
         filled: true,
-        fillColor: const Color(0xFFFCFAFF),
+        fillColor: _panelSoft,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: _line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: _pink),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: _line.withValues(alpha: .55)),
         ),
       ),
       keyboardType: obscure
@@ -1955,7 +2092,7 @@ class BookLine extends StatelessWidget {
             ),
             Text(
               compactInt(level.quantitySteps),
-              style: const TextStyle(fontSize: 12, color: _ink),
+              style: const TextStyle(fontSize: 12, color: _muted),
             ),
           ],
         ),
@@ -1987,7 +2124,7 @@ class InstrumentRow extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 17,
-              backgroundColor: selected ? _pink : const Color(0xFFFFEDF6),
+              backgroundColor: selected ? _pink : _panelSoft,
               child: Text(
                 instrument.baseAsset.isEmpty
                     ? '?'
@@ -2079,7 +2216,7 @@ class DepositAddressCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: _line),
-        color: const Color(0xFFFCFAFF),
+        color: _panelSoft,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2452,9 +2589,15 @@ class WalletAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
         padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: _panelSoft.withValues(alpha: .68),
+          border: Border.all(color: _line),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Column(
           children: [
             Icon(icon, color: _violet),
@@ -2489,6 +2632,7 @@ class MetricPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: .18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2560,7 +2704,7 @@ class PrimaryAction extends StatelessWidget {
     return FilledButton.icon(
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       onPressed: onPressed,
       icon: Icon(icon),

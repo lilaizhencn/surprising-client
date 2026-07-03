@@ -31,6 +31,20 @@ String positionSideLabel(String side) {
   };
 }
 
+String triggerTypeLabel(String type) {
+  return switch (type) {
+    'TAKE_PROFIT' => '止盈',
+    'STOP_LOSS' => '止损',
+    _ => type,
+  };
+}
+
+String triggerCloseLabel(String side, String positionSide) {
+  if (positionSide == 'LONG') return '平多';
+  if (positionSide == 'SHORT') return '平空';
+  return side == 'BUY' ? '买入平仓' : '卖出平仓';
+}
+
 class AppConfig {
   const AppConfig({
     this.gatewayBaseUrl = const String.fromEnvironment(
@@ -361,6 +375,84 @@ class OrderModel {
       postOnly: asBool(json['postOnly']),
     );
   }
+}
+
+class TriggerOrderModel {
+  const TriggerOrderModel({
+    required this.triggerOrderId,
+    required this.symbol,
+    required this.side,
+    required this.triggerType,
+    required this.triggerPriceType,
+    required this.triggerCondition,
+    required this.triggerPriceTicks,
+    required this.orderType,
+    required this.timeInForce,
+    required this.priceTicks,
+    required this.quantitySteps,
+    required this.marginMode,
+    required this.positionSide,
+    required this.status,
+    this.placedOrderId,
+  });
+
+  final int triggerOrderId;
+  final String symbol;
+  final String side;
+  final String triggerType;
+  final String triggerPriceType;
+  final String triggerCondition;
+  final int triggerPriceTicks;
+  final String orderType;
+  final String timeInForce;
+  final int priceTicks;
+  final int quantitySteps;
+  final String marginMode;
+  final String positionSide;
+  final String status;
+  final int? placedOrderId;
+
+  factory TriggerOrderModel.fromJson(Map<String, dynamic> json) {
+    final placedOrderId = json['placedOrderId'];
+    return TriggerOrderModel(
+      triggerOrderId: asInt(json['triggerOrderId']),
+      symbol: asString(json['symbol']),
+      side: asString(json['side'], fallback: 'SELL'),
+      triggerType: asString(json['triggerType'], fallback: 'TAKE_PROFIT'),
+      triggerPriceType: asString(
+        json['triggerPriceType'],
+        fallback: 'MARK_PRICE',
+      ),
+      triggerCondition: asString(json['triggerCondition']),
+      triggerPriceTicks: asInt(json['triggerPriceTicks']),
+      orderType: asString(json['orderType'], fallback: 'MARKET'),
+      timeInForce: asString(json['timeInForce'], fallback: 'IOC'),
+      priceTicks: asInt(json['priceTicks']),
+      quantitySteps: asInt(json['quantitySteps']),
+      marginMode: asString(json['marginMode'], fallback: 'CROSS'),
+      positionSide: asString(json['positionSide'], fallback: 'NET'),
+      status: asString(json['status'], fallback: 'NEW'),
+      placedOrderId: placedOrderId == null ? null : asInt(placedOrderId),
+    );
+  }
+}
+
+class TriggerOrderDraft {
+  const TriggerOrderDraft({
+    required this.side,
+    required this.triggerType,
+    required this.triggerPriceTicks,
+    required this.quantitySteps,
+    required this.marginMode,
+    required this.positionSide,
+  });
+
+  final String side;
+  final String triggerType;
+  final int triggerPriceTicks;
+  final int quantitySteps;
+  final String marginMode;
+  final String positionSide;
 }
 
 class AccountRisk {

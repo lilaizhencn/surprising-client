@@ -613,6 +613,10 @@ class _TradePageState extends State<TradePage> {
             ),
           ),
           const SizedBox(height: 10),
+          if (instrument.mode != ProductMode.spot) ...[
+            TriggerOrderPanel(state: state, marginMode: marginMode),
+            const SizedBox(height: 2),
+          ],
           PrivateTradingPanel(state: state),
         ],
       ),
@@ -1415,6 +1419,227 @@ class OrderTicket extends StatelessWidget {
   }
 }
 
+class TriggerOrderPanel extends StatefulWidget {
+  const TriggerOrderPanel({
+    required this.state,
+    required this.marginMode,
+    super.key,
+  });
+
+  final AppState state;
+  final String marginMode;
+
+  @override
+  State<TriggerOrderPanel> createState() => _TriggerOrderPanelState();
+}
+
+class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
+  final List<_TriggerLevelInput> levels = [];
+  bool submitting = false;
+
+  void addLevel(String triggerType) {
+    final defaultPrice = _defaultTriggerPriceTicks().toString();
+    setState(() {
+      levels.add(
+        _TriggerLevelInput(
+          id: '${DateTime.now().microsecondsSinceEpoch}-${levels.length}',
+          triggerType: triggerType,
+          closeTarget: 'LONG',
+          triggerPriceTicks: defaultPrice,
+          quantitySteps: '1',
+        ),
+      );
+    });
+  }
+
+  int _defaultTriggerPriceTicks() {
+    final instrument = widget.state.selectedInstrument;
+    final latestPrice = widget.state.latestPriceFor(instrument);
+    if (latestPrice != null && latestPrice > 0) {
+      return instrument.ticksFromPrice(latestPrice);
+    }
+    final book = widget.state.orderBook;
+    if (book.symbol == instrument.symbol && book.bids.isNotEmpty) {
+      return book.bids.first.priceTicks;
+    }
+    return 0;
+  }
+
+  List<TriggerOrderDraft> _drafts() {
+    final hedgeMode = widget.state.positionMode == 'HEDGE';
+    return levels
+        .map((level) {
+          final triggerPriceTicks = int.tryParse(level.triggerPriceTicks) ?? 0;
+          final quantitySteps = int.tryParse(level.quantitySteps) ?? 0;
+          return TriggerOrderDraft(
+            side: level.closeTarget == 'LONG' ? 'SELL' : 'BUY',
+            triggerType: level.triggerType,
+            triggerPriceTicks: triggerPriceTicks,
+            quantitySteps: quantitySteps,
+            marginMode: widget.marginMode,
+            positionSide: hedgeMode ? level.closeTarget : 'NET',
+          );
+        })
+        .where(
+          (draft) => draft.triggerPriceTicks > 0 && draft.quantitySteps > 0,
+        )
+        .toList();
+  }
+
+  Future<void> submit() async {
+    final drafts = _drafts();
+    if (drafts.isEmpty || submitting) return;
+    setState(() => submitting = true);
+    await widget.state.placeTriggerOrders(drafts);
+    if (mounted) setState(() => submitting = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final validCount = _drafts().length;
+    return Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '止盈止损',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: '新增止盈',
+                onPressed: () => addLevel('TAKE_PROFIT'),
+                icon: const Icon(Icons.add_chart, size: 18),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filledTonal(
+                tooltip: '新增止损',
+                onPressed: () => addLevel('STOP_LOSS'),
+                icon: const Icon(Icons.add_alert, size: 18),
+              ),
+            ],
+          ),
+          if (levels.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                '暂无待提交档位',
+                style: TextStyle(color: _muted, fontSize: 12),
+              ),
+            )
+          else ...[
+            const SizedBox(height: 8),
+            for (final level in levels) _levelRow(level),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: _amber,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                minimumSize: const Size.fromHeight(42),
+              ),
+              onPressed: validCount == 0 || submitting ? null : submit,
+              icon: Icon(
+                submitting ? Icons.hourglass_top : Icons.notifications,
+              ),
+              label: Text(submitting ? '提交中' : '提交 $validCount 档'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _levelRow(_TriggerLevelInput level) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _line),
+        color: _panelSoft,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SmallDropdown(
+                  value: level.triggerType,
+                  values: const ['TAKE_PROFIT', 'STOP_LOSS'],
+                  labelBuilder: triggerTypeLabel,
+                  onChanged: (value) =>
+                      setState(() => level.triggerType = value),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SmallDropdown(
+                  value: level.closeTarget,
+                  values: const ['LONG', 'SHORT'],
+                  labelBuilder: (value) => value == 'LONG' ? '平多' : '平空',
+                  onChanged: (value) =>
+                      setState(() => level.closeTarget = value),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filledTonal(
+                tooltip: '删除',
+                onPressed: () => setState(() => levels.remove(level)),
+                icon: const Icon(Icons.delete_outline, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: AppTextField(
+                  key: ValueKey('${level.id}-price'),
+                  initialValue: level.triggerPriceTicks,
+                  label: '触发价 ticks',
+                  onChanged: (value) => level.triggerPriceTicks = value,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: AppTextField(
+                  key: ValueKey('${level.id}-quantity'),
+                  initialValue: level.quantitySteps,
+                  label: '平仓数量 steps',
+                  onChanged: (value) => level.quantitySteps = value,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TriggerLevelInput {
+  _TriggerLevelInput({
+    required this.id,
+    required this.triggerType,
+    required this.closeTarget,
+    required this.triggerPriceTicks,
+    required this.quantitySteps,
+  });
+
+  final String id;
+  String triggerType;
+  String closeTarget;
+  String triggerPriceTicks;
+  String quantitySteps;
+}
+
 class OrderBookPanel extends StatelessWidget {
   const OrderBookPanel({
     required this.instrument,
@@ -1560,6 +1785,15 @@ class PrivateTradingPanel extends StatelessWidget {
             order: order,
             instrument: state.selectedInstrument,
             onCancel: () => state.cancelOrder(order),
+          ),
+        ),
+        const SectionTitle(title: '止盈止损'),
+        if (state.openTriggerOrders.isEmpty) const EmptyState(text: '暂无开放条件单'),
+        ...state.openTriggerOrders.map(
+          (order) => TriggerOrderRow(
+            order: order,
+            state: state,
+            onCancel: () => state.cancelTriggerOrder(order),
           ),
         ),
         const SectionTitle(title: '持仓'),
@@ -1979,12 +2213,14 @@ class SmallDropdown extends StatelessWidget {
     required this.value,
     required this.values,
     required this.onChanged,
+    this.labelBuilder,
     super.key,
   });
 
   final String value;
   final List<String> values;
   final ValueChanged<String> onChanged;
+  final String Function(String value)? labelBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -2011,7 +2247,10 @@ class SmallDropdown extends StatelessWidget {
               .map(
                 (item) => DropdownMenuItem(
                   value: item,
-                  child: Text(item, overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    labelBuilder == null ? item : labelBuilder!(item),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               )
               .toList(),
@@ -2542,6 +2781,60 @@ class OrderRow extends StatelessWidget {
                 ),
                 Text(
                   '价 ${money(instrument.priceFromTicks(order.priceTicks), digits: instrument.pricePrecision)} · 量 ${order.quantitySteps} · 成交 ${order.executedQuantitySteps}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: onCancel,
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TriggerOrderRow extends StatelessWidget {
+  const TriggerOrderRow({
+    required this.order,
+    required this.state,
+    required this.onCancel,
+    super.key,
+  });
+
+  final TriggerOrderModel order;
+  final AppState state;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final instrument = state.instruments.firstWhere(
+      (item) => item.symbol == order.symbol,
+      orElse: () => state.selectedInstrument,
+    );
+    final isTakeProfit = order.triggerType == 'TAKE_PROFIT';
+    return Panel(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${triggerTypeLabel(order.triggerType)} ${order.symbol}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: isTakeProfit ? _mint : _red,
+                  ),
+                ),
+                Text(
+                  '${triggerCloseLabel(order.side, order.positionSide)} · ${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.status}',
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+                Text(
+                  '触发 ${money(instrument.priceFromTicks(order.triggerPriceTicks), digits: instrument.pricePrecision)} · 量 ${order.quantitySteps}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],

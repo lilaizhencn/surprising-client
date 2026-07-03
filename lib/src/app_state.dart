@@ -37,6 +37,7 @@ class AppState extends ChangeNotifier {
   List<ProductBalance> balances = const [];
   List<Position> positions = const [];
   List<OrderModel> openOrders = const [];
+  List<TriggerOrderModel> openTriggerOrders = const [];
   String positionMode = 'ONE_WAY';
   List<PositionRisk> positionRisks = const [];
   List<LiquidationOrder> liquidationOrders = const [];
@@ -159,6 +160,7 @@ class AppState extends ChangeNotifier {
         api.productBalances(id, accountType: mode.accountType),
         api.positions(id),
         api.openOrders(id, symbol: selectedSymbol),
+        api.openTriggerOrders(id, symbol: selectedSymbol),
         api.positionMode(id),
         api.accountRisk(id, selectedInstrument.settleAsset),
         api.positionRisks(id),
@@ -176,12 +178,13 @@ class AppState extends ChangeNotifier {
         return instrument.mode == mode;
       }).toList();
       openOrders = results[2] as List<OrderModel>;
-      positionMode = results[3] as String;
-      accountRisk = results[4] as AccountRisk?;
-      positionRisks = results[5] as List<PositionRisk>;
-      liquidationOrders = results[6] as List<LiquidationOrder>;
-      walletPortfolio = results[7] as WalletPortfolio;
-      walletOrders = results[8] as List<WalletOrderRecord>;
+      openTriggerOrders = results[3] as List<TriggerOrderModel>;
+      positionMode = results[4] as String;
+      accountRisk = results[5] as AccountRisk?;
+      positionRisks = results[6] as List<PositionRisk>;
+      liquidationOrders = results[7] as List<LiquidationOrder>;
+      walletPortfolio = results[8] as WalletPortfolio;
+      walletOrders = results[9] as List<WalletOrderRecord>;
       lastError = null;
     } catch (error) {
       lastError = '加载账户失败：$error';
@@ -235,6 +238,7 @@ class AppState extends ChangeNotifier {
     balances = const [];
     positions = const [];
     openOrders = const [];
+    openTriggerOrders = const [];
     positionMode = 'ONE_WAY';
     walletPortfolio = WalletPortfolio.empty();
     walletOrders = const [];
@@ -334,6 +338,62 @@ class AppState extends ChangeNotifier {
       await refreshPrivateData();
     } catch (error) {
       lastError = '撤单失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再提交止盈止损';
+      notifyListeners();
+      return;
+    }
+    final validDrafts = drafts
+        .where((item) => item.triggerPriceTicks > 0 && item.quantitySteps > 0)
+        .toList();
+    if (validDrafts.isEmpty) {
+      lastError = '请先填写有效的触发价和数量';
+      notifyListeners();
+      return;
+    }
+    try {
+      final created = <TriggerOrderModel>[];
+      for (final draft in validDrafts) {
+        created.add(
+          await api.placeTriggerOrder(
+            userId: id,
+            symbol: selectedSymbol,
+            side: draft.side,
+            triggerType: draft.triggerType,
+            triggerPriceTicks: draft.triggerPriceTicks,
+            quantitySteps: draft.quantitySteps,
+            marginMode: draft.marginMode,
+            positionSide: draft.positionSide,
+          ),
+        );
+      }
+      for (final order in created) {
+        _upsertTriggerOrder(order);
+      }
+      lastNotice = '止盈止损已提交 ${created.length} 档';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '提交止盈止损失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> cancelTriggerOrder(TriggerOrderModel order) async {
+    final id = userId;
+    if (id == null) return;
+    try {
+      final cancelled = await api.cancelTriggerOrder(id, order.triggerOrderId);
+      _upsertTriggerOrder(cancelled);
+      lastNotice = '条件单撤销已提交 #${order.triggerOrderId}';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '撤销条件单失败：$error';
     }
     notifyListeners();
   }
@@ -683,6 +743,23 @@ class AppState extends ChangeNotifier {
     openOrders = mutable;
   }
 
+  void _upsertTriggerOrder(TriggerOrderModel order) {
+    final mutable = [...openTriggerOrders];
+    final index = mutable.indexWhere(
+      (item) => item.triggerOrderId == order.triggerOrderId,
+    );
+    if (index >= 0) {
+      if (!_isOpenTriggerStatus(order.status)) {
+        mutable.removeAt(index);
+      } else {
+        mutable[index] = order;
+      }
+    } else if (_isOpenTriggerStatus(order.status)) {
+      mutable.insert(0, order);
+    }
+    openTriggerOrders = mutable;
+  }
+
   @override
   void dispose() {
     _realtimeNotifyTimer?.cancel();
@@ -690,6 +767,10 @@ class AppState extends ChangeNotifier {
     unawaited(privateRealtime.close());
     super.dispose();
   }
+}
+
+bool _isOpenTriggerStatus(String status) {
+  return status == 'NEW' || status == 'TRIGGERING';
 }
 
 List<OrderBookLevel> _mergeDepthLevels(

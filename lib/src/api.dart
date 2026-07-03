@@ -163,6 +163,62 @@ class ApiClient {
     return OrderModel.fromJson(json);
   }
 
+  Future<List<TriggerOrderModel>> openTriggerOrders(
+    int userId, {
+    String? symbol,
+  }) async {
+    final query = {'userId': '$userId', 'limit': '100'};
+    if (symbol != null) query['symbol'] = symbol;
+    final json = await get(
+      '/api/v1/gateway/trading-trigger/open',
+      query: query,
+      userId: userId,
+    );
+    return asList(
+      json['orders'] ?? json['items'],
+    ).map((item) => TriggerOrderModel.fromJson(asMap(item))).toList();
+  }
+
+  Future<TriggerOrderModel> placeTriggerOrder({
+    required int userId,
+    required String symbol,
+    required String side,
+    required String triggerType,
+    required int triggerPriceTicks,
+    required int quantitySteps,
+    required String marginMode,
+    required String positionSide,
+  }) async {
+    final json = await post('/api/v1/gateway/trading-trigger', {
+      'userId': userId,
+      'clientTriggerOrderId':
+          'app-trigger-$userId-${DateTime.now().microsecondsSinceEpoch}',
+      'symbol': symbol,
+      'side': side,
+      'triggerType': triggerType,
+      'triggerPriceType': 'MARK_PRICE',
+      'triggerPriceTicks': triggerPriceTicks,
+      'orderType': 'MARKET',
+      'timeInForce': 'IOC',
+      'priceTicks': 0,
+      'quantitySteps': quantitySteps,
+      'marginMode': marginMode,
+      'positionSide': positionSide,
+    }, userId: userId);
+    return TriggerOrderModel.fromJson(json);
+  }
+
+  Future<TriggerOrderModel> cancelTriggerOrder(
+    int userId,
+    int triggerOrderId,
+  ) async {
+    final json = await post('/api/v1/gateway/trading-trigger/cancel', {
+      'userId': userId,
+      'triggerOrderId': triggerOrderId,
+    }, userId: userId);
+    return TriggerOrderModel.fromJson(json);
+  }
+
   Future<Map<String, dynamic>> transfer({
     required int userId,
     required String sourceAccountType,

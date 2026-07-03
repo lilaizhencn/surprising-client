@@ -76,6 +76,28 @@ void main() {
     expect(order.amount, 1.25);
   });
 
+  test('parses trigger orders with position side', () {
+    final order = TriggerOrderModel.fromJson({
+      'triggerOrderId': 7,
+      'symbol': 'BTC-USDT',
+      'side': 'SELL',
+      'triggerType': 'TAKE_PROFIT',
+      'triggerPriceType': 'MARK_PRICE',
+      'triggerPriceTicks': 705000,
+      'orderType': 'MARKET',
+      'timeInForce': 'IOC',
+      'quantitySteps': 3,
+      'marginMode': 'ISOLATED',
+      'positionSide': 'LONG',
+      'status': 'NEW',
+    });
+
+    expect(order.triggerOrderId, 7);
+    expect(order.positionSide, 'LONG');
+    expect(triggerTypeLabel(order.triggerType), '止盈');
+    expect(triggerCloseLabel(order.side, order.positionSide), '平多');
+  });
+
   test('updates latest price from public trade events', () {
     final state = AppState(offline: true);
 

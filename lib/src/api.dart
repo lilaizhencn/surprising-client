@@ -160,6 +160,85 @@ class ApiClient {
     }, userId: userId);
   }
 
+  Future<Map<String, dynamic>> walletAssets(int userId) {
+    return get(
+      '/api/v1/gateway/wallet/app/assets',
+      userId: userId,
+      unwrapResponseResult: true,
+    );
+  }
+
+  Future<WalletPortfolio> walletPortfolio(
+    int userId, {
+    bool hideZero = false,
+  }) async {
+    final json = await get(
+      '/api/v1/gateway/wallet/app/portfolio',
+      query: {'hideZero': '$hideZero'},
+      userId: userId,
+      unwrapResponseResult: true,
+    );
+    return WalletPortfolio.fromJson(json);
+  }
+
+  Future<List<WalletOrderRecord>> walletOrders(
+    int userId, {
+    int limit = 30,
+  }) async {
+    final json = await get(
+      '/api/v1/gateway/wallet/app/orders',
+      query: {'limit': '$limit'},
+      userId: userId,
+      unwrapResponseResult: true,
+    );
+    return asList(
+      json['items'] ?? json['orders'],
+    ).map((item) => WalletOrderRecord.fromJson(asMap(item))).toList();
+  }
+
+  Future<WalletDepositAddress> walletDepositAddress(
+    int userId, {
+    required String chain,
+    required String symbol,
+    bool forceNew = false,
+  }) async {
+    final json = forceNew
+        ? await post(
+            '/api/v1/gateway/wallet/app/deposit-address',
+            {'chain': chain, 'symbol': symbol},
+            userId: userId,
+            unwrapResponseResult: true,
+          )
+        : await get(
+            '/api/v1/gateway/wallet/app/deposit-address',
+            query: {'chain': chain, 'symbol': symbol},
+            userId: userId,
+            unwrapResponseResult: true,
+          );
+    return WalletDepositAddress.fromJson(json);
+  }
+
+  Future<Map<String, dynamic>> walletWithdraw(
+    int userId, {
+    required String chain,
+    required String symbol,
+    required String toAddress,
+    required String amount,
+  }) {
+    return post(
+      '/api/v1/gateway/wallet/app/withdraw',
+      {
+        'chain': chain,
+        'symbol': symbol,
+        'toAddress': toAddress,
+        'amount': amount,
+        'confirmed': true,
+      },
+      userId: userId,
+      unwrapResponseResult: true,
+    );
+  }
+
   Future<AccountRisk?> accountRisk(int userId, String settleAsset) async {
     try {
       final json = await get(
@@ -207,16 +286,30 @@ class ApiClient {
     String path, {
     Map<String, String>? query,
     int? userId,
+    bool unwrapResponseResult = false,
   }) {
-    return _send('GET', path, query: query, userId: userId);
+    return _send(
+      'GET',
+      path,
+      query: query,
+      userId: userId,
+      unwrapResponseResult: unwrapResponseResult,
+    );
   }
 
   Future<Map<String, dynamic>> post(
     String path,
     Map<String, dynamic> body, {
     int? userId,
+    bool unwrapResponseResult = false,
   }) {
-    return _send('POST', path, body: body, userId: userId);
+    return _send(
+      'POST',
+      path,
+      body: body,
+      userId: userId,
+      unwrapResponseResult: unwrapResponseResult,
+    );
   }
 
   Future<Map<String, dynamic>> _send(
@@ -225,6 +318,7 @@ class ApiClient {
     Map<String, String>? query,
     Map<String, dynamic>? body,
     int? userId,
+    bool unwrapResponseResult = false,
   }) async {
     final base = Uri.parse(config.gatewayBaseUrl);
     final uri = base.replace(
@@ -253,7 +347,30 @@ class ApiClient {
     }
     if (payload.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(payload);
-    return asMap(decoded);
+    final json = asMap(decoded);
+    if (unwrapResponseResult) {
+      return _unwrapResponseResult(json);
+    }
+    return json;
+  }
+
+  Map<String, dynamic> _unwrapResponseResult(Map<String, dynamic> json) {
+    if (!json.containsKey('code') ||
+        !json.containsKey('message') ||
+        !json.containsKey('data')) {
+      return json;
+    }
+    final code = asInt(json['code']);
+    if (code != 0) {
+      throw ApiException(
+        code,
+        asString(json['message'], fallback: 'request failed'),
+      );
+    }
+    final data = json['data'];
+    if (data is List) return {'items': data};
+    if (data == null) return <String, dynamic>{};
+    return asMap(data);
   }
 }
 

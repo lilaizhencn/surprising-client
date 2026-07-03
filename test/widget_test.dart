@@ -25,6 +25,57 @@ void main() {
     expect(instrument.priceFromTicks(650000), 65000);
   });
 
+  test('maps trading modes to backend account types', () {
+    expect(ProductMode.spot.accountType, 'SPOT');
+    expect(ProductMode.linear.accountType, 'USDT_PERPETUAL');
+    expect(ProductMode.inverse.accountType, 'COIN_PERPETUAL');
+  });
+
+  test('parses wallet portfolio and order records', () {
+    final portfolio = WalletPortfolio.fromJson({
+      'generatedAt': '2026-07-03T00:00:00Z',
+      'assetCount': 1,
+      'assets': [
+        {
+          'symbol': 'USDT',
+          'availableBalance': '12.5',
+          'lockedBalance': 0,
+          'totalBalance': '12.5',
+          'chains': [
+            {
+              'chain': 'ETH',
+              'symbol': 'USDT',
+              'network': 'sepolia',
+              'nativeAsset': false,
+              'nativeSymbol': 'ETH',
+              'availableBalance': '12.5',
+              'lockedBalance': 0,
+              'totalBalance': '12.5',
+              'addresses': [
+                {'chain': 'ETH', 'symbol': 'USDT', 'address': '0xabc'},
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    final order = WalletOrderRecord.fromJson({
+      'type': 'WITHDRAW',
+      'ref_no': 'WD-1',
+      'chain': 'ETH',
+      'asset_symbol': 'USDT',
+      'amount': '1.25',
+      'fee': '0.01',
+      'status': 'PENDING_REVIEW',
+    });
+
+    expect(portfolio.assetCount, 1);
+    expect(portfolio.assets.first.chains.first.chain, 'ETH');
+    expect(order.refNo, 'WD-1');
+    expect(order.symbol, 'USDT');
+    expect(order.amount, 1.25);
+  });
+
   test('updates latest price from public trade events', () {
     final state = AppState(offline: true);
 

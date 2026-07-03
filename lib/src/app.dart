@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -538,13 +539,19 @@ class WalletPage extends StatefulWidget {
 
 class _WalletPageState extends State<WalletPage> {
   final amountController = TextEditingController(text: '10');
+  final withdrawAmountController = TextEditingController(text: '0.1');
+  final withdrawAddressController = TextEditingController();
   String source = 'SPOT';
-  String target = 'LINEAR_PERPETUAL';
+  String target = 'USDT_PERPETUAL';
   String asset = 'USDT';
+  String walletSymbol = 'USDT';
+  String walletChain = 'ETH';
 
   @override
   void dispose() {
     amountController.dispose();
+    withdrawAmountController.dispose();
+    withdrawAddressController.dispose();
     super.dispose();
   }
 
@@ -555,6 +562,20 @@ class _WalletPageState extends State<WalletPage> {
       0,
       (sum, item) => sum + item.equity,
     );
+    final symbols = _walletSymbols(state);
+    final selectedSymbol = symbols.contains(walletSymbol)
+        ? walletSymbol
+        : symbols.first;
+    final chains = _walletChains(state, selectedSymbol);
+    final selectedChain = chains.contains(walletChain)
+        ? walletChain
+        : chains.first;
+    final chainAsset = _walletChainAsset(state, selectedSymbol, selectedChain);
+    final deposit = state.walletDepositAddress;
+    final depositMatches =
+        deposit != null &&
+        deposit.symbol == selectedSymbol &&
+        deposit.chain == selectedChain;
     return RefreshIndicator(
       onRefresh: state.refreshPrivateData,
       child: ListView(
@@ -585,31 +606,63 @@ class _WalletPageState extends State<WalletPage> {
                 Row(
                   children: [
                     Expanded(
+                      child: MetricPill(
+                        label: '交易账户',
+                        value: '${money(total, digits: 4)} USDT',
+                        color: _violet,
+                      ),
+                    ),
+                    Expanded(
+                      child: MetricPill(
+                        label: '链上币种',
+                        value: '${state.walletPortfolio.assetCount}',
+                        color: _mint,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
                       child: WalletAction(
                         icon: Icons.call_received,
                         label: '充币',
-                        onTap: () => _unavailable(context),
+                        onTap: state.isLoggedIn
+                            ? () => unawaited(
+                                state.loadDepositAddress(
+                                  chain: selectedChain,
+                                  symbol: selectedSymbol,
+                                ),
+                              )
+                            : () => showAuthSheet(context),
                       ),
                     ),
                     Expanded(
                       child: WalletAction(
                         icon: Icons.call_made,
                         label: '提币',
-                        onTap: () => _unavailable(context),
+                        onTap: state.isLoggedIn
+                            ? state.refreshWallet
+                            : () => showAuthSheet(context),
                       ),
                     ),
                     Expanded(
                       child: WalletAction(
                         icon: Icons.swap_horiz,
                         label: '划转',
-                        onTap: () {},
+                        onTap: state.isLoggedIn
+                            ? state.refreshPrivateData
+                            : () => showAuthSheet(context),
                       ),
                     ),
                     Expanded(
                       child: WalletAction(
                         icon: Icons.receipt_long,
                         label: '记录',
-                        onTap: () => _unavailable(context),
+                        onTap: state.isLoggedIn
+                            ? state.refreshWallet
+                            : () => showAuthSheet(context),
                       ),
                     ),
                   ],
@@ -625,79 +678,254 @@ class _WalletPageState extends State<WalletPage> {
               onPressed: () => showAuthSheet(context),
             )
           else
-            Panel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionTitle(title: '账户划转'),
-                  Row(
+            Column(
+              children: [
+                Panel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: SmallDropdown(
-                          value: source,
-                          values: const [
-                            'SPOT',
-                            'LINEAR_PERPETUAL',
-                            'INVERSE_PERPETUAL',
-                          ],
-                          onChanged: (value) => setState(() => source = value),
+                      SectionTitle(
+                        title: '充币地址',
+                        action: IconButton.filledTonal(
+                          onPressed: () => unawaited(
+                            state.loadDepositAddress(
+                              chain: selectedChain,
+                              symbol: selectedSymbol,
+                            ),
+                          ),
+                          icon: const Icon(Icons.qr_code),
                         ),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 6),
-                        child: Icon(Icons.arrow_forward, size: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SmallDropdown(
+                              value: selectedSymbol,
+                              values: symbols,
+                              onChanged: (value) {
+                                final nextChains = _walletChains(state, value);
+                                setState(() {
+                                  walletSymbol = value;
+                                  walletChain = nextChains.first;
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SmallDropdown(
+                              value: selectedChain,
+                              values: chains,
+                              onChanged: (value) =>
+                                  setState(() => walletChain = value),
+                            ),
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: SmallDropdown(
-                          value: target,
-                          values: const [
-                            'SPOT',
-                            'LINEAR_PERPETUAL',
-                            'INVERSE_PERPETUAL',
-                          ],
-                          onChanged: (value) => setState(() => target = value),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: PrimaryAction(
+                              label: '获取地址',
+                              icon: Icons.call_received,
+                              onPressed: () => unawaited(
+                                state.loadDepositAddress(
+                                  chain: selectedChain,
+                                  symbol: selectedSymbol,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => unawaited(
+                                state.loadDepositAddress(
+                                  chain: selectedChain,
+                                  symbol: selectedSymbol,
+                                  forceNew: true,
+                                ),
+                              ),
+                              icon: const Icon(Icons.add),
+                              label: const Text('新地址'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (depositMatches) ...[
+                        const SizedBox(height: 10),
+                        DepositAddressCard(address: deposit),
+                      ],
+                    ],
+                  ),
+                ),
+                Panel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionTitle(title: '提现'),
+                      InfoLine(
+                        label: '$selectedChain · $selectedSymbol 可用',
+                        value: chainAsset == null
+                            ? '--'
+                            : money(chainAsset.availableBalance, digits: 8),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: withdrawAddressController,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: '到账地址',
+                          isDense: true,
+                          filled: true,
+                          fillColor: const Color(0xFFFCFAFF),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: const BorderSide(color: _line),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: AppTextField(
+                              controller: withdrawAmountController,
+                              label: '数量',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 92,
+                            child: Center(
+                              child: Text(
+                                selectedSymbol,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      PrimaryAction(
+                        label: '确认提现',
+                        icon: Icons.call_made,
+                        onPressed: () => unawaited(
+                          state.withdrawWallet(
+                            chain: selectedChain,
+                            symbol: selectedSymbol,
+                            toAddress: withdrawAddressController.text,
+                            amount: withdrawAmountController.text,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Row(
+                ),
+                Panel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: AppTextField(
-                          controller: amountController,
-                          label: '数量',
-                        ),
+                      const SectionTitle(title: '账户划转'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SmallDropdown(
+                              value: source,
+                              values: const [
+                                'SPOT',
+                                'USDT_PERPETUAL',
+                                'COIN_PERPETUAL',
+                              ],
+                              onChanged: (value) =>
+                                  setState(() => source = value),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 6),
+                            child: Icon(Icons.arrow_forward, size: 18),
+                          ),
+                          Expanded(
+                            child: SmallDropdown(
+                              value: target,
+                              values: const [
+                                'SPOT',
+                                'USDT_PERPETUAL',
+                                'COIN_PERPETUAL',
+                              ],
+                              onChanged: (value) =>
+                                  setState(() => target = value),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 86,
-                        child: AppTextField(
-                          initialValue: asset,
-                          label: '资产',
-                          onChanged: (value) => asset = value.toUpperCase(),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: AppTextField(
+                              controller: amountController,
+                              label: '数量',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 86,
+                            child: AppTextField(
+                              initialValue: asset,
+                              label: '资产',
+                              onChanged: (value) => asset = value.toUpperCase(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      PrimaryAction(
+                        label: '确认划转',
+                        icon: Icons.swap_horiz,
+                        onPressed: () => unawaited(
+                          state.transfer(
+                            sourceAccountType: source,
+                            targetAccountType: target,
+                            asset: asset,
+                            amount: double.tryParse(amountController.text) ?? 0,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  PrimaryAction(
-                    label: '确认划转',
-                    icon: Icons.swap_horiz,
-                    onPressed: () => unawaited(
-                      state.transfer(
-                        sourceAccountType: source,
-                        targetAccountType: target,
-                        asset: asset,
-                        amount: double.tryParse(amountController.text) ?? 0,
-                      ),
-                    ),
+                ),
+                SectionTitle(
+                  title: '链上资产',
+                  action: IconButton.filledTonal(
+                    onPressed: () => unawaited(state.refreshWallet()),
+                    icon: const Icon(Icons.refresh),
                   ),
-                ],
-              ),
+                ),
+                ...state.walletPortfolio.assets.map(
+                  (walletAsset) => WalletAssetRow(asset: walletAsset),
+                ),
+                if (state.walletPortfolio.assets.isEmpty)
+                  const EmptyState(text: '暂无链上资产数据'),
+                const SectionTitle(title: '资金记录'),
+                ...state.walletOrders.map(
+                  (record) => WalletOrderRecordRow(record: record),
+                ),
+                if (state.walletOrders.isEmpty)
+                  const EmptyState(text: '暂无资金记录'),
+              ],
             ),
           const SizedBox(height: 12),
-          const SectionTitle(title: '资产列表'),
+          const SectionTitle(title: '交易账户资产'),
           ...state.balances.map((balance) => BalanceRow(balance: balance)),
           if (state.balances.isEmpty) const EmptyState(text: '暂无资产数据'),
         ],
@@ -705,10 +933,44 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
-  void _unavailable(BuildContext context) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('链上钱包模块尚未接入')));
+  List<String> _walletSymbols(AppState state) {
+    final values =
+        state.walletPortfolio.assets
+            .map((asset) => asset.symbol)
+            .where((symbol) => symbol.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return values.isEmpty ? const ['USDT', 'BTC', 'ETH'] : values;
+  }
+
+  List<String> _walletChains(AppState state, String symbol) {
+    final matches = state.walletPortfolio.assets.where(
+      (asset) => asset.symbol == symbol,
+    );
+    final chains = matches.isEmpty
+        ? <String>[]
+        : matches.first.chains
+              .map((chain) => chain.chain)
+              .where((chain) => chain.isNotEmpty)
+              .toSet()
+              .toList();
+    chains.sort();
+    return chains.isEmpty ? const ['ETH', 'TRON', 'BTC'] : chains;
+  }
+
+  WalletChainAsset? _walletChainAsset(
+    AppState state,
+    String symbol,
+    String chain,
+  ) {
+    for (final asset in state.walletPortfolio.assets) {
+      if (asset.symbol != symbol) continue;
+      for (final item in asset.chains) {
+        if (item.chain == chain) return item;
+      }
+    }
+    return null;
   }
 }
 
@@ -1797,6 +2059,244 @@ class BalanceRow extends StatelessWidget {
                   color: _amber,
                 ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DepositAddressCard extends StatelessWidget {
+  const DepositAddressCard({required this.address, super.key});
+
+  final WalletDepositAddress address;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _line),
+        color: const Color(0xFFFCFAFF),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _QrImage(dataUrl: address.qrCodeDataUrl),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${address.chain} · ${address.symbol}',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 6),
+                    SelectableText(
+                      address.address,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (address.memo.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      InfoLine(label: 'Memo', value: address.memo),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (address.warnings.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final warning in address.warnings.take(3))
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  warning,
+                  style: const TextStyle(color: _amber, fontSize: 11),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _QrImage extends StatelessWidget {
+  const _QrImage({required this.dataUrl});
+
+  final String dataUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!dataUrl.startsWith('data:image') || !dataUrl.contains(',')) {
+      return _placeholder();
+    }
+    try {
+      final bytes = base64Decode(dataUrl.split(',').last);
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.memory(
+          bytes,
+          width: 96,
+          height: 96,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+      );
+    } catch (_) {
+      return _placeholder();
+    }
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: 96,
+      height: 96,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _line),
+      ),
+      child: const Icon(Icons.qr_code_2, color: _muted),
+    );
+  }
+}
+
+class WalletAssetRow extends StatelessWidget {
+  const WalletAssetRow({required this.asset, super.key});
+
+  final WalletAssetSummary asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                asset.symbol,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const Spacer(),
+              Text(
+                money(asset.totalBalance, digits: 8),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: MetricPill(
+                  label: '可用',
+                  value: money(asset.availableBalance, digits: 8),
+                  color: _mint,
+                ),
+              ),
+              Expanded(
+                child: MetricPill(
+                  label: '冻结',
+                  value: money(asset.lockedBalance, digits: 8),
+                  color: _amber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final chain in asset.chains)
+                Chip(
+                  label: Text(
+                    '${chain.chain} ${money(chain.totalBalance, digits: 6)}',
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WalletOrderRecordRow extends StatelessWidget {
+  const WalletOrderRecordRow({required this.record, super.key});
+
+  final WalletOrderRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final isOut =
+        record.type.contains('WITHDRAW') || record.type.contains('OUT');
+    return Panel(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: isOut
+                ? _red.withValues(alpha: 0.12)
+                : _mint.withValues(alpha: 0.12),
+            child: Icon(
+              isOut ? Icons.call_made : Icons.call_received,
+              color: isOut ? _red : _mint,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${record.type} · ${record.chain}/${record.symbol}',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  '${record.status} · ${record.refNo}',
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (record.errorMessage.isNotEmpty)
+                  Text(
+                    record.errorMessage,
+                    style: const TextStyle(color: _red, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isOut ? '-' : '+'}${money(record.amount, digits: 8)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: isOut ? _red : _mint,
+                ),
+              ),
+              if (record.fee > 0)
+                Text(
+                  'fee ${money(record.fee, digits: 8)}',
+                  style: const TextStyle(color: _muted, fontSize: 11),
+                ),
             ],
           ),
         ],

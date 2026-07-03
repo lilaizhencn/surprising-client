@@ -9,6 +9,14 @@ enum ProductMode {
 
   final String label;
   final String contractType;
+
+  String get accountType {
+    return switch (this) {
+      ProductMode.spot => 'SPOT',
+      ProductMode.linear => 'USDT_PERPETUAL',
+      ProductMode.inverse => 'COIN_PERPETUAL',
+    };
+  }
 }
 
 class AppConfig {
@@ -411,6 +419,237 @@ class LiquidationOrder {
       symbol: asString(json['symbol']),
       status: asString(json['status']),
       quantitySteps: asInt(json['quantitySteps']),
+    );
+  }
+}
+
+class WalletPortfolio {
+  const WalletPortfolio({
+    required this.generatedAt,
+    required this.assets,
+    required this.assetCount,
+  });
+
+  final String generatedAt;
+  final List<WalletAssetSummary> assets;
+  final int assetCount;
+
+  double get totalBalance {
+    return assets.fold<double>(0, (sum, asset) => sum + asset.totalBalance);
+  }
+
+  factory WalletPortfolio.empty() {
+    return const WalletPortfolio(generatedAt: '', assets: [], assetCount: 0);
+  }
+
+  factory WalletPortfolio.fromJson(Map<String, dynamic> json) {
+    final assets = asList(
+      json['assets'],
+    ).map((item) => WalletAssetSummary.fromJson(asMap(item))).toList();
+    return WalletPortfolio(
+      generatedAt: asString(json['generatedAt']),
+      assets: assets,
+      assetCount: asInt(json['assetCount'], fallback: assets.length),
+    );
+  }
+}
+
+class WalletAssetSummary {
+  const WalletAssetSummary({
+    required this.symbol,
+    required this.availableBalance,
+    required this.lockedBalance,
+    required this.totalBalance,
+    required this.chains,
+  });
+
+  final String symbol;
+  final double availableBalance;
+  final double lockedBalance;
+  final double totalBalance;
+  final List<WalletChainAsset> chains;
+
+  factory WalletAssetSummary.fromJson(Map<String, dynamic> json) {
+    return WalletAssetSummary(
+      symbol: asString(json['symbol']),
+      availableBalance: asDouble(json['availableBalance']),
+      lockedBalance: asDouble(json['lockedBalance']),
+      totalBalance: asDouble(json['totalBalance']),
+      chains: asList(
+        json['chains'],
+      ).map((item) => WalletChainAsset.fromJson(asMap(item))).toList(),
+    );
+  }
+}
+
+class WalletChainAsset {
+  const WalletChainAsset({
+    required this.chain,
+    required this.symbol,
+    required this.network,
+    required this.family,
+    required this.standard,
+    required this.nativeAsset,
+    required this.nativeSymbol,
+    required this.availableBalance,
+    required this.lockedBalance,
+    required this.totalBalance,
+    required this.addresses,
+  });
+
+  final String chain;
+  final String symbol;
+  final String network;
+  final String family;
+  final String standard;
+  final bool nativeAsset;
+  final String nativeSymbol;
+  final double availableBalance;
+  final double lockedBalance;
+  final double totalBalance;
+  final List<WalletAddressRef> addresses;
+
+  String get label => '$chain ${network.isEmpty ? '' : '· $network'}'.trim();
+
+  factory WalletChainAsset.fromJson(Map<String, dynamic> json) {
+    return WalletChainAsset(
+      chain: asString(json['chain']),
+      symbol: asString(json['symbol']),
+      network: asString(json['network']),
+      family: asString(json['family']),
+      standard: asString(
+        json['standard'] ?? json['tokenStandard'] ?? json['tokenstandard'],
+      ),
+      nativeAsset: asBool(json['nativeAsset'] ?? json['nativeasset']),
+      nativeSymbol: asString(json['nativeSymbol'] ?? json['nativesymbol']),
+      availableBalance: asDouble(json['availableBalance']),
+      lockedBalance: asDouble(json['lockedBalance']),
+      totalBalance: asDouble(json['totalBalance']),
+      addresses: asList(
+        json['addresses'],
+      ).map((item) => WalletAddressRef.fromJson(asMap(item))).toList(),
+    );
+  }
+}
+
+class WalletAddressRef {
+  const WalletAddressRef({
+    required this.chain,
+    required this.symbol,
+    required this.address,
+    required this.ownerAddress,
+    required this.addressIndex,
+  });
+
+  final String chain;
+  final String symbol;
+  final String address;
+  final String ownerAddress;
+  final int addressIndex;
+
+  factory WalletAddressRef.fromJson(Map<String, dynamic> json) {
+    return WalletAddressRef(
+      chain: asString(json['chain']),
+      symbol: asString(json['symbol']),
+      address: asString(json['address']),
+      ownerAddress: asString(json['ownerAddress']),
+      addressIndex: asInt(json['addressIndex']),
+    );
+  }
+}
+
+class WalletDepositAddress {
+  const WalletDepositAddress({
+    required this.chain,
+    required this.symbol,
+    required this.network,
+    required this.standard,
+    required this.nativeAsset,
+    required this.nativeSymbol,
+    required this.address,
+    required this.qrCodeDataUrl,
+    required this.ownerAddress,
+    required this.accountId,
+    required this.addressIndex,
+    required this.memo,
+    required this.warnings,
+  });
+
+  final String chain;
+  final String symbol;
+  final String network;
+  final String standard;
+  final bool nativeAsset;
+  final String nativeSymbol;
+  final String address;
+  final String qrCodeDataUrl;
+  final String ownerAddress;
+  final String accountId;
+  final int addressIndex;
+  final String memo;
+  final List<String> warnings;
+
+  factory WalletDepositAddress.fromJson(Map<String, dynamic> json) {
+    return WalletDepositAddress(
+      chain: asString(json['chain']),
+      symbol: asString(json['symbol']),
+      network: asString(json['network']),
+      standard: asString(json['standard']),
+      nativeAsset: asBool(json['nativeAsset']),
+      nativeSymbol: asString(json['nativeSymbol']),
+      address: asString(json['address']),
+      qrCodeDataUrl: asString(json['qrCodeDataUrl']),
+      ownerAddress: asString(json['ownerAddress']),
+      accountId: asString(json['accountId']),
+      addressIndex: asInt(json['addressIndex']),
+      memo: asString(json['memo']),
+      warnings: asList(json['warnings']).map((item) => '$item').toList(),
+    );
+  }
+}
+
+class WalletOrderRecord {
+  const WalletOrderRecord({
+    required this.type,
+    required this.refNo,
+    required this.chain,
+    required this.symbol,
+    required this.amount,
+    required this.fee,
+    required this.status,
+    required this.toAddress,
+    required this.txHash,
+    required this.errorMessage,
+    required this.updatedAt,
+  });
+
+  final String type;
+  final String refNo;
+  final String chain;
+  final String symbol;
+  final double amount;
+  final double fee;
+  final String status;
+  final String toAddress;
+  final String txHash;
+  final String errorMessage;
+  final String updatedAt;
+
+  factory WalletOrderRecord.fromJson(Map<String, dynamic> json) {
+    return WalletOrderRecord(
+      type: asString(json['type']),
+      refNo: asString(json['refNo'] ?? json['ref_no']),
+      chain: asString(json['chain']),
+      symbol: asString(
+        json['assetSymbol'] ?? json['asset_symbol'] ?? json['symbol'],
+      ),
+      amount: asDouble(json['amount']),
+      fee: asDouble(json['fee']),
+      status: asString(json['status']),
+      toAddress: asString(json['toAddress'] ?? json['to_address']),
+      txHash: asString(json['txHash'] ?? json['tx_hash']),
+      errorMessage: asString(json['errorMessage'] ?? json['error_message']),
+      updatedAt: asString(json['updatedAt'] ?? json['updated_at']),
     );
   }
 }

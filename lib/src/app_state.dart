@@ -39,6 +39,9 @@ class AppState extends ChangeNotifier {
   List<OrderModel> openOrders = const [];
   List<PositionRisk> positionRisks = const [];
   List<LiquidationOrder> liquidationOrders = const [];
+  WalletPortfolio walletPortfolio = WalletPortfolio.empty();
+  List<WalletOrderRecord> walletOrders = const [];
+  WalletDepositAddress? walletDepositAddress;
   AccountRisk? accountRisk;
   final Map<String, double> latestPrices = {};
   bool loadingPublic = false;
@@ -152,19 +155,30 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final results = await Future.wait([
-        api.productBalances(id),
+        api.productBalances(id, accountType: mode.accountType),
         api.positions(id),
         api.openOrders(id, symbol: selectedSymbol),
         api.accountRisk(id, selectedInstrument.settleAsset),
         api.positionRisks(id),
         api.liquidationOrders(id),
+        api.walletPortfolio(id),
+        api.walletOrders(id),
       ]);
       balances = results[0] as List<ProductBalance>;
-      positions = results[1] as List<Position>;
+      final allPositions = results[1] as List<Position>;
+      positions = allPositions.where((position) {
+        final instrument = instruments.firstWhere(
+          (item) => item.symbol == position.symbol,
+          orElse: () => selectedInstrument,
+        );
+        return instrument.mode == mode;
+      }).toList();
       openOrders = results[2] as List<OrderModel>;
       accountRisk = results[3] as AccountRisk?;
       positionRisks = results[4] as List<PositionRisk>;
       liquidationOrders = results[5] as List<LiquidationOrder>;
+      walletPortfolio = results[6] as WalletPortfolio;
+      walletOrders = results[7] as List<WalletOrderRecord>;
       lastError = null;
     } catch (error) {
       lastError = '加载账户失败：$error';
@@ -218,6 +232,9 @@ class AppState extends ChangeNotifier {
     balances = const [];
     positions = const [];
     openOrders = const [];
+    walletPortfolio = WalletPortfolio.empty();
+    walletOrders = const [];
+    walletDepositAddress = null;
     accountRisk = null;
     positionRisks = const [];
     liquidationOrders = const [];
@@ -356,6 +373,81 @@ class AppState extends ChangeNotifier {
       await refreshPrivateData();
     } catch (error) {
       lastError = '划转失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> refreshWallet() async {
+    final id = userId;
+    if (offline || id == null) return;
+    loadingPrivate = true;
+    notifyListeners();
+    try {
+      final results = await Future.wait([
+        api.walletPortfolio(id),
+        api.walletOrders(id),
+      ]);
+      walletPortfolio = results[0] as WalletPortfolio;
+      walletOrders = results[1] as List<WalletOrderRecord>;
+      lastError = null;
+    } catch (error) {
+      lastError = '加载钱包失败：$error';
+    } finally {
+      loadingPrivate = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadDepositAddress({
+    required String chain,
+    required String symbol,
+    bool forceNew = false,
+  }) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再获取充值地址';
+      notifyListeners();
+      return;
+    }
+    try {
+      walletDepositAddress = await api.walletDepositAddress(
+        id,
+        chain: chain,
+        symbol: symbol,
+        forceNew: forceNew,
+      );
+      lastNotice = forceNew ? '已生成新充值地址' : '充值地址已加载';
+      await refreshWallet();
+    } catch (error) {
+      lastError = '获取充值地址失败：$error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> withdrawWallet({
+    required String chain,
+    required String symbol,
+    required String toAddress,
+    required String amount,
+  }) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再提现';
+      notifyListeners();
+      return;
+    }
+    try {
+      final result = await api.walletWithdraw(
+        id,
+        chain: chain,
+        symbol: symbol,
+        toAddress: toAddress,
+        amount: amount,
+      );
+      lastNotice = '提现已提交 ${asString(result['orderNo'])}';
+      await refreshWallet();
+    } catch (error) {
+      lastError = '提现失败：$error';
     }
     notifyListeners();
   }

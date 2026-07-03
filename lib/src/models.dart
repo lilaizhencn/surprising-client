@@ -19,6 +19,18 @@ enum ProductMode {
   }
 }
 
+String positionModeLabel(String mode) {
+  return mode == 'HEDGE' ? '双向持仓' : '净仓';
+}
+
+String positionSideLabel(String side) {
+  return switch (side) {
+    'LONG' => '多仓',
+    'SHORT' => '空仓',
+    _ => '净仓',
+  };
+}
+
 class AppConfig {
   const AppConfig({
     this.gatewayBaseUrl = const String.fromEnvironment(
@@ -309,6 +321,8 @@ class OrderModel {
     required this.quantitySteps,
     required this.executedQuantitySteps,
     required this.remainingQuantitySteps,
+    required this.marginMode,
+    required this.positionSide,
     required this.status,
     required this.reduceOnly,
     required this.postOnly,
@@ -323,6 +337,8 @@ class OrderModel {
   final int quantitySteps;
   final int executedQuantitySteps;
   final int remainingQuantitySteps;
+  final String marginMode;
+  final String positionSide;
   final String status;
   final bool reduceOnly;
   final bool postOnly;
@@ -338,6 +354,8 @@ class OrderModel {
       quantitySteps: asInt(json['quantitySteps']),
       executedQuantitySteps: asInt(json['executedQuantitySteps']),
       remainingQuantitySteps: asInt(json['remainingQuantitySteps']),
+      marginMode: asString(json['marginMode'], fallback: 'CROSS'),
+      positionSide: asString(json['positionSide'], fallback: 'NET'),
       status: asString(json['status']),
       reduceOnly: asBool(json['reduceOnly']),
       postOnly: asBool(json['postOnly']),
@@ -374,6 +392,7 @@ class AccountRisk {
 class PositionRisk {
   const PositionRisk({
     required this.symbol,
+    required this.positionSide,
     required this.markPriceTicks,
     required this.unrealizedPnlUnits,
     required this.positionMarginUnits,
@@ -382,6 +401,7 @@ class PositionRisk {
   });
 
   final String symbol;
+  final String positionSide;
   final int markPriceTicks;
   final int unrealizedPnlUnits;
   final int positionMarginUnits;
@@ -391,6 +411,7 @@ class PositionRisk {
   factory PositionRisk.fromJson(Map<String, dynamic> json) {
     return PositionRisk(
       symbol: asString(json['symbol']),
+      positionSide: asString(json['positionSide'], fallback: 'NET'),
       markPriceTicks: asInt(json['markPriceTicks']),
       unrealizedPnlUnits: asInt(json['unrealizedPnlUnits']),
       positionMarginUnits: asInt(json['positionMarginUnits']),

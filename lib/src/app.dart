@@ -516,6 +516,13 @@ class _TradePageState extends State<TradePage> {
             value: state.mode,
             onChanged: (mode) => unawaited(state.selectMode(mode)),
           ),
+          if (instrument.mode != ProductMode.spot) ...[
+            const SizedBox(height: 8),
+            PositionModeSelector(
+              value: state.positionMode,
+              onChanged: (mode) => unawaited(state.changePositionMode(mode)),
+            ),
+          ],
           const SizedBox(height: 8),
           SymbolStrip(
             instruments: state.visibleInstruments,
@@ -541,6 +548,7 @@ class _TradePageState extends State<TradePage> {
                     orderType: orderType,
                     timeInForce: timeInForce,
                     marginMode: marginMode,
+                    positionMode: state.positionMode,
                     positionSide: positionSide,
                     reduceOnly: reduceOnly,
                     postOnly: postOnly,
@@ -573,8 +581,12 @@ class _TradePageState extends State<TradePage> {
                           marginMode: instrument.mode == ProductMode.spot
                               ? 'CROSS'
                               : marginMode,
-                          positionSide: instrument.mode == ProductMode.spot
+                          positionSide:
+                              instrument.mode == ProductMode.spot ||
+                                  state.positionMode == 'ONE_WAY'
                               ? 'NET'
+                              : positionSide == 'NET'
+                              ? (side == 'SELL' ? 'SHORT' : 'LONG')
                               : positionSide,
                           reduceOnly: instrument.mode == ProductMode.spot
                               ? false
@@ -1253,6 +1265,7 @@ class OrderTicket extends StatelessWidget {
     required this.orderType,
     required this.timeInForce,
     required this.marginMode,
+    required this.positionMode,
     required this.positionSide,
     required this.reduceOnly,
     required this.postOnly,
@@ -1275,6 +1288,7 @@ class OrderTicket extends StatelessWidget {
   final String orderType;
   final String timeInForce;
   final String marginMode;
+  final String positionMode;
   final String positionSide;
   final bool reduceOnly;
   final bool postOnly;
@@ -1294,6 +1308,8 @@ class OrderTicket extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final buy = side == 'BUY';
+    final hedgeMode =
+        instrument.mode != ProductMode.spot && positionMode == 'HEDGE';
     return Panel(
       padding: const EdgeInsets.all(10),
       child: SingleChildScrollView(
@@ -1332,14 +1348,16 @@ class OrderTicket extends StatelessWidget {
                       onChanged: onMarginMode,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: SmallDropdown(
-                      value: positionSide,
-                      values: const ['NET', 'LONG', 'SHORT'],
-                      onChanged: onPositionSide,
+                  if (hedgeMode) ...[
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: SmallDropdown(
+                        value: positionSide == 'NET' ? 'LONG' : positionSide,
+                        values: const ['LONG', 'SHORT'],
+                        onChanged: onPositionSide,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ],
@@ -1382,7 +1400,13 @@ class OrderTicket extends StatelessWidget {
               ),
               onPressed: onSubmit,
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login),
-              label: Text(loggedIn ? (buy ? '买入 / 开多' : '卖出 / 开空') : '登录后下单'),
+              label: Text(
+                loggedIn
+                    ? hedgeMode
+                          ? (buy ? '买入' : '卖出')
+                          : (buy ? '买入 / 开多' : '卖出 / 开空')
+                    : '登录后下单',
+              ),
             ),
           ],
         ),
@@ -1811,6 +1835,50 @@ class ModeSelector extends StatelessWidget {
   }
 }
 
+class PositionModeSelector extends StatelessWidget {
+  const PositionModeSelector({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<String>(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? _violet.withValues(alpha: .18)
+              : _panelSoft,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? _ink : _muted,
+        ),
+        side: WidgetStateProperty.resolveWith(
+          (states) => BorderSide(
+            color: states.contains(WidgetState.selected) ? _violet : _line,
+          ),
+        ),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        textStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+        ),
+      ),
+      segments: const [
+        ButtonSegment(value: 'ONE_WAY', label: Text('净仓')),
+        ButtonSegment(value: 'HEDGE', label: Text('双向持仓')),
+      ],
+      selected: {value == 'HEDGE' ? 'HEDGE' : 'ONE_WAY'},
+      onSelectionChanged: (selection) => onChanged(selection.first),
+    );
+  }
+}
+
 class SymbolStrip extends StatelessWidget {
   const SymbolStrip({
     required this.instruments,
@@ -1837,9 +1905,7 @@ class SymbolStrip extends StatelessWidget {
             selected: item.symbol == selected,
             selectedColor: _pink.withValues(alpha: .20),
             backgroundColor: _panelSoft,
-            side: BorderSide(
-              color: item.symbol == selected ? _pink : _line,
-            ),
+            side: BorderSide(color: item.symbol == selected ? _pink : _line),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -2471,7 +2537,7 @@ class OrderRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${order.orderType}/${order.timeInForce} · ${order.status}',
+                  '${order.orderType}/${order.timeInForce} · ${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.status}',
                   style: const TextStyle(color: _muted, fontSize: 12),
                 ),
                 Text(
@@ -2504,7 +2570,9 @@ class PositionRow extends StatelessWidget {
       orElse: () => state.selectedInstrument,
     );
     final matchingRisks = state.positionRisks.where(
-      (item) => item.symbol == position.symbol,
+      (item) =>
+          item.symbol == position.symbol &&
+          item.positionSide == position.positionSide,
     );
     final risk = matchingRisks.isEmpty ? null : matchingRisks.first;
     final long = position.signedQuantitySteps >= 0;
@@ -2515,7 +2583,7 @@ class PositionRow extends StatelessWidget {
           Row(
             children: [
               Text(
-                '${position.symbol} ${long ? '多仓' : '空仓'}',
+                '${position.symbol} ${positionSideLabel(position.positionSide)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   color: long ? _mint : _red,
@@ -2523,7 +2591,9 @@ class PositionRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Chip(
-                label: Text('${position.marginMode} ${position.positionSide}'),
+                label: Text(
+                  '${position.marginMode} ${positionSideLabel(position.positionSide)}',
+                ),
                 visualDensity: VisualDensity.compact,
               ),
               const Spacer(),

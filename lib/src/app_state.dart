@@ -37,6 +37,7 @@ class AppState extends ChangeNotifier {
   List<ProductBalance> balances = const [];
   List<Position> positions = const [];
   List<OrderModel> openOrders = const [];
+  String positionMode = 'ONE_WAY';
   List<PositionRisk> positionRisks = const [];
   List<LiquidationOrder> liquidationOrders = const [];
   WalletPortfolio walletPortfolio = WalletPortfolio.empty();
@@ -158,6 +159,7 @@ class AppState extends ChangeNotifier {
         api.productBalances(id, accountType: mode.accountType),
         api.positions(id),
         api.openOrders(id, symbol: selectedSymbol),
+        api.positionMode(id),
         api.accountRisk(id, selectedInstrument.settleAsset),
         api.positionRisks(id),
         api.liquidationOrders(id),
@@ -174,11 +176,12 @@ class AppState extends ChangeNotifier {
         return instrument.mode == mode;
       }).toList();
       openOrders = results[2] as List<OrderModel>;
-      accountRisk = results[3] as AccountRisk?;
-      positionRisks = results[4] as List<PositionRisk>;
-      liquidationOrders = results[5] as List<LiquidationOrder>;
-      walletPortfolio = results[6] as WalletPortfolio;
-      walletOrders = results[7] as List<WalletOrderRecord>;
+      positionMode = results[3] as String;
+      accountRisk = results[4] as AccountRisk?;
+      positionRisks = results[5] as List<PositionRisk>;
+      liquidationOrders = results[6] as List<LiquidationOrder>;
+      walletPortfolio = results[7] as WalletPortfolio;
+      walletOrders = results[8] as List<WalletOrderRecord>;
       lastError = null;
     } catch (error) {
       lastError = '加载账户失败：$error';
@@ -232,6 +235,7 @@ class AppState extends ChangeNotifier {
     balances = const [];
     positions = const [];
     openOrders = const [];
+    positionMode = 'ONE_WAY';
     walletPortfolio = WalletPortfolio.empty();
     walletOrders = const [];
     walletDepositAddress = null;
@@ -290,6 +294,12 @@ class AppState extends ChangeNotifier {
     }
     try {
       final instrument = selectedInstrument;
+      final effectivePositionSide =
+          instrument.mode == ProductMode.spot || positionMode == 'ONE_WAY'
+          ? 'NET'
+          : positionSide == 'NET'
+          ? (side == 'SELL' ? 'SHORT' : 'LONG')
+          : positionSide;
       final order = await api.placeOrder(
         userId: id,
         symbol: selectedSymbol,
@@ -301,7 +311,7 @@ class AppState extends ChangeNotifier {
             : instrument.ticksFromPrice(price),
         quantitySteps: quantitySteps,
         marginMode: marginMode,
-        positionSide: positionSide,
+        positionSide: effectivePositionSide,
         reduceOnly: reduceOnly,
         postOnly: postOnly,
       );
@@ -328,6 +338,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> changePositionMode(String nextMode) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再切换持仓模式';
+      notifyListeners();
+      return;
+    }
+    if (nextMode == positionMode) return;
+    try {
+      positionMode = await api.updatePositionMode(id, nextMode);
+      lastNotice = '持仓模式已切换为${positionModeLabel(positionMode)}';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '切换持仓模式失败：$error';
+    }
+    notifyListeners();
+  }
+
   Future<void> closePosition(Position position) async {
     final instrument = instruments.firstWhere(
       (item) => item.symbol == position.symbol,
@@ -341,7 +369,8 @@ class AppState extends ChangeNotifier {
       price: 0,
       quantitySteps: position.signedQuantitySteps.abs(),
       marginMode: position.marginMode,
-      positionSide: instrument.mode == ProductMode.spot
+      positionSide:
+          instrument.mode == ProductMode.spot || positionMode == 'ONE_WAY'
           ? 'NET'
           : position.positionSide,
       reduceOnly: instrument.mode != ProductMode.spot,
@@ -556,7 +585,10 @@ class AppState extends ChangeNotifier {
       final position = Position.fromJson(data);
       positions = [
         for (final item in positions)
-          if (item.symbol != position.symbol) item,
+          if (item.symbol != position.symbol ||
+              item.marginMode != position.marginMode ||
+              item.positionSide != position.positionSide)
+            item,
         if (position.signedQuantitySteps != 0) position,
       ];
     } else if (channel == 'accountRisk') {
@@ -565,7 +597,9 @@ class AppState extends ChangeNotifier {
       final risk = PositionRisk.fromJson(data);
       positionRisks = [
         for (final item in positionRisks)
-          if (item.symbol != risk.symbol) item,
+          if (item.symbol != risk.symbol ||
+              item.positionSide != risk.positionSide)
+            item,
         risk,
       ];
     }

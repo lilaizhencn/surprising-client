@@ -614,6 +614,8 @@ class _TradePageState extends State<TradePage> {
           ),
           const SizedBox(height: 10),
           if (instrument.mode != ProductMode.spot) ...[
+            AlgoOrderPanel(state: state, marginMode: marginMode),
+            const SizedBox(height: 8),
             TriggerOrderPanel(state: state, marginMode: marginMode),
             const SizedBox(height: 2),
           ],
@@ -1419,6 +1421,228 @@ class OrderTicket extends StatelessWidget {
   }
 }
 
+class AlgoOrderPanel extends StatefulWidget {
+  const AlgoOrderPanel({
+    required this.state,
+    required this.marginMode,
+    super.key,
+  });
+
+  final AppState state;
+  final String marginMode;
+
+  @override
+  State<AlgoOrderPanel> createState() => _AlgoOrderPanelState();
+}
+
+class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
+  String algoType = 'TWAP';
+  String side = 'BUY';
+  String positionSide = 'LONG';
+  bool reduceOnly = false;
+  bool postOnly = false;
+  bool submitting = false;
+  late final TextEditingController priceTicksController;
+  final quantityController = TextEditingController(text: '2');
+  final childQuantityController = TextEditingController(text: '1');
+  final intervalController = TextEditingController(text: '5');
+  final durationController = TextEditingController(text: '20');
+
+  @override
+  void initState() {
+    super.initState();
+    priceTicksController = TextEditingController(
+      text: _defaultPriceTicks().toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    priceTicksController.dispose();
+    quantityController.dispose();
+    childQuantityController.dispose();
+    intervalController.dispose();
+    durationController.dispose();
+    super.dispose();
+  }
+
+  int _defaultPriceTicks() {
+    final instrument = widget.state.selectedInstrument;
+    final latestPrice = widget.state.latestPriceFor(instrument);
+    if (latestPrice != null && latestPrice > 0) {
+      return instrument.ticksFromPrice(latestPrice);
+    }
+    final book = widget.state.orderBook;
+    if (book.symbol == instrument.symbol) {
+      if (side == 'BUY' && book.asks.isNotEmpty) {
+        return book.asks.first.priceTicks;
+      }
+      if (side == 'SELL' && book.bids.isNotEmpty) {
+        return book.bids.first.priceTicks;
+      }
+    }
+    return 0;
+  }
+
+  bool get _valid {
+    final priceTicks = int.tryParse(priceTicksController.text) ?? 0;
+    final quantity = int.tryParse(quantityController.text) ?? 0;
+    final childQuantity = int.tryParse(childQuantityController.text) ?? 0;
+    final interval = int.tryParse(intervalController.text) ?? 0;
+    final duration = int.tryParse(durationController.text) ?? 0;
+    if (quantity <= 0 || childQuantity <= 0 || childQuantity > quantity) {
+      return false;
+    }
+    if (interval <= 0 || duration <= 0) return false;
+    return algoType == 'TWAP' || priceTicks > 0;
+  }
+
+  Future<void> submit() async {
+    if (!_valid || submitting) return;
+    setState(() => submitting = true);
+    final hedgeMode = widget.state.positionMode == 'HEDGE';
+    final effectivePositionSide = hedgeMode ? positionSide : 'NET';
+    await widget.state.placeAlgoOrder(
+      AlgoOrderDraft(
+        algoType: algoType,
+        side: side,
+        priceTicks: int.tryParse(priceTicksController.text) ?? 0,
+        quantitySteps: int.tryParse(quantityController.text) ?? 0,
+        childQuantitySteps: int.tryParse(childQuantityController.text) ?? 0,
+        intervalSeconds: int.tryParse(intervalController.text) ?? 0,
+        durationSeconds: int.tryParse(durationController.text) ?? 0,
+        marginMode: widget.marginMode,
+        positionSide: effectivePositionSide,
+        reduceOnly: reduceOnly,
+        postOnly: algoType == 'ICEBERG' && postOnly,
+      ),
+    );
+    if (mounted) setState(() => submitting = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hedgeMode = widget.state.positionMode == 'HEDGE';
+    return Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('算法单', style: TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SmallDropdown(
+                  value: algoType,
+                  values: const ['TWAP', 'ICEBERG'],
+                  labelBuilder: algoTypeLabel,
+                  onChanged: (value) => setState(() {
+                    algoType = value;
+                    if (value == 'TWAP') postOnly = false;
+                  }),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SmallDropdown(
+                  value: side,
+                  values: const ['BUY', 'SELL'],
+                  onChanged: (value) => setState(() => side = value),
+                ),
+              ),
+              if (hedgeMode) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  child: SmallDropdown(
+                    value: positionSide,
+                    values: const ['LONG', 'SHORT'],
+                    labelBuilder: positionSideLabel,
+                    onChanged: (value) => setState(() => positionSide = value),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: AppTextField(
+                  controller: priceTicksController,
+                  label: '价格 ticks',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: AppTextField(
+                  controller: quantityController,
+                  label: '总量 steps',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: AppTextField(
+                  controller: childQuantityController,
+                  label: '切片 steps',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: AppTextField(
+                  controller: intervalController,
+                  label: '间隔秒',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: AppTextField(
+                  controller: durationController,
+                  label: '时长秒',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: ToggleLine(
+                  label: '只减仓',
+                  value: reduceOnly,
+                  onChanged: (value) => setState(() => reduceOnly = value),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: ToggleLine(
+                  label: 'Post',
+                  value: postOnly,
+                  enabled: algoType == 'ICEBERG',
+                  onChanged: (value) => setState(() => postOnly = value),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: _violet,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              minimumSize: const Size.fromHeight(42),
+            ),
+            onPressed: _valid && !submitting ? submit : null,
+            icon: Icon(submitting ? Icons.hourglass_top : Icons.schedule),
+            label: Text(submitting ? '提交中' : '提交 ${algoTypeLabel(algoType)}'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class TriggerOrderPanel extends StatefulWidget {
   const TriggerOrderPanel({
     required this.state,
@@ -1444,8 +1668,15 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
         _TriggerLevelInput(
           id: '${DateTime.now().microsecondsSinceEpoch}-${levels.length}',
           triggerType: triggerType,
+          triggerPriceType: 'MARK_PRICE',
           closeTarget: 'LONG',
-          triggerPriceTicks: defaultPrice,
+          triggerPriceTicks: triggerType == 'TRAILING_STOP'
+              ? '0'
+              : defaultPrice,
+          activationPriceTicks: triggerType == 'TRAILING_STOP'
+              ? defaultPrice
+              : '',
+          callbackRatePpm: triggerType == 'TRAILING_STOP' ? '1000' : '',
           quantitySteps: '1',
         ),
       );
@@ -1470,20 +1701,41 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
     return levels
         .map((level) {
           final triggerPriceTicks = int.tryParse(level.triggerPriceTicks) ?? 0;
+          final activationPriceTicks = int.tryParse(level.activationPriceTicks);
+          final callbackRatePpm = int.tryParse(level.callbackRatePpm);
           final quantitySteps = int.tryParse(level.quantitySteps) ?? 0;
           return TriggerOrderDraft(
             side: level.closeTarget == 'LONG' ? 'SELL' : 'BUY',
             triggerType: level.triggerType,
+            triggerPriceType: level.triggerPriceType,
             triggerPriceTicks: triggerPriceTicks,
+            activationPriceTicks: level.triggerType == 'TRAILING_STOP'
+                ? activationPriceTicks
+                : null,
+            callbackRatePpm: level.triggerType == 'TRAILING_STOP'
+                ? callbackRatePpm
+                : null,
             quantitySteps: quantitySteps,
             marginMode: widget.marginMode,
             positionSide: hedgeMode ? level.closeTarget : 'NET',
           );
         })
-        .where(
-          (draft) => draft.triggerPriceTicks > 0 && draft.quantitySteps > 0,
-        )
+        .where(_validDraft)
         .toList();
+  }
+
+  bool _validDraft(TriggerOrderDraft draft) {
+    if (draft.quantitySteps <= 0) return false;
+    if (draft.triggerType == 'TRAILING_STOP') {
+      final callbackRate = draft.callbackRatePpm;
+      return draft.triggerPriceTicks >= 0 &&
+          (draft.activationPriceTicks == null ||
+              draft.activationPriceTicks! >= 0) &&
+          callbackRate != null &&
+          callbackRate >= 1000 &&
+          callbackRate <= 100000;
+    }
+    return draft.triggerPriceTicks > 0;
   }
 
   Future<void> submit() async {
@@ -1506,7 +1758,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
             children: [
               const Expanded(
                 child: Text(
-                  '止盈止损',
+                  '条件单',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
               ),
@@ -1520,6 +1772,12 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 tooltip: '新增止损',
                 onPressed: () => addLevel('STOP_LOSS'),
                 icon: const Icon(Icons.add_alert, size: 18),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filledTonal(
+                tooltip: '新增追踪止损',
+                onPressed: () => addLevel('TRAILING_STOP'),
+                icon: const Icon(Icons.timeline, size: 18),
               ),
             ],
           ),
@@ -1572,10 +1830,28 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               Expanded(
                 child: SmallDropdown(
                   value: level.triggerType,
-                  values: const ['TAKE_PROFIT', 'STOP_LOSS'],
+                  values: const ['TAKE_PROFIT', 'STOP_LOSS', 'TRAILING_STOP'],
                   labelBuilder: triggerTypeLabel,
-                  onChanged: (value) =>
-                      setState(() => level.triggerType = value),
+                  onChanged: (value) => setState(() {
+                    level.triggerType = value;
+                    if (value == 'TRAILING_STOP') {
+                      level.triggerPriceTicks = '0';
+                      if (level.activationPriceTicks.isEmpty) {
+                        level.activationPriceTicks = _defaultTriggerPriceTicks()
+                            .toString();
+                      }
+                      if (level.callbackRatePpm.isEmpty) {
+                        level.callbackRatePpm = '1000';
+                      }
+                    } else {
+                      if (level.triggerPriceTicks == '0') {
+                        level.triggerPriceTicks = _defaultTriggerPriceTicks()
+                            .toString();
+                      }
+                      level.activationPriceTicks = '';
+                      level.callbackRatePpm = '';
+                    }
+                  }),
                 ),
               ),
               const SizedBox(width: 6),
@@ -1586,6 +1862,16 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                   labelBuilder: (value) => value == 'LONG' ? '平多' : '平空',
                   onChanged: (value) =>
                       setState(() => level.closeTarget = value),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SmallDropdown(
+                  value: level.triggerPriceType,
+                  values: const ['MARK_PRICE', 'INDEX_PRICE', 'LAST_PRICE'],
+                  labelBuilder: triggerPriceTypeLabel,
+                  onChanged: (value) =>
+                      setState(() => level.triggerPriceType = value),
                 ),
               ),
               const SizedBox(width: 6),
@@ -1618,6 +1904,30 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               ),
             ],
           ),
+          if (level.triggerType == 'TRAILING_STOP') ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: AppTextField(
+                    key: ValueKey('${level.id}-activation'),
+                    initialValue: level.activationPriceTicks,
+                    label: '激活价 ticks',
+                    onChanged: (value) => level.activationPriceTicks = value,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: AppTextField(
+                    key: ValueKey('${level.id}-callback'),
+                    initialValue: level.callbackRatePpm,
+                    label: '回调 ppm',
+                    onChanged: (value) => level.callbackRatePpm = value,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1628,15 +1938,21 @@ class _TriggerLevelInput {
   _TriggerLevelInput({
     required this.id,
     required this.triggerType,
+    required this.triggerPriceType,
     required this.closeTarget,
     required this.triggerPriceTicks,
+    required this.activationPriceTicks,
+    required this.callbackRatePpm,
     required this.quantitySteps,
   });
 
   final String id;
   String triggerType;
+  String triggerPriceType;
   String closeTarget;
   String triggerPriceTicks;
+  String activationPriceTicks;
+  String callbackRatePpm;
   String quantitySteps;
 }
 
@@ -1785,6 +2101,15 @@ class PrivateTradingPanel extends StatelessWidget {
             order: order,
             instrument: state.selectedInstrument,
             onCancel: () => state.cancelOrder(order),
+          ),
+        ),
+        const SectionTitle(title: '算法单'),
+        if (state.openAlgoOrders.isEmpty) const EmptyState(text: '暂无开放算法单'),
+        ...state.openAlgoOrders.map(
+          (order) => AlgoOrderRow(
+            order: order,
+            state: state,
+            onCancel: () => state.cancelAlgoOrder(order),
           ),
         ),
         const SectionTitle(title: '止盈止损'),
@@ -2796,6 +3121,72 @@ class OrderRow extends StatelessWidget {
   }
 }
 
+class AlgoOrderRow extends StatelessWidget {
+  const AlgoOrderRow({
+    required this.order,
+    required this.state,
+    required this.onCancel,
+    super.key,
+  });
+
+  final AlgoOrderModel order;
+  final AppState state;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final instrument = state.instruments.firstWhere(
+      (item) => item.symbol == order.symbol,
+      orElse: () => state.selectedInstrument,
+    );
+    final priceText = order.priceTicks > 0
+        ? money(
+            instrument.priceFromTicks(order.priceTicks),
+            digits: instrument.pricePrecision,
+          )
+        : 'MARKET';
+    final progress = order.executedQuantitySteps + order.activeQuantitySteps;
+    return Panel(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${algoTypeLabel(order.algoType)} ${order.side} ${order.symbol}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: order.side == 'BUY' ? _mint : _red,
+                  ),
+                ),
+                Text(
+                  '${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.timeInForce} · ${order.status}',
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+                Text(
+                  '价 $priceText · 进度 $progress/${order.quantitySteps} · 切片 ${order.childQuantitySteps}/${order.intervalSeconds}s',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                if (order.rejectReason != null &&
+                    order.rejectReason!.isNotEmpty)
+                  Text(
+                    order.rejectReason!,
+                    style: const TextStyle(color: _red, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: onCancel,
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class TriggerOrderRow extends StatelessWidget {
   const TriggerOrderRow({
     required this.order,
@@ -2815,6 +3206,9 @@ class TriggerOrderRow extends StatelessWidget {
       orElse: () => state.selectedInstrument,
     );
     final isTakeProfit = order.triggerType == 'TAKE_PROFIT';
+    final triggerText = order.triggerType == 'TRAILING_STOP'
+        ? '激活 ${order.activationPriceTicks == null ? '立即' : money(instrument.priceFromTicks(order.activationPriceTicks!), digits: instrument.pricePrecision)} / 回调 ${((order.callbackRatePpm ?? 0) / 10000).toStringAsFixed(2)}%'
+        : '触发 ${money(instrument.priceFromTicks(order.triggerPriceTicks), digits: instrument.pricePrecision)}';
     return Panel(
       child: Row(
         children: [
@@ -2834,7 +3228,7 @@ class TriggerOrderRow extends StatelessWidget {
                   style: const TextStyle(color: _muted, fontSize: 12),
                 ),
                 Text(
-                  '触发 ${money(instrument.priceFromTicks(order.triggerPriceTicks), digits: instrument.pricePrecision)} · 量 ${order.quantitySteps}',
+                  '$triggerText · 量 ${order.quantitySteps}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],

@@ -138,27 +138,248 @@ class ApiClient {
     required bool reduceOnly,
     required bool postOnly,
   }) async {
-    final json = await post('/api/v1/gateway/trading', {
-      'userId': userId,
-      'clientOrderId': 'app-${DateTime.now().microsecondsSinceEpoch}',
-      'symbol': symbol,
-      'side': side,
-      'orderType': orderType,
-      'timeInForce': timeInForce,
-      'priceTicks': priceTicks,
-      'quantitySteps': quantitySteps,
-      'marginMode': marginMode,
-      'positionSide': positionSide,
-      'reduceOnly': reduceOnly,
-      'postOnly': postOnly,
-    }, userId: userId);
+    final json = await post(
+      '/api/v1/gateway/trading',
+      _orderPayload(
+        userId: userId,
+        symbol: symbol,
+        side: side,
+        orderType: orderType,
+        timeInForce: timeInForce,
+        priceTicks: priceTicks,
+        quantitySteps: quantitySteps,
+        marginMode: marginMode,
+        positionSide: positionSide,
+        reduceOnly: reduceOnly,
+        postOnly: postOnly,
+      ),
+      userId: userId,
+    );
     return OrderModel.fromJson(json);
+  }
+
+  Future<TestOrderResult> testOrder({
+    required int userId,
+    required String symbol,
+    required String side,
+    required String orderType,
+    required String timeInForce,
+    required int priceTicks,
+    required int quantitySteps,
+    required String marginMode,
+    required String positionSide,
+    required bool reduceOnly,
+    required bool postOnly,
+  }) async {
+    final json = await post(
+      '/api/v1/gateway/trading/test',
+      _orderPayload(
+        userId: userId,
+        symbol: symbol,
+        side: side,
+        orderType: orderType,
+        timeInForce: timeInForce,
+        priceTicks: priceTicks,
+        quantitySteps: quantitySteps,
+        marginMode: marginMode,
+        positionSide: positionSide,
+        reduceOnly: reduceOnly,
+        postOnly: postOnly,
+        clientOrderId: 'app-test-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+      userId: userId,
+    );
+    return TestOrderResult.fromJson(json);
+  }
+
+  Future<OrderBatchResult> placeOrderBatch(
+    int userId,
+    List<Map<String, dynamic>> orders,
+  ) async {
+    final json = await post('/api/v1/gateway/trading/batch', {
+      'orders': orders,
+    }, userId: userId);
+    return OrderBatchResult.fromJson(json);
+  }
+
+  Future<AmendOrderResult> amendOrder({
+    required int userId,
+    required int orderId,
+    int? priceTicks,
+    int? quantitySteps,
+    String? timeInForce,
+    bool? postOnly,
+    String? newClientOrderId,
+  }) async {
+    final payload = <String, dynamic>{
+      'userId': userId,
+      'orderId': orderId,
+      'newClientOrderId':
+          newClientOrderId ??
+          'app-amend-$userId-${DateTime.now().microsecondsSinceEpoch}',
+    };
+    if (priceTicks != null) {
+      payload['priceTicks'] = priceTicks;
+    }
+    if (quantitySteps != null) {
+      payload['quantitySteps'] = quantitySteps;
+    }
+    if (timeInForce != null) {
+      payload['timeInForce'] = timeInForce;
+    }
+    if (postOnly != null) {
+      payload['postOnly'] = postOnly;
+    }
+    final json = await post(
+      '/api/v1/gateway/trading/amend',
+      payload,
+      userId: userId,
+    );
+    return AmendOrderResult.fromJson(json);
+  }
+
+  Future<AmendOrderBatchResult> amendOrderBatch(
+    int userId,
+    List<Map<String, dynamic>> orders,
+  ) async {
+    final json = await post('/api/v1/gateway/trading/batch-amend', {
+      'orders': orders,
+    }, userId: userId);
+    return AmendOrderBatchResult.fromJson(json);
   }
 
   Future<OrderModel> cancelOrder(int userId, int orderId) async {
     final json = await post('/api/v1/gateway/trading/cancel', {
       'userId': userId,
       'orderId': orderId,
+    }, userId: userId);
+    return OrderModel.fromJson(json);
+  }
+
+  Future<OrderBatchResult> cancelOrderBatch(
+    int userId,
+    List<int> orderIds,
+  ) async {
+    final json = await post('/api/v1/gateway/trading/batch-cancel', {
+      'orders': orderIds
+          .map((orderId) => {'userId': userId, 'orderId': orderId})
+          .toList(),
+    }, userId: userId);
+    return OrderBatchResult.fromJson(json);
+  }
+
+  Future<OrderBatchResult> cancelOpenOrders(
+    int userId, {
+    String? symbol,
+    int limit = 1000,
+  }) async {
+    final json = await post('/api/v1/gateway/trading/cancel-open', {
+      'userId': userId,
+      ...?symbol == null ? null : {'symbol': symbol},
+      'limit': limit,
+    }, userId: userId);
+    return OrderBatchResult.fromJson(json);
+  }
+
+  Future<List<AlgoOrderModel>> openAlgoOrders(
+    int userId, {
+    String? symbol,
+  }) async {
+    final query = {'userId': '$userId', 'limit': '100'};
+    if (symbol != null) query['symbol'] = symbol;
+    final json = await get('/api/v1/gateway/trading/algo/open', query: query);
+    return asList(
+      json['orders'],
+    ).map((item) => AlgoOrderModel.fromJson(asMap(item))).toList();
+  }
+
+  Future<AlgoOrderModel> placeAlgoOrder({
+    required int userId,
+    required String symbol,
+    required String algoType,
+    required String side,
+    required int priceTicks,
+    required int quantitySteps,
+    required int childQuantitySteps,
+    required int intervalSeconds,
+    required int durationSeconds,
+    required String marginMode,
+    required String positionSide,
+    required bool reduceOnly,
+    required bool postOnly,
+  }) async {
+    final json = await post('/api/v1/gateway/trading/algo', {
+      'userId': userId,
+      'clientAlgoOrderId':
+          'app-algo-$userId-${DateTime.now().microsecondsSinceEpoch}',
+      'symbol': symbol,
+      'algoType': algoType,
+      'side': side,
+      'priceTicks': algoType == 'TWAP' && priceTicks <= 0 ? 0 : priceTicks,
+      'quantitySteps': quantitySteps,
+      'childQuantitySteps': childQuantitySteps,
+      'intervalSeconds': intervalSeconds,
+      'durationSeconds': durationSeconds,
+      'marginMode': marginMode,
+      'positionSide': positionSide,
+      'reduceOnly': reduceOnly,
+      'postOnly': algoType == 'ICEBERG' && postOnly,
+      'timeInForce': algoType == 'TWAP'
+          ? 'IOC'
+          : postOnly
+          ? 'GTX'
+          : 'GTC',
+    }, userId: userId);
+    return AlgoOrderModel.fromJson(json);
+  }
+
+  Future<AlgoOrderModel> cancelAlgoOrder(int userId, int algoOrderId) async {
+    final json = await post('/api/v1/gateway/trading/algo/cancel', {
+      'userId': userId,
+      'algoOrderId': algoOrderId,
+    }, userId: userId);
+    return AlgoOrderModel.fromJson(json);
+  }
+
+  Future<AlgoOrderBatchResult> cancelOpenAlgoOrders(
+    int userId, {
+    String? symbol,
+    int limit = 1000,
+  }) async {
+    final json = await post('/api/v1/gateway/trading/algo/cancel-open', {
+      'userId': userId,
+      ...?symbol == null ? null : {'symbol': symbol},
+      'limit': limit,
+    }, userId: userId);
+    return AlgoOrderBatchResult.fromJson(json);
+  }
+
+  Future<CancelAllAfterResult> cancelAllAfter(
+    int userId, {
+    String? symbol,
+    required int countdownMs,
+  }) async {
+    final json = await post('/api/v1/gateway/trading/cancel-all-after', {
+      'userId': userId,
+      ...?symbol == null ? null : {'symbol': symbol},
+      'countdownMs': countdownMs,
+    }, userId: userId);
+    return CancelAllAfterResult.fromJson(json);
+  }
+
+  Future<OrderModel> closePosition(
+    int userId, {
+    required String symbol,
+    required String marginMode,
+    required String positionSide,
+  }) async {
+    final json = await post('/api/v1/gateway/trading/close-position', {
+      'userId': userId,
+      'clientOrderId':
+          'app-close-$userId-${DateTime.now().microsecondsSinceEpoch}',
+      'symbol': symbol,
+      'marginMode': marginMode,
+      'positionSide': positionSide,
     }, userId: userId);
     return OrderModel.fromJson(json);
   }
@@ -188,24 +409,46 @@ class ApiClient {
     required int quantitySteps,
     required String marginMode,
     required String positionSide,
+    int? activationPriceTicks,
+    int? callbackRatePpm,
+    String triggerPriceType = 'MARK_PRICE',
   }) async {
-    final json = await post('/api/v1/gateway/trading-trigger', {
+    final payload = <String, Object?>{
       'userId': userId,
       'clientTriggerOrderId':
           'app-trigger-$userId-${DateTime.now().microsecondsSinceEpoch}',
       'symbol': symbol,
       'side': side,
       'triggerType': triggerType,
-      'triggerPriceType': 'MARK_PRICE',
+      'triggerPriceType': triggerPriceType,
       'triggerPriceTicks': triggerPriceTicks,
+      'activationPriceTicks': activationPriceTicks,
+      'callbackRatePpm': callbackRatePpm,
       'orderType': 'MARKET',
       'timeInForce': 'IOC',
       'priceTicks': 0,
       'quantitySteps': quantitySteps,
       'marginMode': marginMode,
       'positionSide': positionSide,
-    }, userId: userId);
+    }..removeWhere((_, value) => value == null);
+    final json = await post(
+      '/api/v1/gateway/trading-trigger',
+      payload,
+      userId: userId,
+    );
     return TriggerOrderModel.fromJson(json);
+  }
+
+  Future<TriggerOrderBatchResult> placeTriggerOrderBatch(
+    int userId,
+    List<Map<String, dynamic>> orders, {
+    bool atomic = false,
+  }) async {
+    final json = await post('/api/v1/gateway/trading-trigger/batch', {
+      'atomic': atomic,
+      'orders': orders,
+    }, userId: userId);
+    return TriggerOrderBatchResult.fromJson(json);
   }
 
   Future<TriggerOrderModel> cancelTriggerOrder(
@@ -217,6 +460,36 @@ class ApiClient {
       'triggerOrderId': triggerOrderId,
     }, userId: userId);
     return TriggerOrderModel.fromJson(json);
+  }
+
+  Future<TriggerOrderBatchResult> cancelTriggerOrderBatch(
+    int userId,
+    List<int> triggerOrderIds,
+  ) async {
+    final json = await post('/api/v1/gateway/trading-trigger/batch-cancel', {
+      'orders': triggerOrderIds
+          .map(
+            (triggerOrderId) => {
+              'userId': userId,
+              'triggerOrderId': triggerOrderId,
+            },
+          )
+          .toList(),
+    }, userId: userId);
+    return TriggerOrderBatchResult.fromJson(json);
+  }
+
+  Future<TriggerOrderBatchResult> cancelOpenTriggerOrders(
+    int userId, {
+    String? symbol,
+    int limit = 1000,
+  }) async {
+    final json = await post('/api/v1/gateway/trading-trigger/cancel-open', {
+      'userId': userId,
+      ...?symbol == null ? null : {'symbol': symbol},
+      'limit': limit,
+    }, userId: userId);
+    return TriggerOrderBatchResult.fromJson(json);
   }
 
   Future<Map<String, dynamic>> transfer({
@@ -357,6 +630,37 @@ class ApiClient {
     } catch (_) {
       return const [];
     }
+  }
+
+  Map<String, dynamic> _orderPayload({
+    required int userId,
+    required String symbol,
+    required String side,
+    required String orderType,
+    required String timeInForce,
+    required int priceTicks,
+    required int quantitySteps,
+    required String marginMode,
+    required String positionSide,
+    required bool reduceOnly,
+    required bool postOnly,
+    String? clientOrderId,
+  }) {
+    return {
+      'userId': userId,
+      'clientOrderId':
+          clientOrderId ?? 'app-${DateTime.now().microsecondsSinceEpoch}',
+      'symbol': symbol,
+      'side': side,
+      'orderType': orderType,
+      'timeInForce': timeInForce,
+      'priceTicks': orderType == 'MARKET' ? 0 : priceTicks,
+      'quantitySteps': quantitySteps,
+      'marginMode': marginMode,
+      'positionSide': positionSide,
+      'reduceOnly': reduceOnly,
+      'postOnly': postOnly,
+    };
   }
 
   Future<Map<String, dynamic>> get(
@@ -509,6 +813,7 @@ class RealtimeClient {
     subscribe('candles', symbol: symbol, period: period);
     subscribe('orders');
     subscribe('matches');
+    subscribe('executionReports');
     subscribe('positions');
     subscribe('accountRisk');
     subscribe('positionRisk');

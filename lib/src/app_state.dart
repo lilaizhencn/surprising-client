@@ -37,6 +37,7 @@ class AppState extends ChangeNotifier {
   List<ProductBalance> balances = const [];
   List<Position> positions = const [];
   List<OrderModel> openOrders = const [];
+  List<AlgoOrderModel> openAlgoOrders = const [];
   List<TriggerOrderModel> openTriggerOrders = const [];
   String positionMode = 'ONE_WAY';
   List<PositionRisk> positionRisks = const [];
@@ -160,7 +161,12 @@ class AppState extends ChangeNotifier {
         api.productBalances(id, accountType: mode.accountType),
         api.positions(id),
         api.openOrders(id, symbol: selectedSymbol),
-        api.openTriggerOrders(id, symbol: selectedSymbol),
+        mode == ProductMode.spot
+            ? Future<List<AlgoOrderModel>>.value(const [])
+            : api.openAlgoOrders(id, symbol: selectedSymbol),
+        mode == ProductMode.spot
+            ? Future<List<TriggerOrderModel>>.value(const [])
+            : api.openTriggerOrders(id, symbol: selectedSymbol),
         api.positionMode(id),
         api.accountRisk(id, selectedInstrument.settleAsset),
         api.positionRisks(id),
@@ -178,13 +184,14 @@ class AppState extends ChangeNotifier {
         return instrument.mode == mode;
       }).toList();
       openOrders = results[2] as List<OrderModel>;
-      openTriggerOrders = results[3] as List<TriggerOrderModel>;
-      positionMode = results[4] as String;
-      accountRisk = results[5] as AccountRisk?;
-      positionRisks = results[6] as List<PositionRisk>;
-      liquidationOrders = results[7] as List<LiquidationOrder>;
-      walletPortfolio = results[8] as WalletPortfolio;
-      walletOrders = results[9] as List<WalletOrderRecord>;
+      openAlgoOrders = results[3] as List<AlgoOrderModel>;
+      openTriggerOrders = results[4] as List<TriggerOrderModel>;
+      positionMode = results[5] as String;
+      accountRisk = results[6] as AccountRisk?;
+      positionRisks = results[7] as List<PositionRisk>;
+      liquidationOrders = results[8] as List<LiquidationOrder>;
+      walletPortfolio = results[9] as WalletPortfolio;
+      walletOrders = results[10] as List<WalletOrderRecord>;
       lastError = null;
     } catch (error) {
       lastError = '加载账户失败：$error';
@@ -238,6 +245,7 @@ class AppState extends ChangeNotifier {
     balances = const [];
     positions = const [];
     openOrders = const [];
+    openAlgoOrders = const [];
     openTriggerOrders = const [];
     positionMode = 'ONE_WAY';
     walletPortfolio = WalletPortfolio.empty();
@@ -342,6 +350,67 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> placeAlgoOrder(AlgoOrderDraft draft) async {
+    final id = userId;
+    if (id == null) {
+      lastError = '请先登录再提交算法单';
+      notifyListeners();
+      return;
+    }
+    if (!_validAlgoDraft(draft)) {
+      lastError = '请先填写有效的算法单参数';
+      notifyListeners();
+      return;
+    }
+    try {
+      final order = await api.placeAlgoOrder(
+        userId: id,
+        symbol: selectedSymbol,
+        algoType: draft.algoType,
+        side: draft.side,
+        priceTicks: draft.priceTicks,
+        quantitySteps: draft.quantitySteps,
+        childQuantitySteps: draft.childQuantitySteps,
+        intervalSeconds: draft.intervalSeconds,
+        durationSeconds: draft.durationSeconds,
+        marginMode: draft.marginMode,
+        positionSide: draft.positionSide,
+        reduceOnly: draft.reduceOnly,
+        postOnly: draft.postOnly,
+      );
+      _upsertAlgoOrder(order);
+      lastNotice = '算法单已提交 #${order.algoOrderId}';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '提交算法单失败：$error';
+    }
+    notifyListeners();
+  }
+
+  bool _validAlgoDraft(AlgoOrderDraft draft) {
+    if (draft.quantitySteps <= 0 || draft.childQuantitySteps <= 0) {
+      return false;
+    }
+    if (draft.childQuantitySteps > draft.quantitySteps) return false;
+    if (draft.intervalSeconds <= 0 || draft.durationSeconds <= 0) return false;
+    if (draft.algoType == 'ICEBERG') return draft.priceTicks > 0;
+    return draft.algoType == 'TWAP';
+  }
+
+  Future<void> cancelAlgoOrder(AlgoOrderModel order) async {
+    final id = userId;
+    if (id == null) return;
+    try {
+      final cancelled = await api.cancelAlgoOrder(id, order.algoOrderId);
+      _upsertAlgoOrder(cancelled);
+      lastNotice = '算法单撤销已提交 #${order.algoOrderId}';
+      await refreshPrivateData();
+    } catch (error) {
+      lastError = '撤销算法单失败：$error';
+    }
+    notifyListeners();
+  }
+
   Future<void> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
     final id = userId;
     if (id == null) {
@@ -349,9 +418,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final validDrafts = drafts
-        .where((item) => item.triggerPriceTicks > 0 && item.quantitySteps > 0)
-        .toList();
+    final validDrafts = drafts.where(_validTriggerDraft).toList();
     if (validDrafts.isEmpty) {
       lastError = '请先填写有效的触发价和数量';
       notifyListeners();
@@ -366,7 +433,10 @@ class AppState extends ChangeNotifier {
             symbol: selectedSymbol,
             side: draft.side,
             triggerType: draft.triggerType,
+            triggerPriceType: draft.triggerPriceType,
             triggerPriceTicks: draft.triggerPriceTicks,
+            activationPriceTicks: draft.activationPriceTicks,
+            callbackRatePpm: draft.callbackRatePpm,
             quantitySteps: draft.quantitySteps,
             marginMode: draft.marginMode,
             positionSide: draft.positionSide,
@@ -382,6 +452,20 @@ class AppState extends ChangeNotifier {
       lastError = '提交止盈止损失败：$error';
     }
     notifyListeners();
+  }
+
+  bool _validTriggerDraft(TriggerOrderDraft draft) {
+    if (draft.quantitySteps <= 0) return false;
+    if (draft.triggerType == 'TRAILING_STOP') {
+      final callbackRate = draft.callbackRatePpm;
+      return draft.triggerPriceTicks >= 0 &&
+          (draft.activationPriceTicks == null ||
+              draft.activationPriceTicks! >= 0) &&
+          callbackRate != null &&
+          callbackRate >= 1000 &&
+          callbackRate <= 100000;
+    }
+    return draft.triggerPriceTicks > 0;
   }
 
   Future<void> cancelTriggerOrder(TriggerOrderModel order) async {
@@ -593,6 +677,7 @@ class AppState extends ChangeNotifier {
     if (!isLoggedIn) return;
     privateRealtime.subscribe('orders', symbol: selectedSymbol);
     privateRealtime.subscribe('matches', symbol: selectedSymbol);
+    privateRealtime.subscribe('executionReports', symbol: selectedSymbol);
     privateRealtime.subscribe('positions', symbol: selectedSymbol);
     privateRealtime.subscribe('positionRisk', symbol: selectedSymbol);
     privateRealtime.subscribe('accountRisk');
@@ -743,6 +828,23 @@ class AppState extends ChangeNotifier {
     openOrders = mutable;
   }
 
+  void _upsertAlgoOrder(AlgoOrderModel order) {
+    final mutable = [...openAlgoOrders];
+    final index = mutable.indexWhere(
+      (item) => item.algoOrderId == order.algoOrderId,
+    );
+    if (index >= 0) {
+      if (!_isOpenAlgoStatus(order.status)) {
+        mutable.removeAt(index);
+      } else {
+        mutable[index] = order;
+      }
+    } else if (_isOpenAlgoStatus(order.status)) {
+      mutable.insert(0, order);
+    }
+    openAlgoOrders = mutable;
+  }
+
   void _upsertTriggerOrder(TriggerOrderModel order) {
     final mutable = [...openTriggerOrders];
     final index = mutable.indexWhere(
@@ -771,6 +873,12 @@ class AppState extends ChangeNotifier {
 
 bool _isOpenTriggerStatus(String status) {
   return status == 'NEW' || status == 'TRIGGERING';
+}
+
+bool _isOpenAlgoStatus(String status) {
+  return status == 'PENDING' ||
+      status == 'RUNNING' ||
+      status == 'CANCEL_REQUESTED';
 }
 
 List<OrderBookLevel> _mergeDepthLevels(

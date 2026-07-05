@@ -82,7 +82,7 @@ void main() {
       'symbol': 'BTC-USDT',
       'side': 'SELL',
       'triggerType': 'TAKE_PROFIT',
-      'triggerPriceType': 'MARK_PRICE',
+      'triggerPriceType': 'LAST_PRICE',
       'triggerPriceTicks': 705000,
       'orderType': 'MARKET',
       'timeInForce': 'IOC',
@@ -93,9 +93,83 @@ void main() {
     });
 
     expect(order.triggerOrderId, 7);
+    expect(order.triggerPriceType, 'LAST_PRICE');
+    expect(triggerPriceTypeLabel(order.triggerPriceType), '最新价');
     expect(order.positionSide, 'LONG');
     expect(triggerTypeLabel(order.triggerType), '止盈');
     expect(triggerCloseLabel(order.side, order.positionSide), '平多');
+  });
+
+  test('parses amend order batch responses', () {
+    Map<String, dynamic> orderJson({
+      required int orderId,
+      required int priceTicks,
+      required int quantitySteps,
+      required int remainingQuantitySteps,
+      required String status,
+      bool postOnly = false,
+    }) {
+      return {
+        'orderId': orderId,
+        'symbol': 'BTC-USDT',
+        'side': 'BUY',
+        'orderType': 'LIMIT',
+        'timeInForce': 'GTC',
+        'priceTicks': priceTicks,
+        'quantitySteps': quantitySteps,
+        'executedQuantitySteps': 0,
+        'remainingQuantitySteps': remainingQuantitySteps,
+        'marginMode': 'CROSS',
+        'positionSide': 'NET',
+        'status': status,
+        'reduceOnly': false,
+        'postOnly': postOnly,
+      };
+    }
+
+    final result = AmendOrderBatchResult.fromJson({
+      'requested': 2,
+      'completed': 1,
+      'failed': 1,
+      'results': [
+        {
+          'index': 0,
+          'success': true,
+          'message': 'cancel requested; replacement submitted',
+          'amend': {
+            'originalOrder': orderJson(
+              orderId: 11,
+              priceTicks: 650000,
+              quantitySteps: 2,
+              remainingQuantitySteps: 0,
+              status: 'CANCEL_REQUESTED',
+            ),
+            'replacementOrder': orderJson(
+              orderId: 12,
+              priceTicks: 649000,
+              quantitySteps: 1,
+              remainingQuantitySteps: 1,
+              status: 'ACCEPTED',
+              postOnly: true,
+            ),
+            'cancelRequested': true,
+            'message': 'cancel requested; replacement submitted',
+          },
+        },
+        {
+          'index': 1,
+          'success': false,
+          'message': 'userId and orderId must be positive',
+        },
+      ],
+    });
+
+    expect(result.completed, 1);
+    expect(result.failed, 1);
+    expect(result.results.first.amend?.cancelRequested, isTrue);
+    expect(result.results.first.amend?.replacementOrder.priceTicks, 649000);
+    expect(result.results.first.amend?.replacementOrder.postOnly, isTrue);
+    expect(result.results.last.amend, isNull);
   });
 
   test('updates latest price from public trade events', () {

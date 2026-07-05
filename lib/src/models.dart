@@ -35,6 +35,16 @@ String triggerTypeLabel(String type) {
   return switch (type) {
     'TAKE_PROFIT' => '止盈',
     'STOP_LOSS' => '止损',
+    'TRAILING_STOP' => '追踪止损',
+    _ => type,
+  };
+}
+
+String triggerPriceTypeLabel(String type) {
+  return switch (type) {
+    'MARK_PRICE' => '标记价',
+    'INDEX_PRICE' => '指数价',
+    'LAST_PRICE' => '最新价',
     _ => type,
   };
 }
@@ -43,6 +53,14 @@ String triggerCloseLabel(String side, String positionSide) {
   if (positionSide == 'LONG') return '平多';
   if (positionSide == 'SHORT') return '平空';
   return side == 'BUY' ? '买入平仓' : '卖出平仓';
+}
+
+String algoTypeLabel(String type) {
+  return switch (type) {
+    'TWAP' => 'TWAP',
+    'ICEBERG' => '冰山',
+    _ => type,
+  };
 }
 
 class AppConfig {
@@ -377,6 +395,349 @@ class OrderModel {
   }
 }
 
+class TestOrderResult {
+  const TestOrderResult({
+    required this.accepted,
+    required this.instrumentVersion,
+    required this.validationStage,
+    required this.estimatedReserveUnits,
+    this.rejectReason,
+    this.accountType,
+    this.asset,
+  });
+
+  final bool accepted;
+  final String? rejectReason;
+  final int instrumentVersion;
+  final String validationStage;
+  final String? accountType;
+  final String? asset;
+  final int estimatedReserveUnits;
+
+  factory TestOrderResult.fromJson(Map<String, dynamic> json) {
+    return TestOrderResult(
+      accepted: asBool(json['accepted']),
+      rejectReason: nullableString(json['rejectReason']),
+      instrumentVersion: asInt(json['instrumentVersion']),
+      validationStage: asString(json['validationStage']),
+      accountType: nullableString(json['accountType']),
+      asset: nullableString(json['asset']),
+      estimatedReserveUnits: asInt(json['estimatedReserveUnits']),
+    );
+  }
+}
+
+class OrderBatchItem {
+  const OrderBatchItem({
+    required this.index,
+    required this.success,
+    required this.message,
+    this.order,
+  });
+
+  final int index;
+  final bool success;
+  final String message;
+  final OrderModel? order;
+
+  factory OrderBatchItem.fromJson(Map<String, dynamic> json) {
+    final rawOrder = json['order'];
+    return OrderBatchItem(
+      index: asInt(json['index']),
+      success: asBool(json['success']),
+      message: asString(json['message']),
+      order: rawOrder == null ? null : OrderModel.fromJson(asMap(rawOrder)),
+    );
+  }
+}
+
+class OrderBatchResult {
+  const OrderBatchResult({
+    required this.requested,
+    required this.completed,
+    required this.failed,
+    required this.results,
+  });
+
+  final int requested;
+  final int completed;
+  final int failed;
+  final List<OrderBatchItem> results;
+
+  factory OrderBatchResult.fromJson(Map<String, dynamic> json) {
+    return OrderBatchResult(
+      requested: asInt(json['requested']),
+      completed: asInt(json['completed']),
+      failed: asInt(json['failed']),
+      results: asList(
+        json['results'],
+      ).map((item) => OrderBatchItem.fromJson(asMap(item))).toList(),
+    );
+  }
+}
+
+class AlgoOrderModel {
+  const AlgoOrderModel({
+    required this.algoOrderId,
+    required this.symbol,
+    required this.algoType,
+    required this.side,
+    required this.priceTicks,
+    required this.quantitySteps,
+    required this.childQuantitySteps,
+    required this.intervalSeconds,
+    required this.durationSeconds,
+    required this.marginMode,
+    required this.positionSide,
+    required this.reduceOnly,
+    required this.postOnly,
+    required this.timeInForce,
+    required this.status,
+    required this.executedQuantitySteps,
+    required this.activeQuantitySteps,
+    required this.childOrderCount,
+    this.clientAlgoOrderId,
+    this.currentOrderId,
+    this.rejectReason,
+  });
+
+  final int algoOrderId;
+  final String? clientAlgoOrderId;
+  final String symbol;
+  final String algoType;
+  final String side;
+  final int priceTicks;
+  final int quantitySteps;
+  final int childQuantitySteps;
+  final int intervalSeconds;
+  final int durationSeconds;
+  final String marginMode;
+  final String positionSide;
+  final bool reduceOnly;
+  final bool postOnly;
+  final String timeInForce;
+  final String status;
+  final int executedQuantitySteps;
+  final int activeQuantitySteps;
+  final int childOrderCount;
+  final int? currentOrderId;
+  final String? rejectReason;
+
+  factory AlgoOrderModel.fromJson(Map<String, dynamic> json) {
+    return AlgoOrderModel(
+      algoOrderId: asInt(json['algoOrderId']),
+      clientAlgoOrderId: nullableString(json['clientAlgoOrderId']),
+      symbol: asString(json['symbol']),
+      algoType: asString(json['algoType'], fallback: 'TWAP'),
+      side: asString(json['side'], fallback: 'BUY'),
+      priceTicks: asInt(json['priceTicks']),
+      quantitySteps: asInt(json['quantitySteps']),
+      childQuantitySteps: asInt(json['childQuantitySteps']),
+      intervalSeconds: asInt(json['intervalSeconds']),
+      durationSeconds: asInt(json['durationSeconds']),
+      marginMode: asString(json['marginMode'], fallback: 'CROSS'),
+      positionSide: asString(json['positionSide'], fallback: 'NET'),
+      reduceOnly: asBool(json['reduceOnly']),
+      postOnly: asBool(json['postOnly']),
+      timeInForce: asString(json['timeInForce'], fallback: 'GTC'),
+      status: asString(json['status'], fallback: 'PENDING'),
+      executedQuantitySteps: asInt(json['executedQuantitySteps']),
+      activeQuantitySteps: asInt(json['activeQuantitySteps']),
+      childOrderCount: asInt(json['childOrderCount']),
+      currentOrderId: asNullableInt(json['currentOrderId']),
+      rejectReason: nullableString(json['rejectReason']),
+    );
+  }
+}
+
+class AlgoOrderBatchItem {
+  const AlgoOrderBatchItem({
+    required this.index,
+    required this.success,
+    required this.message,
+    this.order,
+  });
+
+  final int index;
+  final bool success;
+  final String message;
+  final AlgoOrderModel? order;
+
+  factory AlgoOrderBatchItem.fromJson(Map<String, dynamic> json) {
+    final rawOrder = json['algoOrder'];
+    return AlgoOrderBatchItem(
+      index: asInt(json['index']),
+      success: asBool(json['success']),
+      message: asString(json['message']),
+      order: rawOrder == null ? null : AlgoOrderModel.fromJson(asMap(rawOrder)),
+    );
+  }
+}
+
+class AlgoOrderBatchResult {
+  const AlgoOrderBatchResult({
+    required this.requested,
+    required this.completed,
+    required this.failed,
+    required this.results,
+  });
+
+  final int requested;
+  final int completed;
+  final int failed;
+  final List<AlgoOrderBatchItem> results;
+
+  factory AlgoOrderBatchResult.fromJson(Map<String, dynamic> json) {
+    return AlgoOrderBatchResult(
+      requested: asInt(json['requested']),
+      completed: asInt(json['completed']),
+      failed: asInt(json['failed']),
+      results: asList(
+        json['results'],
+      ).map((item) => AlgoOrderBatchItem.fromJson(asMap(item))).toList(),
+    );
+  }
+}
+
+class AlgoOrderDraft {
+  const AlgoOrderDraft({
+    required this.algoType,
+    required this.side,
+    required this.priceTicks,
+    required this.quantitySteps,
+    required this.childQuantitySteps,
+    required this.intervalSeconds,
+    required this.durationSeconds,
+    required this.marginMode,
+    required this.positionSide,
+    required this.reduceOnly,
+    required this.postOnly,
+  });
+
+  final String algoType;
+  final String side;
+  final int priceTicks;
+  final int quantitySteps;
+  final int childQuantitySteps;
+  final int intervalSeconds;
+  final int durationSeconds;
+  final String marginMode;
+  final String positionSide;
+  final bool reduceOnly;
+  final bool postOnly;
+}
+
+class CancelAllAfterResult {
+  const CancelAllAfterResult({
+    required this.userId,
+    required this.countdownMs,
+    required this.active,
+    required this.updatedAt,
+    required this.canceledOrders,
+    required this.canceledTriggerOrders,
+    this.symbol,
+    this.triggerAt,
+  });
+
+  final int userId;
+  final String? symbol;
+  final int countdownMs;
+  final bool active;
+  final DateTime? triggerAt;
+  final DateTime updatedAt;
+  final int canceledOrders;
+  final int canceledTriggerOrders;
+
+  factory CancelAllAfterResult.fromJson(Map<String, dynamic> json) {
+    return CancelAllAfterResult(
+      userId: asInt(json['userId']),
+      symbol: nullableString(json['symbol']),
+      countdownMs: asInt(json['countdownMs']),
+      active: asBool(json['active']),
+      triggerAt: DateTime.tryParse(asString(json['triggerAt'])),
+      updatedAt:
+          DateTime.tryParse(asString(json['updatedAt'])) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      canceledOrders: asInt(json['canceledOrders']),
+      canceledTriggerOrders: asInt(json['canceledTriggerOrders']),
+    );
+  }
+}
+
+class AmendOrderResult {
+  const AmendOrderResult({
+    required this.originalOrder,
+    required this.replacementOrder,
+    required this.cancelRequested,
+    required this.message,
+  });
+
+  final OrderModel originalOrder;
+  final OrderModel replacementOrder;
+  final bool cancelRequested;
+  final String message;
+
+  factory AmendOrderResult.fromJson(Map<String, dynamic> json) {
+    return AmendOrderResult(
+      originalOrder: OrderModel.fromJson(asMap(json['originalOrder'])),
+      replacementOrder: OrderModel.fromJson(asMap(json['replacementOrder'])),
+      cancelRequested: asBool(json['cancelRequested']),
+      message: asString(json['message']),
+    );
+  }
+}
+
+class AmendOrderBatchItem {
+  const AmendOrderBatchItem({
+    required this.index,
+    required this.success,
+    required this.message,
+    this.amend,
+  });
+
+  final int index;
+  final bool success;
+  final String message;
+  final AmendOrderResult? amend;
+
+  factory AmendOrderBatchItem.fromJson(Map<String, dynamic> json) {
+    final rawAmend = json['amend'];
+    return AmendOrderBatchItem(
+      index: asInt(json['index']),
+      success: asBool(json['success']),
+      message: asString(json['message']),
+      amend: rawAmend == null
+          ? null
+          : AmendOrderResult.fromJson(asMap(rawAmend)),
+    );
+  }
+}
+
+class AmendOrderBatchResult {
+  const AmendOrderBatchResult({
+    required this.requested,
+    required this.completed,
+    required this.failed,
+    required this.results,
+  });
+
+  final int requested;
+  final int completed;
+  final int failed;
+  final List<AmendOrderBatchItem> results;
+
+  factory AmendOrderBatchResult.fromJson(Map<String, dynamic> json) {
+    return AmendOrderBatchResult(
+      requested: asInt(json['requested']),
+      completed: asInt(json['completed']),
+      failed: asInt(json['failed']),
+      results: asList(
+        json['results'],
+      ).map((item) => AmendOrderBatchItem.fromJson(asMap(item))).toList(),
+    );
+  }
+}
+
 class TriggerOrderModel {
   const TriggerOrderModel({
     required this.triggerOrderId,
@@ -386,6 +747,11 @@ class TriggerOrderModel {
     required this.triggerPriceType,
     required this.triggerCondition,
     required this.triggerPriceTicks,
+    this.activationPriceTicks,
+    this.callbackRatePpm,
+    this.highestPriceTicks,
+    this.lowestPriceTicks,
+    this.activatedAt,
     required this.orderType,
     required this.timeInForce,
     required this.priceTicks,
@@ -403,6 +769,11 @@ class TriggerOrderModel {
   final String triggerPriceType;
   final String triggerCondition;
   final int triggerPriceTicks;
+  final int? activationPriceTicks;
+  final int? callbackRatePpm;
+  final int? highestPriceTicks;
+  final int? lowestPriceTicks;
+  final String? activatedAt;
   final String orderType;
   final String timeInForce;
   final int priceTicks;
@@ -425,6 +796,11 @@ class TriggerOrderModel {
       ),
       triggerCondition: asString(json['triggerCondition']),
       triggerPriceTicks: asInt(json['triggerPriceTicks']),
+      activationPriceTicks: asNullableInt(json['activationPriceTicks']),
+      callbackRatePpm: asNullableInt(json['callbackRatePpm']),
+      highestPriceTicks: asNullableInt(json['highestPriceTicks']),
+      lowestPriceTicks: asNullableInt(json['lowestPriceTicks']),
+      activatedAt: nullableString(json['activatedAt']),
       orderType: asString(json['orderType'], fallback: 'MARKET'),
       timeInForce: asString(json['timeInForce'], fallback: 'IOC'),
       priceTicks: asInt(json['priceTicks']),
@@ -437,11 +813,65 @@ class TriggerOrderModel {
   }
 }
 
+class TriggerOrderBatchItem {
+  const TriggerOrderBatchItem({
+    required this.index,
+    required this.success,
+    required this.message,
+    this.order,
+  });
+
+  final int index;
+  final bool success;
+  final String message;
+  final TriggerOrderModel? order;
+
+  factory TriggerOrderBatchItem.fromJson(Map<String, dynamic> json) {
+    final rawOrder = json['order'];
+    return TriggerOrderBatchItem(
+      index: asInt(json['index']),
+      success: asBool(json['success']),
+      message: asString(json['message']),
+      order: rawOrder == null
+          ? null
+          : TriggerOrderModel.fromJson(asMap(rawOrder)),
+    );
+  }
+}
+
+class TriggerOrderBatchResult {
+  const TriggerOrderBatchResult({
+    required this.requested,
+    required this.completed,
+    required this.failed,
+    required this.results,
+  });
+
+  final int requested;
+  final int completed;
+  final int failed;
+  final List<TriggerOrderBatchItem> results;
+
+  factory TriggerOrderBatchResult.fromJson(Map<String, dynamic> json) {
+    return TriggerOrderBatchResult(
+      requested: asInt(json['requested']),
+      completed: asInt(json['completed']),
+      failed: asInt(json['failed']),
+      results: asList(
+        json['results'],
+      ).map((item) => TriggerOrderBatchItem.fromJson(asMap(item))).toList(),
+    );
+  }
+}
+
 class TriggerOrderDraft {
   const TriggerOrderDraft({
     required this.side,
     required this.triggerType,
+    required this.triggerPriceType,
     required this.triggerPriceTicks,
+    this.activationPriceTicks,
+    this.callbackRatePpm,
     required this.quantitySteps,
     required this.marginMode,
     required this.positionSide,
@@ -449,7 +879,10 @@ class TriggerOrderDraft {
 
   final String side;
   final String triggerType;
+  final String triggerPriceType;
   final int triggerPriceTicks;
+  final int? activationPriceTicks;
+  final int? callbackRatePpm;
   final int quantitySteps;
   final String marginMode;
   final String positionSide;
@@ -799,6 +1232,12 @@ String asString(Object? value, {String fallback = ''}) {
   return string.isEmpty ? fallback : string;
 }
 
+String? nullableString(Object? value) {
+  if (value == null) return null;
+  final string = value.toString();
+  return string.isEmpty ? null : string;
+}
+
 int asInt(Object? value, {int fallback = 0}) {
   if (value == null) return fallback;
   if (value is int) return value;
@@ -806,6 +1245,14 @@ int asInt(Object? value, {int fallback = 0}) {
   return int.tryParse(value.toString()) ??
       double.tryParse(value.toString())?.round() ??
       fallback;
+}
+
+int? asNullableInt(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return int.tryParse(value.toString()) ??
+      double.tryParse(value.toString())?.round();
 }
 
 double asDouble(Object? value, {double fallback = 0}) {

@@ -41,6 +41,17 @@ enum ProductMode {
       ProductMode.option => 'OPTION',
     };
   }
+
+  String get productLine {
+    return switch (this) {
+      ProductMode.spot => 'SPOT',
+      ProductMode.linear => 'LINEAR_PERPETUAL',
+      ProductMode.inverse => 'INVERSE_PERPETUAL',
+      ProductMode.linearDelivery => 'LINEAR_DELIVERY',
+      ProductMode.inverseDelivery => 'INVERSE_DELIVERY',
+      ProductMode.option => 'OPTION',
+    };
+  }
 }
 
 const productAccountTypes = [

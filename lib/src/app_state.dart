@@ -138,9 +138,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final symbol = selectedSymbol;
+      final productLine = _productLineForSymbol(symbol);
       final results = await Future.wait([
-        api.orderBook(symbol),
-        api.candles(symbol, period),
+        api.orderBook(symbol, productLine: productLine),
+        api.candles(symbol, period, productLine: productLine),
       ]);
       final loadedBook = results[0] as OrderBook;
       orderBook = loadedBook.bids.isEmpty && loadedBook.asks.isEmpty
@@ -168,20 +169,39 @@ class AppState extends ChangeNotifier {
     loadingPrivate = true;
     notifyListeners();
     try {
+      final productLine = mode.productLine;
+      final accountType = mode.accountType;
       final results = await Future.wait([
-        api.productBalances(id, accountType: mode.accountType),
-        api.positions(id),
-        api.openOrders(id, symbol: selectedSymbol),
+        api.productBalances(
+          id,
+          accountType: accountType,
+          productLine: productLine,
+        ),
+        api.positions(id, productLine: productLine),
+        api.openOrders(id, symbol: selectedSymbol, productLine: productLine),
         mode.isSpot
             ? Future<List<AlgoOrderModel>>.value(const [])
-            : api.openAlgoOrders(id, symbol: selectedSymbol),
+            : api.openAlgoOrders(
+                id,
+                symbol: selectedSymbol,
+                productLine: productLine,
+              ),
         mode.isSpot
             ? Future<List<TriggerOrderModel>>.value(const [])
-            : api.openTriggerOrders(id, symbol: selectedSymbol),
+            : api.openTriggerOrders(
+                id,
+                symbol: selectedSymbol,
+                productLine: productLine,
+              ),
         api.positionMode(id),
-        api.accountRisk(id, selectedInstrument.settleAsset),
-        api.positionRisks(id),
-        api.liquidationOrders(id),
+        api.accountRisk(
+          id,
+          selectedInstrument.settleAsset,
+          accountType: accountType,
+          productLine: productLine,
+        ),
+        api.positionRisks(id, productLine: productLine),
+        api.liquidationOrders(id, productLine: productLine),
         api.walletPortfolio(id),
         api.walletOrders(id),
       ]);
@@ -319,6 +339,7 @@ class AppState extends ChangeNotifier {
     }
     try {
       final instrument = selectedInstrument;
+      final productLine = instrument.mode.productLine;
       final effectivePositionSide =
           instrument.isSpot || positionMode == 'ONE_WAY'
           ? 'NET'
@@ -339,6 +360,7 @@ class AppState extends ChangeNotifier {
         positionSide: effectivePositionSide,
         reduceOnly: reduceOnly,
         postOnly: postOnly,
+        productLine: productLine,
       );
       _upsertOrder(order);
       lastNotice = '订单已提交 #${order.orderId}';
@@ -353,7 +375,11 @@ class AppState extends ChangeNotifier {
     final id = userId;
     if (id == null) return;
     try {
-      final cancelled = await api.cancelOrder(id, order.orderId);
+      final cancelled = await api.cancelOrder(
+        id,
+        order.orderId,
+        productLine: _productLineForSymbol(order.symbol),
+      );
       _upsertOrder(cancelled);
       lastNotice = '撤单已提交 #${order.orderId}';
       await refreshPrivateData();
@@ -390,6 +416,7 @@ class AppState extends ChangeNotifier {
         positionSide: draft.positionSide,
         reduceOnly: draft.reduceOnly,
         postOnly: draft.postOnly,
+        productLine: _productLineForSymbol(selectedSymbol),
       );
       _upsertAlgoOrder(order);
       lastNotice = '算法单已提交 #${order.algoOrderId}';
@@ -414,7 +441,11 @@ class AppState extends ChangeNotifier {
     final id = userId;
     if (id == null) return;
     try {
-      final cancelled = await api.cancelAlgoOrder(id, order.algoOrderId);
+      final cancelled = await api.cancelAlgoOrder(
+        id,
+        order.algoOrderId,
+        productLine: _productLineForSymbol(order.symbol),
+      );
       _upsertAlgoOrder(cancelled);
       lastNotice = '算法单撤销已提交 #${order.algoOrderId}';
       await refreshPrivateData();
@@ -453,6 +484,7 @@ class AppState extends ChangeNotifier {
             quantitySteps: draft.quantitySteps,
             marginMode: draft.marginMode,
             positionSide: draft.positionSide,
+            productLine: _productLineForSymbol(selectedSymbol),
           ),
         );
       }
@@ -485,7 +517,11 @@ class AppState extends ChangeNotifier {
     final id = userId;
     if (id == null) return;
     try {
-      final cancelled = await api.cancelTriggerOrder(id, order.triggerOrderId);
+      final cancelled = await api.cancelTriggerOrder(
+        id,
+        order.triggerOrderId,
+        productLine: _productLineForSymbol(order.symbol),
+      );
       _upsertTriggerOrder(cancelled);
       lastNotice = '条件单撤销已提交 #${order.triggerOrderId}';
       await refreshPrivateData();
@@ -825,6 +861,10 @@ class AppState extends ChangeNotifier {
       (instrument) => instrument.symbol == symbol,
       orElse: () => selectedInstrument,
     );
+  }
+
+  String _productLineForSymbol(String symbol) {
+    return _instrumentForSymbol(symbol).mode.productLine;
   }
 
   void _upsertOrder(OrderModel order) {

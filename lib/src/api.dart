@@ -44,15 +44,24 @@ class ApiClient {
     ).map((item) => Instrument.fromJson(asMap(item))).toList();
   }
 
-  Future<OrderBook> orderBook(String symbol, {int depth = 50}) async {
+  Future<OrderBook> orderBook(
+    String symbol, {
+    int depth = 50,
+    String? productLine,
+  }) async {
     final json = await get(
       '/api/v1/gateway/trading-market/orderbook',
       query: {'symbol': symbol, 'depth': '$depth'},
+      productLine: productLine,
     );
     return OrderBook.fromJson(json);
   }
 
-  Future<List<Candle>> candles(String symbol, String period) async {
+  Future<List<Candle>> candles(
+    String symbol,
+    String period, {
+    String? productLine,
+  }) async {
     final end = DateTime.now().toUtc();
     final start = end.subtract(const Duration(hours: 8));
     final json = await get(
@@ -64,6 +73,7 @@ class ApiClient {
         'endTime': end.toIso8601String(),
         'limit': '300',
       },
+      productLine: productLine,
     );
     return asList(
       json['candles'],
@@ -73,22 +83,28 @@ class ApiClient {
   Future<List<ProductBalance>> productBalances(
     int userId, {
     String? accountType,
+    String? productLine,
   }) async {
     final query = {'userId': '$userId'};
     if (accountType != null) query['accountType'] = accountType;
     final json = await get(
       '/api/v1/gateway/account/product-balances',
       query: query,
+      productLine: productLine,
     );
     return asList(
       json['balances'],
     ).map((item) => ProductBalance.fromJson(asMap(item))).toList();
   }
 
-  Future<List<Position>> positions(int userId) async {
+  Future<List<Position>> positions(
+    int userId, {
+    String? productLine,
+  }) async {
     final json = await get(
       '/api/v1/gateway/account/positions',
       query: {'userId': '$userId'},
+      productLine: productLine,
     );
     return asList(
       json['positions'],
@@ -116,10 +132,18 @@ class ApiClient {
     return asString(json['positionMode'], fallback: positionMode);
   }
 
-  Future<List<OrderModel>> openOrders(int userId, {String? symbol}) async {
+  Future<List<OrderModel>> openOrders(
+    int userId, {
+    String? symbol,
+    String? productLine,
+  }) async {
     final query = {'userId': '$userId', 'limit': '100'};
     if (symbol != null) query['symbol'] = symbol;
-    final json = await get('/api/v1/gateway/trading/open', query: query);
+    final json = await get(
+      '/api/v1/gateway/trading/open',
+      query: query,
+      productLine: productLine,
+    );
     return asList(
       json['orders'],
     ).map((item) => OrderModel.fromJson(asMap(item))).toList();
@@ -137,6 +161,7 @@ class ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? productLine,
   }) async {
     final json = await post(
       '/api/v1/gateway/trading',
@@ -154,6 +179,7 @@ class ApiClient {
         postOnly: postOnly,
       ),
       userId: userId,
+      productLine: productLine,
     );
     return OrderModel.fromJson(json);
   }
@@ -170,6 +196,7 @@ class ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? productLine,
   }) async {
     final json = await post(
       '/api/v1/gateway/trading/test',
@@ -188,17 +215,19 @@ class ApiClient {
         clientOrderId: 'app-test-${DateTime.now().microsecondsSinceEpoch}',
       ),
       userId: userId,
+      productLine: productLine,
     );
     return TestOrderResult.fromJson(json);
   }
 
   Future<OrderBatchResult> placeOrderBatch(
     int userId,
-    List<Map<String, dynamic>> orders,
-  ) async {
+    List<Map<String, dynamic>> orders, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading/batch', {
       'orders': orders,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return OrderBatchResult.fromJson(json);
   }
 
@@ -210,6 +239,7 @@ class ApiClient {
     String? timeInForce,
     bool? postOnly,
     String? newClientOrderId,
+    String? productLine,
   }) async {
     final payload = <String, dynamic>{
       'userId': userId,
@@ -234,37 +264,44 @@ class ApiClient {
       '/api/v1/gateway/trading/amend',
       payload,
       userId: userId,
+      productLine: productLine,
     );
     return AmendOrderResult.fromJson(json);
   }
 
   Future<AmendOrderBatchResult> amendOrderBatch(
     int userId,
-    List<Map<String, dynamic>> orders,
-  ) async {
+    List<Map<String, dynamic>> orders, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading/batch-amend', {
       'orders': orders,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return AmendOrderBatchResult.fromJson(json);
   }
 
-  Future<OrderModel> cancelOrder(int userId, int orderId) async {
+  Future<OrderModel> cancelOrder(
+    int userId,
+    int orderId, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading/cancel', {
       'userId': userId,
       'orderId': orderId,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return OrderModel.fromJson(json);
   }
 
   Future<OrderBatchResult> cancelOrderBatch(
     int userId,
-    List<int> orderIds,
-  ) async {
+    List<int> orderIds, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading/batch-cancel', {
       'orders': orderIds
           .map((orderId) => {'userId': userId, 'orderId': orderId})
           .toList(),
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return OrderBatchResult.fromJson(json);
   }
 
@@ -272,22 +309,28 @@ class ApiClient {
     int userId, {
     String? symbol,
     int limit = 1000,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading/cancel-open', {
       'userId': userId,
       ...?symbol == null ? null : {'symbol': symbol},
       'limit': limit,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return OrderBatchResult.fromJson(json);
   }
 
   Future<List<AlgoOrderModel>> openAlgoOrders(
     int userId, {
     String? symbol,
+    String? productLine,
   }) async {
     final query = {'userId': '$userId', 'limit': '100'};
     if (symbol != null) query['symbol'] = symbol;
-    final json = await get('/api/v1/gateway/trading/algo/open', query: query);
+    final json = await get(
+      '/api/v1/gateway/trading/algo/open',
+      query: query,
+      productLine: productLine,
+    );
     return asList(
       json['orders'],
     ).map((item) => AlgoOrderModel.fromJson(asMap(item))).toList();
@@ -307,6 +350,7 @@ class ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading/algo', {
       'userId': userId,
@@ -329,15 +373,19 @@ class ApiClient {
           : postOnly
           ? 'GTX'
           : 'GTC',
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return AlgoOrderModel.fromJson(json);
   }
 
-  Future<AlgoOrderModel> cancelAlgoOrder(int userId, int algoOrderId) async {
+  Future<AlgoOrderModel> cancelAlgoOrder(
+    int userId,
+    int algoOrderId, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading/algo/cancel', {
       'userId': userId,
       'algoOrderId': algoOrderId,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return AlgoOrderModel.fromJson(json);
   }
 
@@ -345,12 +393,13 @@ class ApiClient {
     int userId, {
     String? symbol,
     int limit = 1000,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading/algo/cancel-open', {
       'userId': userId,
       ...?symbol == null ? null : {'symbol': symbol},
       'limit': limit,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return AlgoOrderBatchResult.fromJson(json);
   }
 
@@ -358,12 +407,13 @@ class ApiClient {
     int userId, {
     String? symbol,
     required int countdownMs,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading/cancel-all-after', {
       'userId': userId,
       ...?symbol == null ? null : {'symbol': symbol},
       'countdownMs': countdownMs,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return CancelAllAfterResult.fromJson(json);
   }
 
@@ -372,6 +422,7 @@ class ApiClient {
     required String symbol,
     required String marginMode,
     required String positionSide,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading/close-position', {
       'userId': userId,
@@ -380,13 +431,14 @@ class ApiClient {
       'symbol': symbol,
       'marginMode': marginMode,
       'positionSide': positionSide,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return OrderModel.fromJson(json);
   }
 
   Future<List<TriggerOrderModel>> openTriggerOrders(
     int userId, {
     String? symbol,
+    String? productLine,
   }) async {
     final query = {'userId': '$userId', 'limit': '100'};
     if (symbol != null) query['symbol'] = symbol;
@@ -394,6 +446,7 @@ class ApiClient {
       '/api/v1/gateway/trading-trigger/open',
       query: query,
       userId: userId,
+      productLine: productLine,
     );
     return asList(
       json['orders'] ?? json['items'],
@@ -412,6 +465,7 @@ class ApiClient {
     int? activationPriceTicks,
     int? callbackRatePpm,
     String triggerPriceType = 'MARK_PRICE',
+    String? productLine,
   }) async {
     final payload = <String, Object?>{
       'userId': userId,
@@ -435,6 +489,7 @@ class ApiClient {
       '/api/v1/gateway/trading-trigger',
       payload,
       userId: userId,
+      productLine: productLine,
     );
     return TriggerOrderModel.fromJson(json);
   }
@@ -443,29 +498,32 @@ class ApiClient {
     int userId,
     List<Map<String, dynamic>> orders, {
     bool atomic = false,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading-trigger/batch', {
       'atomic': atomic,
       'orders': orders,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return TriggerOrderBatchResult.fromJson(json);
   }
 
   Future<TriggerOrderModel> cancelTriggerOrder(
     int userId,
-    int triggerOrderId,
-  ) async {
+    int triggerOrderId, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading-trigger/cancel', {
       'userId': userId,
       'triggerOrderId': triggerOrderId,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return TriggerOrderModel.fromJson(json);
   }
 
   Future<TriggerOrderBatchResult> cancelTriggerOrderBatch(
     int userId,
-    List<int> triggerOrderIds,
-  ) async {
+    List<int> triggerOrderIds, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/trading-trigger/batch-cancel', {
       'orders': triggerOrderIds
           .map(
@@ -475,7 +533,7 @@ class ApiClient {
             },
           )
           .toList(),
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return TriggerOrderBatchResult.fromJson(json);
   }
 
@@ -483,12 +541,13 @@ class ApiClient {
     int userId, {
     String? symbol,
     int limit = 1000,
+    String? productLine,
   }) async {
     final json = await post('/api/v1/gateway/trading-trigger/cancel-open', {
       'userId': userId,
       ...?symbol == null ? null : {'symbol': symbol},
       'limit': limit,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return TriggerOrderBatchResult.fromJson(json);
   }
 
@@ -589,12 +648,20 @@ class ApiClient {
     );
   }
 
-  Future<AccountRisk?> accountRisk(int userId, String settleAsset) async {
+  Future<AccountRisk?> accountRisk(
+    int userId,
+    String settleAsset, {
+    String? accountType,
+    String? productLine,
+  }) async {
     try {
+      final query = {'userId': '$userId', 'settleAsset': settleAsset};
+      if (accountType != null) query['accountType'] = accountType;
       final json = await get(
         '/api/v1/gateway/risk/account/latest',
-        query: {'userId': '$userId', 'settleAsset': settleAsset},
+        query: query,
         userId: userId,
+        productLine: productLine,
       );
       return AccountRisk.fromJson(json);
     } catch (_) {
@@ -602,12 +669,16 @@ class ApiClient {
     }
   }
 
-  Future<List<PositionRisk>> positionRisks(int userId) async {
+  Future<List<PositionRisk>> positionRisks(
+    int userId, {
+    String? productLine,
+  }) async {
     try {
       final json = await get(
         '/api/v1/gateway/risk/positions/latest',
         query: {'userId': '$userId'},
         userId: userId,
+        productLine: productLine,
       );
       return asList(
         json['positions'],
@@ -617,12 +688,16 @@ class ApiClient {
     }
   }
 
-  Future<List<LiquidationOrder>> liquidationOrders(int userId) async {
+  Future<List<LiquidationOrder>> liquidationOrders(
+    int userId, {
+    String? productLine,
+  }) async {
     try {
       final json = await get(
         '/api/v1/gateway/liquidation/orders',
         query: {'userId': '$userId', 'limit': '30'},
         userId: userId,
+        productLine: productLine,
       );
       return asList(
         json['orders'],
@@ -667,6 +742,7 @@ class ApiClient {
     String path, {
     Map<String, String>? query,
     int? userId,
+    String? productLine,
     bool unwrapResponseResult = false,
   }) {
     return _send(
@@ -674,6 +750,7 @@ class ApiClient {
       path,
       query: query,
       userId: userId,
+      productLine: productLine,
       unwrapResponseResult: unwrapResponseResult,
     );
   }
@@ -682,6 +759,7 @@ class ApiClient {
     String path,
     Map<String, dynamic> body, {
     int? userId,
+    String? productLine,
     bool unwrapResponseResult = false,
   }) {
     return _send(
@@ -689,6 +767,7 @@ class ApiClient {
       path,
       body: body,
       userId: userId,
+      productLine: productLine,
       unwrapResponseResult: unwrapResponseResult,
     );
   }
@@ -699,6 +778,7 @@ class ApiClient {
     Map<String, String>? query,
     Map<String, dynamic>? body,
     int? userId,
+    String? productLine,
     bool unwrapResponseResult = false,
   }) async {
     final base = Uri.parse(config.gatewayBaseUrl);
@@ -715,6 +795,9 @@ class ApiClient {
       'mobile-${DateTime.now().microsecondsSinceEpoch}',
     );
     if (userId != null) request.headers.set('X-User-Id', '$userId');
+    if (productLine != null && productLine.isNotEmpty) {
+      request.headers.set('X-Product-Line', productLine);
+    }
     if (body != null) {
       request.write(jsonEncode(body));
     }

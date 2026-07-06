@@ -217,6 +217,15 @@ void main() {
     expect(ProductMode.option.accountType, 'OPTION');
   });
 
+  test('maps trading modes to backend product lines', () {
+    expect(ProductMode.spot.productLine, 'SPOT');
+    expect(ProductMode.linear.productLine, 'LINEAR_PERPETUAL');
+    expect(ProductMode.inverse.productLine, 'INVERSE_PERPETUAL');
+    expect(ProductMode.linearDelivery.productLine, 'LINEAR_DELIVERY');
+    expect(ProductMode.inverseDelivery.productLine, 'INVERSE_DELIVERY');
+    expect(ProductMode.option.productLine, 'OPTION');
+  });
+
   test('parses expiring and option instrument metadata', () {
     final delivery = Instrument.fromJson({
       'symbol': 'BTC-USDT-260925',

@@ -890,19 +890,33 @@ class RealtimeClient {
     );
   }
 
-  void subscribeDefaults({String symbol = 'BTC-USDT', String period = '1m'}) {
-    subscribe('depth', symbol: symbol);
-    subscribe('trades', symbol: symbol);
-    subscribe('candles', symbol: symbol, period: period);
-    subscribe('orders');
-    subscribe('matches');
-    subscribe('executionReports');
-    subscribe('positions');
-    subscribe('accountRisk');
-    subscribe('positionRisk');
+  void subscribeDefaults({
+    String symbol = 'BTC-USDT',
+    String period = '1m',
+    String? productLine,
+  }) {
+    subscribe('depth', symbol: symbol, productLine: productLine);
+    subscribe('trades', symbol: symbol, productLine: productLine);
+    subscribe(
+      'candles',
+      symbol: symbol,
+      period: period,
+      productLine: productLine,
+    );
+    subscribe('orders', productLine: productLine);
+    subscribe('matches', productLine: productLine);
+    subscribe('executionReports', productLine: productLine);
+    subscribe('positions', productLine: productLine);
+    subscribe('accountRisk', productLine: productLine);
+    subscribe('positionRisk', productLine: productLine);
   }
 
-  void subscribe(String channel, {String? symbol, String? period}) {
+  void subscribe(
+    String channel, {
+    String? symbol,
+    String? period,
+    String? productLine,
+  }) {
     final socket = _socket;
     if (socket == null) return;
     final command = {
@@ -912,6 +926,9 @@ class RealtimeClient {
     };
     if (symbol != null) command['symbol'] = symbol;
     if (period != null) command['period'] = period;
+    if (productLine != null && productLine.isNotEmpty) {
+      command['productLine'] = productLine;
+    }
     socket.add(jsonEncode(command));
   }
 

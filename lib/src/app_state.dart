@@ -716,25 +716,60 @@ class AppState extends ChangeNotifier {
   }
 
   void _subscribePublicSelected() {
-    final symbols = <String>{
-      selectedSymbol,
-      for (final instrument in visibleInstruments) instrument.symbol,
+    final selectedProductLine = _productLineForSymbol(selectedSymbol);
+    final instrumentsBySymbol = <String, Instrument>{
+      selectedSymbol: selectedInstrument,
+      for (final instrument in visibleInstruments) instrument.symbol: instrument,
     };
-    for (final symbol in symbols) {
-      publicRealtime.subscribe('trades', symbol: symbol);
+    for (final entry in instrumentsBySymbol.entries) {
+      publicRealtime.subscribe(
+        'trades',
+        symbol: entry.key,
+        productLine: entry.value.mode.productLine,
+      );
     }
-    publicRealtime.subscribe('depth', symbol: selectedSymbol);
-    publicRealtime.subscribe('candles', symbol: selectedSymbol, period: period);
+    publicRealtime.subscribe(
+      'depth',
+      symbol: selectedSymbol,
+      productLine: selectedProductLine,
+    );
+    publicRealtime.subscribe(
+      'candles',
+      symbol: selectedSymbol,
+      period: period,
+      productLine: selectedProductLine,
+    );
   }
 
   void _subscribePrivateSelected() {
     if (!isLoggedIn) return;
-    privateRealtime.subscribe('orders', symbol: selectedSymbol);
-    privateRealtime.subscribe('matches', symbol: selectedSymbol);
-    privateRealtime.subscribe('executionReports', symbol: selectedSymbol);
-    privateRealtime.subscribe('positions', symbol: selectedSymbol);
-    privateRealtime.subscribe('positionRisk', symbol: selectedSymbol);
-    privateRealtime.subscribe('accountRisk');
+    final productLine = _productLineForSymbol(selectedSymbol);
+    privateRealtime.subscribe(
+      'orders',
+      symbol: selectedSymbol,
+      productLine: productLine,
+    );
+    privateRealtime.subscribe(
+      'matches',
+      symbol: selectedSymbol,
+      productLine: productLine,
+    );
+    privateRealtime.subscribe(
+      'executionReports',
+      symbol: selectedSymbol,
+      productLine: productLine,
+    );
+    privateRealtime.subscribe(
+      'positions',
+      symbol: selectedSymbol,
+      productLine: productLine,
+    );
+    privateRealtime.subscribe(
+      'positionRisk',
+      symbol: selectedSymbol,
+      productLine: productLine,
+    );
+    privateRealtime.subscribe('accountRisk', productLine: productLine);
   }
 
   void handleRealtimeMessage(Map<String, dynamic> message) {
@@ -753,6 +788,14 @@ class AppState extends ChangeNotifier {
       message['symbol'],
       fallback: asString(data['symbol'], fallback: selectedSymbol),
     );
+    final messageProductLine = asString(
+      message['productLine'],
+      fallback: asString(data['productLine']),
+    );
+    if (messageProductLine.isNotEmpty &&
+        messageProductLine != _productLineForSymbol(symbol)) {
+      return;
+    }
     if (channel == 'depth') {
       if (symbol != selectedSymbol) return;
       _applyDepthUpdate(symbol, data);

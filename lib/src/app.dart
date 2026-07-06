@@ -209,7 +209,7 @@ class _ClientShellState extends State<ClientShell> {
         onSelected: (next) {
           if (next == 2) {
             unawaited(state.selectMode(ProductMode.spot));
-          } else if (next == 3 && state.mode == ProductMode.spot) {
+          } else if (next == 3 && state.mode.isSpot) {
             unawaited(state.selectMode(ProductMode.linear));
           }
           setState(() => index = next);
@@ -653,7 +653,10 @@ class HomePage extends StatelessWidget {
                         color: _ink,
                       ),
                     ),
-                    Text('现货 · U本位 · 币本位', style: TextStyle(color: _muted)),
+                    Text(
+                      '现货 · 永续 · 交割 · 期权',
+                      style: TextStyle(color: _muted),
+                    ),
                   ],
                 ),
               ),
@@ -885,7 +888,7 @@ class _TradePageState extends State<TradePage> {
             latestPrice: latestPrice,
             onRefresh: state.refreshPublicData,
           ),
-          if (instrument.mode != ProductMode.spot) ...[
+          if (instrument.isDerivative) ...[
             const SizedBox(height: 6),
             ContractQuickSettings(
               marginMode: marginMode,
@@ -945,19 +948,16 @@ class _TradePageState extends State<TradePage> {
                           price: double.tryParse(priceController.text) ?? 0,
                           quantitySteps:
                               int.tryParse(quantityController.text) ?? 0,
-                          marginMode: instrument.mode == ProductMode.spot
+                          marginMode: instrument.isSpot
                               ? 'CROSS'
                               : marginMode,
                           positionSide:
-                              instrument.mode == ProductMode.spot ||
-                                  state.positionMode == 'ONE_WAY'
+                              instrument.isSpot || state.positionMode == 'ONE_WAY'
                               ? 'NET'
                               : positionSide == 'NET'
                               ? (side == 'SELL' ? 'SHORT' : 'LONG')
                               : positionSide,
-                          reduceOnly: instrument.mode == ProductMode.spot
-                              ? false
-                              : reduceOnly,
+                          reduceOnly: instrument.isSpot ? false : reduceOnly,
                           postOnly: postOnly,
                         ),
                       );
@@ -981,7 +981,7 @@ class _TradePageState extends State<TradePage> {
           ),
           const SizedBox(height: 8),
           PrivateTradingPanel(state: state),
-          if (instrument.mode != ProductMode.spot) ...[
+          if (instrument.isDerivative) ...[
             Theme(
               data: Theme.of(
                 context,
@@ -1011,7 +1011,7 @@ class _TradePageState extends State<TradePage> {
               collapsedIconColor: _muted,
               iconColor: _ink,
               title: Text(
-                '${instrument.displayName.replaceAll('-', '')} ${instrument.mode == ProductMode.spot ? '现货' : '永续'} K线图表',
+                '${instrument.displayName.replaceAll('-', '')} ${instrument.contractLabel} K线图表',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -1526,11 +1526,8 @@ class _WalletPageState extends State<WalletPage> {
                               Expanded(
                                 child: SmallDropdown(
                                   value: source,
-                                  values: const [
-                                    'SPOT',
-                                    'USDT_PERPETUAL',
-                                    'COIN_PERPETUAL',
-                                  ],
+                                  values: productAccountTypes,
+                                  labelBuilder: productAccountLabel,
                                   onChanged: (value) =>
                                       setState(() => source = value),
                                 ),
@@ -1542,11 +1539,8 @@ class _WalletPageState extends State<WalletPage> {
                               Expanded(
                                 child: SmallDropdown(
                                   value: target,
-                                  values: const [
-                                    'SPOT',
-                                    'USDT_PERPETUAL',
-                                    'COIN_PERPETUAL',
-                                  ],
+                                  values: productAccountTypes,
+                                  labelBuilder: productAccountLabel,
                                   onChanged: (value) =>
                                       setState(() => target = value),
                                 ),
@@ -2636,8 +2630,7 @@ class OrderTicket extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final buy = side == 'BUY';
-    final hedgeMode =
-        instrument.mode != ProductMode.spot && positionMode == 'HEDGE';
+    final hedgeMode = instrument.isDerivative && positionMode == 'HEDGE';
     void stepPrice(int direction) {
       if (orderType == 'MARKET') return;
       final current = double.tryParse(priceController.text) ?? 0;
@@ -2680,7 +2673,7 @@ class OrderTicket extends StatelessWidget {
                 ),
               ],
             ),
-            if (instrument.mode != ProductMode.spot) ...[
+            if (instrument.isDerivative) ...[
               const SizedBox(height: 5),
               Row(
                 children: [
@@ -2745,7 +2738,7 @@ class OrderTicket extends StatelessWidget {
             const SizedBox(height: 5),
             OrderMetaRow(label: '可用', value: '--  ⇆'),
             OrderMetaRow(label: '最大', value: '0.000 ${instrument.baseAsset}'),
-            if (instrument.mode != ProductMode.spot)
+            if (instrument.isDerivative)
               OrderMetaRow(
                 label: '保证金',
                 value: '0.00 ${instrument.quoteAsset}',
@@ -2757,7 +2750,7 @@ class OrderTicket extends StatelessWidget {
                   child: ToggleLine(
                     label: '只减仓',
                     value: reduceOnly,
-                    enabled: instrument.mode != ProductMode.spot,
+                    enabled: instrument.isDerivative,
                     onChanged: onReduceOnly,
                   ),
                 ),
@@ -2787,7 +2780,9 @@ class OrderTicket extends StatelessWidget {
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn
-                    ? hedgeMode
+                    ? instrument.isSpot
+                          ? (buy ? '买入' : '卖出')
+                          : hedgeMode
                           ? (buy ? '买入' : '卖出')
                           : (buy ? '买入 / 开多' : '卖出 / 开空')
                     : '登录',
@@ -4012,9 +4007,11 @@ class MarketModeTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       (label: '现货', mode: ProductMode.spot),
-      (label: 'U 本位合约', mode: ProductMode.linear),
-      (label: '币本位', mode: ProductMode.inverse),
-      (label: '期权', mode: null),
+      (label: 'U 永续', mode: ProductMode.linear),
+      (label: '币永续', mode: ProductMode.inverse),
+      (label: 'U 交割', mode: ProductMode.linearDelivery),
+      (label: '币交割', mode: ProductMode.inverseDelivery),
+      (label: '期权', mode: ProductMode.option),
     ];
     return SizedBox(
       height: 38,
@@ -4027,7 +4024,7 @@ class MarketModeTabs extends StatelessWidget {
           final item = items[index];
           final selected = item.mode == value;
           return InkWell(
-            onTap: item.mode == null ? null : () => onChanged(item.mode!),
+            onTap: () => onChanged(item.mode),
             child: Center(
               child: Text(
                 item.label,
@@ -4182,7 +4179,7 @@ class MarketTickerRow extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            if (instrument.mode != ProductMode.spot) ...[
+                            if (instrument.isDerivative) ...[
                               const SizedBox(width: 4),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -4193,9 +4190,9 @@ class MarketTickerRow extends StatelessWidget {
                                   border: Border.all(color: _line),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: const Text(
-                                  '永续',
-                                  style: TextStyle(
+                                child: Text(
+                                  instrument.contractLabel,
+                                  style: const TextStyle(
                                     color: _ink,
                                     fontSize: 9,
                                     fontWeight: FontWeight.w600,
@@ -4286,11 +4283,12 @@ class TradeModeTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      (label: 'U本位', mode: ProductMode.linear),
-      (label: '币本位', mode: ProductMode.inverse),
+      (label: 'U永续', mode: ProductMode.linear),
+      (label: '币永续', mode: ProductMode.inverse),
+      (label: 'U交割', mode: ProductMode.linearDelivery),
+      (label: '币交割', mode: ProductMode.inverseDelivery),
+      (label: '期权', mode: ProductMode.option),
       (label: '现货', mode: ProductMode.spot),
-      (label: '期权', mode: null),
-      (label: '聪明钱', mode: null),
     ];
     return SizedBox(
       height: 32,
@@ -4305,7 +4303,7 @@ class TradeModeTabs extends StatelessWidget {
                 final tab = tabs[index];
                 final selected = tab.mode == value;
                 return InkWell(
-                  onTap: tab.mode == null ? null : () => onChanged(tab.mode!),
+                  onTap: () => onChanged(tab.mode),
                   child: Center(
                     child: Text(
                       tab.label,
@@ -4374,7 +4372,7 @@ class TradeSymbolHeader extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 5),
-                  if (instrument.mode != ProductMode.spot)
+                  if (instrument.isDerivative)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 5,
@@ -4384,9 +4382,9 @@ class TradeSymbolHeader extends StatelessWidget {
                         border: Border.all(color: _line),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Text(
-                        '永续',
-                        style: TextStyle(
+                      child: Text(
+                        instrument.contractLabel,
+                        style: const TextStyle(
                           color: _ink,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
@@ -6448,7 +6446,7 @@ String volumeText(Instrument instrument) {
 }
 
 double syntheticChange(Instrument instrument) {
-  if (instrument.mode == ProductMode.spot) {
+  if (instrument.isSpot) {
     return 0.6 + (instrument.symbol.length % 5) * .21;
   }
   final seed = instrument.symbol.codeUnits.fold<int>(

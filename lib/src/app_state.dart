@@ -172,10 +172,10 @@ class AppState extends ChangeNotifier {
         api.productBalances(id, accountType: mode.accountType),
         api.positions(id),
         api.openOrders(id, symbol: selectedSymbol),
-        mode == ProductMode.spot
+        mode.isSpot
             ? Future<List<AlgoOrderModel>>.value(const [])
             : api.openAlgoOrders(id, symbol: selectedSymbol),
-        mode == ProductMode.spot
+        mode.isSpot
             ? Future<List<TriggerOrderModel>>.value(const [])
             : api.openTriggerOrders(id, symbol: selectedSymbol),
         api.positionMode(id),
@@ -320,7 +320,7 @@ class AppState extends ChangeNotifier {
     try {
       final instrument = selectedInstrument;
       final effectivePositionSide =
-          instrument.mode == ProductMode.spot || positionMode == 'ONE_WAY'
+          instrument.isSpot || positionMode == 'ONE_WAY'
           ? 'NET'
           : positionSide == 'NET'
           ? (side == 'SELL' ? 'SHORT' : 'LONG')
@@ -527,10 +527,10 @@ class AppState extends ChangeNotifier {
       quantitySteps: position.signedQuantitySteps.abs(),
       marginMode: position.marginMode,
       positionSide:
-          instrument.mode == ProductMode.spot || positionMode == 'ONE_WAY'
+          instrument.isSpot || positionMode == 'ONE_WAY'
           ? 'NET'
           : position.positionSide,
-      reduceOnly: instrument.mode != ProductMode.spot,
+      reduceOnly: instrument.isDerivative,
       postOnly: false,
     );
   }

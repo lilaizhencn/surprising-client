@@ -2,21 +2,66 @@ import 'dart:math' as math;
 
 enum ProductMode {
   spot('现货', 'SPOT'),
-  linear('U本位', 'LINEAR_PERPETUAL'),
-  inverse('币本位', 'INVERSE_PERPETUAL');
+  linear('U本位永续', 'LINEAR_PERPETUAL'),
+  inverse('币本位永续', 'INVERSE_PERPETUAL'),
+  linearDelivery('U本位交割', 'LINEAR_DELIVERY'),
+  inverseDelivery('币本位交割', 'INVERSE_DELIVERY'),
+  option('期权', 'VANILLA_OPTION');
 
   const ProductMode(this.label, this.contractType);
 
   final String label;
   final String contractType;
 
+  bool get isSpot => this == ProductMode.spot;
+  bool get isPerpetual =>
+      this == ProductMode.linear || this == ProductMode.inverse;
+  bool get isDelivery =>
+      this == ProductMode.linearDelivery ||
+      this == ProductMode.inverseDelivery;
+  bool get isOption => this == ProductMode.option;
+  bool get isDerivative => !isSpot;
+
+  String get contractLabel {
+    return switch (this) {
+      ProductMode.spot => '现货',
+      ProductMode.linear || ProductMode.inverse => '永续',
+      ProductMode.linearDelivery || ProductMode.inverseDelivery => '交割',
+      ProductMode.option => '期权',
+    };
+  }
+
   String get accountType {
     return switch (this) {
       ProductMode.spot => 'SPOT',
       ProductMode.linear => 'USDT_PERPETUAL',
       ProductMode.inverse => 'COIN_PERPETUAL',
+      ProductMode.linearDelivery => 'USDT_DELIVERY',
+      ProductMode.inverseDelivery => 'COIN_DELIVERY',
+      ProductMode.option => 'OPTION',
     };
   }
+}
+
+const productAccountTypes = [
+  'SPOT',
+  'USDT_PERPETUAL',
+  'COIN_PERPETUAL',
+  'USDT_DELIVERY',
+  'COIN_DELIVERY',
+  'OPTION',
+];
+
+String productAccountLabel(String type) {
+  return switch (type) {
+    'SPOT' => '现货',
+    'USDT_PERPETUAL' => 'U本位永续',
+    'COIN_PERPETUAL' => '币本位永续',
+    'USDT_DELIVERY' => 'U本位交割',
+    'COIN_DELIVERY' => '币本位交割',
+    'OPTION' => '期权',
+    _ => type,
+  };
 }
 
 String positionModeLabel(String mode) {
@@ -90,7 +135,19 @@ String marginModeLabel(String type) {
 }
 
 double? fallbackPriceFor(Instrument instrument) {
-  final symbol = instrument.symbol.replaceAll('-SPOT', '');
+  final symbol = (instrument.underlyingSymbol ?? instrument.symbol).replaceAll(
+    '-SPOT',
+    '',
+  );
+  if (symbol.startsWith('BTC-USDT') || symbol.startsWith('BTC-USD')) {
+    return 61418.6;
+  }
+  if (symbol.startsWith('ETH-USDT') || symbol.startsWith('ETH-USD')) {
+    return 1735.71;
+  }
+  if (symbol.startsWith('SOL-USDT') || symbol.startsWith('SOL-USD')) {
+    return 79.44;
+  }
   return switch (symbol) {
     'BTC-USDT' => 61418.6,
     'BTC-USDC' => 61365.0,
@@ -180,6 +237,13 @@ class Instrument {
     required this.quantityPrecision,
     required this.maxLeveragePpm,
     required this.status,
+    this.expiryTime,
+    this.deliveryTime,
+    this.underlyingSymbol,
+    this.strikePriceUnits,
+    this.optionType,
+    this.optionExerciseStyle,
+    this.settlementMethod,
   });
 
   final String symbol;
@@ -194,16 +258,46 @@ class Instrument {
   final int quantityPrecision;
   final int maxLeveragePpm;
   final String status;
+  final DateTime? expiryTime;
+  final DateTime? deliveryTime;
+  final String? underlyingSymbol;
+  final int? strikePriceUnits;
+  final String? optionType;
+  final String? optionExerciseStyle;
+  final String? settlementMethod;
 
   ProductMode get mode {
     if (contractType == ProductMode.spot.contractType) return ProductMode.spot;
     if (contractType == ProductMode.inverse.contractType) {
       return ProductMode.inverse;
     }
+    if (contractType == ProductMode.linearDelivery.contractType) {
+      return ProductMode.linearDelivery;
+    }
+    if (contractType == ProductMode.inverseDelivery.contractType) {
+      return ProductMode.inverseDelivery;
+    }
+    if (contractType == ProductMode.option.contractType ||
+        instrumentType == 'OPTION') {
+      return ProductMode.option;
+    }
     return ProductMode.linear;
   }
 
+  bool get isSpot => mode.isSpot;
+  bool get isDerivative => mode.isDerivative;
+  bool get isPerpetual => mode.isPerpetual;
+  bool get isDelivery => mode.isDelivery;
+  bool get isOption => mode.isOption;
+  String get contractLabel => mode.contractLabel;
+
   String get displayName => symbol.replaceAll('-SPOT', '');
+
+  double? get strikePrice {
+    final units = strikePriceUnits;
+    if (units == null) return null;
+    return units / 100000000.0;
+  }
 
   double priceFromTicks(int ticks) => ticks * priceTickUnits / 100000000.0;
 
@@ -229,6 +323,13 @@ class Instrument {
       quantityPrecision: asInt(json['quantityPrecision'], fallback: 0),
       maxLeveragePpm: asInt(json['maxLeveragePpm'], fallback: 1000000),
       status: asString(json['status'], fallback: 'TRADING'),
+      expiryTime: asNullableDateTime(json['expiryTime']),
+      deliveryTime: asNullableDateTime(json['deliveryTime']),
+      underlyingSymbol: nullableString(json['underlyingSymbol']),
+      strikePriceUnits: asNullableInt(json['strikePriceUnits']),
+      optionType: nullableString(json['optionType']),
+      optionExerciseStyle: nullableString(json['optionExerciseStyle']),
+      settlementMethod: nullableString(json['settlementMethod']),
     );
   }
 }
@@ -1355,6 +1456,12 @@ String? nullableString(Object? value) {
   return string.isEmpty ? null : string;
 }
 
+DateTime? asNullableDateTime(Object? value) {
+  final string = nullableString(value);
+  if (string == null) return null;
+  return DateTime.tryParse(string);
+}
+
 int asInt(Object? value, {int fallback = 0}) {
   if (value == null) return fallback;
   if (value is int) return value;
@@ -1512,6 +1619,57 @@ List<Instrument> fallbackInstruments() {
       quantityPrecision: 0,
       maxLeveragePpm: 1000000,
       status: 'TRADING',
+    ),
+    Instrument(
+      symbol: 'BTC-USDT-260925',
+      instrumentType: 'DELIVERY',
+      contractType: 'LINEAR_DELIVERY',
+      baseAsset: 'BTC',
+      quoteAsset: 'USDT',
+      settleAsset: 'USDT',
+      priceTickUnits: 10000000,
+      quantityStepUnits: 100000,
+      pricePrecision: 1,
+      quantityPrecision: 0,
+      maxLeveragePpm: 50000000,
+      status: 'TRADING',
+      underlyingSymbol: 'BTC-USDT',
+      settlementMethod: 'CASH',
+    ),
+    Instrument(
+      symbol: 'BTC-USD-260925',
+      instrumentType: 'DELIVERY',
+      contractType: 'INVERSE_DELIVERY',
+      baseAsset: 'BTC',
+      quoteAsset: 'USD',
+      settleAsset: 'BTC',
+      priceTickUnits: 10000000,
+      quantityStepUnits: 100000,
+      pricePrecision: 1,
+      quantityPrecision: 0,
+      maxLeveragePpm: 50000000,
+      status: 'TRADING',
+      underlyingSymbol: 'BTC-USD',
+      settlementMethod: 'CASH',
+    ),
+    Instrument(
+      symbol: 'BTC-USDT-260925-70000-C',
+      instrumentType: 'OPTION',
+      contractType: 'VANILLA_OPTION',
+      baseAsset: 'BTC',
+      quoteAsset: 'USDT',
+      settleAsset: 'USDT',
+      priceTickUnits: 1000000,
+      quantityStepUnits: 100000,
+      pricePrecision: 2,
+      quantityPrecision: 0,
+      maxLeveragePpm: 1000000,
+      status: 'TRADING',
+      underlyingSymbol: 'BTC-USDT',
+      strikePriceUnits: 7000000000000,
+      optionType: 'CALL',
+      optionExerciseStyle: 'EUROPEAN',
+      settlementMethod: 'CASH',
     ),
   ];
 }

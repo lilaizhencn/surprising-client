@@ -177,14 +177,24 @@ void main() {
     await tester.tap(find.text('合约').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('U本位'), findsWidgets);
-    expect(find.text('币本位'), findsWidgets);
+    expect(find.text('U永续'), findsWidgets);
+    expect(find.text('币永续'), findsWidgets);
+    expect(find.text('U交割'), findsWidgets);
+    expect(find.text('期权'), findsWidgets);
     expect(find.text('现货'), findsWidgets);
     expect(state.mode, ProductMode.linear);
 
-    await tester.tap(find.text('币本位').first);
+    await tester.tap(find.text('币永续').first);
     await tester.pumpAndSettle();
     expect(state.mode, ProductMode.inverse);
+
+    await tester.tap(find.text('U交割').first);
+    await tester.pumpAndSettle();
+    expect(state.mode, ProductMode.linearDelivery);
+
+    await tester.tap(find.text('期权').first);
+    await tester.pumpAndSettle();
+    expect(state.mode, ProductMode.option);
 
     await tester.tap(find.text('现货').first);
     await tester.pumpAndSettle();
@@ -202,6 +212,41 @@ void main() {
     expect(ProductMode.spot.accountType, 'SPOT');
     expect(ProductMode.linear.accountType, 'USDT_PERPETUAL');
     expect(ProductMode.inverse.accountType, 'COIN_PERPETUAL');
+    expect(ProductMode.linearDelivery.accountType, 'USDT_DELIVERY');
+    expect(ProductMode.inverseDelivery.accountType, 'COIN_DELIVERY');
+    expect(ProductMode.option.accountType, 'OPTION');
+  });
+
+  test('parses expiring and option instrument metadata', () {
+    final delivery = Instrument.fromJson({
+      'symbol': 'BTC-USDT-260925',
+      'instrumentType': 'DELIVERY',
+      'contractType': 'LINEAR_DELIVERY',
+      'expiryTime': '2026-09-25T08:00:00Z',
+      'deliveryTime': '2026-09-25T09:00:00Z',
+      'underlyingSymbol': 'BTC-USDT',
+      'settlementMethod': 'CASH',
+    });
+
+    expect(delivery.mode, ProductMode.linearDelivery);
+    expect(delivery.contractLabel, '交割');
+    expect(delivery.expiryTime?.toUtc().year, 2026);
+    expect(delivery.underlyingSymbol, 'BTC-USDT');
+
+    final option = Instrument.fromJson({
+      'symbol': 'BTC-USDT-260925-70000-C',
+      'instrumentType': 'OPTION',
+      'contractType': 'VANILLA_OPTION',
+      'strikePriceUnits': 7000000000000,
+      'optionType': 'CALL',
+      'optionExerciseStyle': 'EUROPEAN',
+      'settlementMethod': 'CASH',
+    });
+
+    expect(option.mode, ProductMode.option);
+    expect(option.contractLabel, '期权');
+    expect(option.strikePrice, 70000);
+    expect(option.optionExerciseStyle, 'EUROPEAN');
   });
 
   test('parses wallet portfolio and order records', () {

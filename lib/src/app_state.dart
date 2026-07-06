@@ -17,7 +17,7 @@ class AppState extends ChangeNotifier {
        privateRealtime = privateRealtimeClient ?? RealtimeClient(config) {
     instruments = fallbackInstruments();
     selectedSymbol = instruments.first.symbol;
-    orderBook = OrderBook.empty(selectedSymbol);
+    orderBook = fallbackOrderBook(instruments.first);
     candles = fallbackCandles();
   }
 
@@ -90,17 +90,17 @@ class AppState extends ChangeNotifier {
       if (bestBid != null) return instrument.priceFromTicks(bestBid.priceTicks);
       if (bestAsk != null) return instrument.priceFromTicks(bestAsk.priceTicks);
     }
-    return null;
+    return fallbackPriceFor(instrument);
   }
 
   Future<void> bootstrap() async {
     if (offline) return;
-    await refreshInstruments();
-    await refreshPublicData();
+    await refreshInstruments(silent: true);
+    await refreshPublicData(silent: true);
     await _connectPublicRealtime();
   }
 
-  Future<void> refreshInstruments() async {
+  Future<void> refreshInstruments({bool silent = false}) async {
     if (offline) return;
     try {
       final loaded = await api.instruments();
@@ -115,7 +115,11 @@ class AppState extends ChangeNotifier {
       }
       lastError = null;
     } catch (error) {
-      lastError = '加载交易对失败：$error';
+      if (silent) {
+        _recordRealtimeIssue('加载交易对失败：$error');
+      } else {
+        lastError = '加载交易对失败：$error';
+      }
     }
     _scheduleRealtimeNotify();
   }
@@ -128,7 +132,7 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  Future<void> refreshPublicData() async {
+  Future<void> refreshPublicData({bool silent = false}) async {
     if (offline) return;
     loadingPublic = true;
     notifyListeners();
@@ -138,13 +142,20 @@ class AppState extends ChangeNotifier {
         api.orderBook(symbol),
         api.candles(symbol, period),
       ]);
-      orderBook = results[0] as OrderBook;
+      final loadedBook = results[0] as OrderBook;
+      orderBook = loadedBook.bids.isEmpty && loadedBook.asks.isEmpty
+          ? fallbackOrderBook(selectedInstrument)
+          : loadedBook;
       final loadedCandles = results[1] as List<Candle>;
       candles = loadedCandles.isEmpty ? fallbackCandles() : loadedCandles;
       if (candles.isNotEmpty) latestPrices[symbol] = candles.last.close;
       lastError = null;
     } catch (error) {
-      lastError = '加载行情失败：$error';
+      if (silent) {
+        _recordRealtimeIssue('加载行情失败：$error');
+      } else {
+        lastError = '加载行情失败：$error';
+      }
     } finally {
       loadingPublic = false;
       notifyListeners();
@@ -264,8 +275,9 @@ class AppState extends ChangeNotifier {
         !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
       selectedSymbol = candidates.first.symbol;
     }
+    orderBook = fallbackOrderBook(selectedInstrument);
     notifyListeners();
-    await refreshPublicData();
+    await refreshPublicData(silent: true);
     await refreshPrivateData();
     _subscribePublicSelected();
     _subscribePrivateSelected();
@@ -273,8 +285,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> selectSymbol(String symbol) async {
     selectedSymbol = symbol;
+    orderBook = fallbackOrderBook(selectedInstrument);
     notifyListeners();
-    await refreshPublicData();
+    await refreshPublicData(silent: true);
     await refreshPrivateData();
     _subscribePublicSelected();
     _subscribePrivateSelected();
@@ -283,7 +296,7 @@ class AppState extends ChangeNotifier {
   Future<void> selectPeriod(String nextPeriod) async {
     period = nextPeriod;
     notifyListeners();
-    await refreshPublicData();
+    await refreshPublicData(silent: true);
     _subscribePublicSelected();
   }
 
@@ -630,13 +643,13 @@ class AppState extends ChangeNotifier {
       await publicRealtime.connect(
         onEvent: handleRealtimeMessage,
         onError: (error) {
-          lastError = '公共行情 WebSocket：$error';
+          _recordRealtimeIssue('公共行情 WebSocket：$error');
           notifyListeners();
         },
       );
       _subscribePublicSelected();
     } catch (error) {
-      lastError = '实时行情连接失败：$error';
+      _recordRealtimeIssue('实时行情连接失败：$error');
       notifyListeners();
     }
   }
@@ -650,15 +663,20 @@ class AppState extends ChangeNotifier {
         accessToken: current.accessToken,
         onEvent: handleRealtimeMessage,
         onError: (error) {
-          lastError = '账户 WebSocket：$error';
+          _recordRealtimeIssue('账户 WebSocket：$error');
           notifyListeners();
         },
       );
       _subscribePrivateSelected();
     } catch (error) {
-      lastError = '账户实时连接失败：$error';
+      _recordRealtimeIssue('账户实时连接失败：$error');
       notifyListeners();
     }
+  }
+
+  void _recordRealtimeIssue(String message) {
+    realtimeLog.insert(0, message);
+    if (realtimeLog.length > 20) realtimeLog.removeLast();
   }
 
   void _subscribePublicSelected() {
@@ -773,7 +791,7 @@ class AppState extends ChangeNotifier {
     if (orderBook.symbol != symbol ||
         orderBook.sequence == 0 ||
         previousSequence != orderBook.sequence) {
-      unawaited(refreshPublicData());
+      unawaited(refreshPublicData(silent: true));
       return;
     }
     orderBook = OrderBook(

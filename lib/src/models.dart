@@ -63,6 +63,45 @@ String algoTypeLabel(String type) {
   };
 }
 
+String orderTypeLabel(String type) {
+  return switch (type) {
+    'LIMIT' => '限价单',
+    'MARKET' => '市价单',
+    _ => type,
+  };
+}
+
+String timeInForceLabel(String type) {
+  return switch (type) {
+    'GTC' => 'GTC',
+    'IOC' => 'IOC',
+    'FOK' => 'FOK',
+    'GTX' => 'Post Only',
+    _ => type,
+  };
+}
+
+String marginModeLabel(String type) {
+  return switch (type) {
+    'CROSS' => '全仓',
+    'ISOLATED' => '逐仓',
+    _ => type,
+  };
+}
+
+double? fallbackPriceFor(Instrument instrument) {
+  final symbol = instrument.symbol.replaceAll('-SPOT', '');
+  return switch (symbol) {
+    'BTC-USDT' => 61418.6,
+    'BTC-USDC' => 61365.0,
+    'ETH-USDT' => 1735.71,
+    'ETH-USDC' => 1734.30,
+    'SOL-USDT' => 79.44,
+    'XAUT-USDT' => 4147.77,
+    _ => null,
+  };
+}
+
 class AppConfig {
   const AppConfig({
     this.gatewayBaseUrl = const String.fromEnvironment(
@@ -248,6 +287,33 @@ class OrderBook {
       ).map((e) => OrderBookLevel.fromJson(asMap(e))).toList(),
     );
   }
+}
+
+OrderBook fallbackOrderBook(Instrument instrument) {
+  final midPrice = fallbackPriceFor(instrument) ?? 100;
+  final midTicks = instrument.ticksFromPrice(midPrice);
+  const askSizes = [58, 4039, 266, 12, 12110, 320, 86];
+  const bidSizes = [12, 12, 13, 12, 12, 44, 120];
+  return OrderBook(
+    symbol: instrument.symbol,
+    sequence: 1,
+    asks: [
+      for (var i = 0; i < askSizes.length; i++)
+        OrderBookLevel(
+          priceTicks: midTicks + i + 1,
+          quantitySteps: askSizes[i],
+          orderCount: 1 + i,
+        ),
+    ],
+    bids: [
+      for (var i = 0; i < bidSizes.length; i++)
+        OrderBookLevel(
+          priceTicks: midTicks - i - 1,
+          quantitySteps: bidSizes[i],
+          orderCount: 1 + i,
+        ),
+    ],
+  );
 }
 
 class Candle {
@@ -1000,6 +1066,57 @@ class WalletPortfolio {
   }
 }
 
+WalletPortfolio fallbackWalletPortfolio() {
+  return const WalletPortfolio(
+    generatedAt: 'demo',
+    assetCount: 2,
+    assets: [
+      WalletAssetSummary(
+        symbol: 'OKB',
+        availableBalance: 135.00000009,
+        lockedBalance: 0,
+        totalBalance: 135.00000009,
+        chains: [
+          WalletChainAsset(
+            chain: 'X Layer',
+            symbol: 'OKB',
+            network: 'X Layer',
+            family: 'EVM',
+            standard: 'Native',
+            nativeAsset: true,
+            nativeSymbol: 'OKB',
+            availableBalance: 135.00000009,
+            lockedBalance: 0,
+            totalBalance: 135.00000009,
+            addresses: [],
+          ),
+        ],
+      ),
+      WalletAssetSummary(
+        symbol: 'BTC',
+        availableBalance: 0.0195464,
+        lockedBalance: 0,
+        totalBalance: 0.0195464,
+        chains: [
+          WalletChainAsset(
+            chain: 'BTC',
+            symbol: 'BTC',
+            network: 'Bitcoin',
+            family: 'BTC',
+            standard: 'Native',
+            nativeAsset: true,
+            nativeSymbol: 'BTC',
+            availableBalance: 0.0195464,
+            lockedBalance: 0,
+            totalBalance: 0.0195464,
+            addresses: [],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 class WalletAssetSummary {
   const WalletAssetSummary({
     required this.symbol,
@@ -1299,6 +1416,62 @@ List<Instrument> fallbackInstruments() {
       status: 'TRADING',
     ),
     Instrument(
+      symbol: 'BTC-USDC',
+      instrumentType: 'PERPETUAL',
+      contractType: 'LINEAR_PERPETUAL',
+      baseAsset: 'BTC',
+      quoteAsset: 'USDC',
+      settleAsset: 'USDC',
+      priceTickUnits: 10000000,
+      quantityStepUnits: 100000,
+      pricePrecision: 1,
+      quantityPrecision: 0,
+      maxLeveragePpm: 100000000,
+      status: 'TRADING',
+    ),
+    Instrument(
+      symbol: 'SOL-USDT',
+      instrumentType: 'PERPETUAL',
+      contractType: 'LINEAR_PERPETUAL',
+      baseAsset: 'SOL',
+      quoteAsset: 'USDT',
+      settleAsset: 'USDT',
+      priceTickUnits: 1000000,
+      quantityStepUnits: 1,
+      pricePrecision: 2,
+      quantityPrecision: 0,
+      maxLeveragePpm: 50000000,
+      status: 'TRADING',
+    ),
+    Instrument(
+      symbol: 'ETH-USDC',
+      instrumentType: 'PERPETUAL',
+      contractType: 'LINEAR_PERPETUAL',
+      baseAsset: 'ETH',
+      quoteAsset: 'USDC',
+      settleAsset: 'USDC',
+      priceTickUnits: 1000000,
+      quantityStepUnits: 1,
+      pricePrecision: 2,
+      quantityPrecision: 0,
+      maxLeveragePpm: 100000000,
+      status: 'TRADING',
+    ),
+    Instrument(
+      symbol: 'XAUT-USDT',
+      instrumentType: 'PERPETUAL',
+      contractType: 'LINEAR_PERPETUAL',
+      baseAsset: 'XAUT',
+      quoteAsset: 'USDT',
+      settleAsset: 'USDT',
+      priceTickUnits: 1000000,
+      quantityStepUnits: 1,
+      pricePrecision: 2,
+      quantityPrecision: 0,
+      maxLeveragePpm: 20000000,
+      status: 'TRADING',
+    ),
+    Instrument(
       symbol: 'BTC-USDT-SPOT',
       instrumentType: 'SPOT',
       contractType: 'SPOT',
@@ -1308,6 +1481,34 @@ List<Instrument> fallbackInstruments() {
       priceTickUnits: 10000000,
       quantityStepUnits: 100000,
       pricePrecision: 1,
+      quantityPrecision: 0,
+      maxLeveragePpm: 1000000,
+      status: 'TRADING',
+    ),
+    Instrument(
+      symbol: 'ETH-USDT-SPOT',
+      instrumentType: 'SPOT',
+      contractType: 'SPOT',
+      baseAsset: 'ETH',
+      quoteAsset: 'USDT',
+      settleAsset: 'USDT',
+      priceTickUnits: 1000000,
+      quantityStepUnits: 1,
+      pricePrecision: 2,
+      quantityPrecision: 0,
+      maxLeveragePpm: 1000000,
+      status: 'TRADING',
+    ),
+    Instrument(
+      symbol: 'SOL-USDT-SPOT',
+      instrumentType: 'SPOT',
+      contractType: 'SPOT',
+      baseAsset: 'SOL',
+      quoteAsset: 'USDT',
+      settleAsset: 'USDT',
+      priceTickUnits: 1000000,
+      quantityStepUnits: 1,
+      pricePrecision: 2,
       quantityPrecision: 0,
       maxLeveragePpm: 1000000,
       status: 'TRADING',

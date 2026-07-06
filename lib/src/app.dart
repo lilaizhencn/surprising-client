@@ -3,22 +3,24 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:kline_chart/kline_chart.dart';
 
 import 'app_state.dart';
 import 'models.dart';
 
-const _ink = Color(0xFFE7EDF8);
-const _muted = Color(0xFF8EA0B8);
-const _paper = Color(0xFF050914);
-const _panel = Color(0xFF111827);
-const _panelSoft = Color(0xFF1E293B);
-const _line = Color(0xFF24324A);
-const _pink = Color(0xFF3B82F6);
-const _violet = Color(0xFF14B8A6);
+const _ink = Color(0xFFEAECEF);
+const _muted = Color(0xFF848E9C);
+const _paper = Color(0xFF0B0E11);
+const _panel = Color(0xFF181A20);
+const _panelSoft = Color(0xFF1E2329);
+const _line = Color(0xFF2B3139);
+const _pink = Color(0xFFFCD535);
+const _violet = Color(0xFFA3E635);
 const _mint = Color(0xFF00C076);
 const _red = Color(0xFFF6465D);
-const _amber = Color(0xFFF0B90B);
+const _amber = Color(0xFFFCD535);
+const _lime = Color(0xFFB7FF2A);
 
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({
@@ -84,17 +86,17 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
           dividerColor: _line,
           textTheme: const TextTheme(
             titleLarge: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
               color: _ink,
             ),
             titleMedium: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
               color: _ink,
             ),
-            bodyMedium: TextStyle(fontSize: 13, color: _ink),
-            labelMedium: TextStyle(fontSize: 12, color: _muted),
+            bodyMedium: TextStyle(fontSize: 12, color: _ink),
+            labelMedium: TextStyle(fontSize: 11, color: _muted),
           ),
           snackBarTheme: const SnackBarThemeData(
             backgroundColor: _panel,
@@ -107,18 +109,18 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
           ),
           navigationBarTheme: NavigationBarThemeData(
             backgroundColor: _panel,
-            indicatorColor: _pink.withValues(alpha: .18),
+            indicatorColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             labelTextStyle: WidgetStateProperty.resolveWith(
               (states) => TextStyle(
                 color: states.contains(WidgetState.selected) ? _ink : _muted,
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
               ),
             ),
             iconTheme: WidgetStateProperty.resolveWith(
               (states) => IconThemeData(
-                color: states.contains(WidgetState.selected) ? _pink : _muted,
+                color: states.contains(WidgetState.selected) ? _amber : _muted,
               ),
             ),
           ),
@@ -128,13 +130,13 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
             side: const BorderSide(color: _line),
             labelStyle: const TextStyle(
               color: _ink,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
             ),
             secondaryLabelStyle: const TextStyle(
               color: _ink,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -197,43 +199,21 @@ class _ClientShellState extends State<ClientShell> {
       0 => const HomePage(),
       1 => const MarketsPage(),
       2 => const TradePage(),
-      3 => const WalletPage(),
-      _ => const ProfilePage(),
+      3 => const TradePage(),
+      _ => const WalletPage(),
     };
     return Scaffold(
       body: SafeArea(child: page),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: ExchangeBottomNav(
         selectedIndex: index,
-        height: 64,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (next) => setState(() => index = next),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: '首页',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.query_stats_outlined),
-            selectedIcon: Icon(Icons.query_stats),
-            label: '行情',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.swap_vert_circle_outlined),
-            selectedIcon: Icon(Icons.swap_vert_circle),
-            label: '交易',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: '钱包',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '我的',
-          ),
-        ],
+        onSelected: (next) {
+          if (next == 2) {
+            unawaited(state.selectMode(ProductMode.spot));
+          } else if (next == 3 && state.mode == ProductMode.spot) {
+            unawaited(state.selectMode(ProductMode.linear));
+          }
+          setState(() => index = next);
+        },
       ),
     );
   }
@@ -260,6 +240,378 @@ class _ClientShellState extends State<ClientShell> {
         messenger.showSnackBar(SnackBar(content: Text(state.lastNotice!)));
       }
     });
+  }
+}
+
+class ExchangeBottomNav extends StatelessWidget {
+  const ExchangeBottomNav({
+    required this.selectedIndex,
+    required this.onSelected,
+    super.key,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    const exchangeItems = [
+      _ExchangeNavItem(Icons.grid_view_outlined, Icons.grid_view, '首页'),
+      _ExchangeNavItem(Icons.show_chart, Icons.show_chart, '行情'),
+      _ExchangeNavItem(Icons.sync_alt, Icons.sync_alt, '交易'),
+      _ExchangeNavItem(Icons.receipt_long_outlined, Icons.receipt_long, '合约'),
+      _ExchangeNavItem(
+        Icons.account_balance_wallet_outlined,
+        Icons.account_balance_wallet,
+        '资产',
+      ),
+    ];
+    const assetItems = [
+      _ExchangeNavItem(Icons.grid_view_outlined, Icons.grid_view, '欧易'),
+      _ExchangeNavItem(Icons.explore_outlined, Icons.explore, '探索'),
+      _ExchangeNavItem(Icons.sync_alt, Icons.sync_alt, '交易'),
+      _ExchangeNavItem(Icons.public_outlined, Icons.public, '星球'),
+      _ExchangeNavItem(
+        Icons.account_balance_wallet_outlined,
+        Icons.account_balance_wallet,
+        '资产',
+      ),
+    ];
+    final items = selectedIndex == 4 ? assetItems : exchangeItems;
+    return Container(
+      height: 56 + bottomInset,
+      padding: EdgeInsets.only(bottom: bottomInset),
+      decoration: const BoxDecoration(
+        color: _panel,
+        border: Border(top: BorderSide(color: _line, width: .7)),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++)
+            Expanded(
+              child: InkWell(
+                onTap: () => onSelected(i),
+                child: _ExchangeNavButton(
+                  item: items[i],
+                  selected: selectedIndex == i,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExchangeNavItem {
+  const _ExchangeNavItem(this.icon, this.selectedIcon, this.label);
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+}
+
+class _ExchangeNavButton extends StatelessWidget {
+  const _ExchangeNavButton({required this.item, required this.selected});
+
+  final _ExchangeNavItem item;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedColor = item.label == '资产' ? _lime : _amber;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ExchangeNavGlyph(
+          label: item.label,
+          color: selected ? selectedColor : _muted,
+          selected: selected,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          item.label,
+          style: TextStyle(
+            color: selected ? selectedColor : _muted,
+            fontSize: 10,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Container(
+          width: selected ? 14 : 0,
+          height: 2,
+          decoration: BoxDecoration(
+            color: selectedColor,
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ExchangeNavGlyph extends StatelessWidget {
+  const ExchangeNavGlyph({
+    required this.label,
+    required this.color,
+    required this.selected,
+    super.key,
+  });
+
+  final String label;
+  final Color color;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size.square(24),
+      painter: _ExchangeNavGlyphPainter(
+        label: label,
+        color: color,
+        selected: selected,
+      ),
+    );
+  }
+}
+
+class _ExchangeNavGlyphPainter extends CustomPainter {
+  const _ExchangeNavGlyphPainter({
+    required this.label,
+    required this.color,
+    required this.selected,
+  });
+
+  final String label;
+  final Color color;
+  final bool selected;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..strokeWidth = selected ? 2.4 : 2.1
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    switch (label) {
+      case '首页':
+        _drawHome(canvas, size, fill);
+      case '欧易':
+        _drawOkx(canvas, size, fill);
+      case '行情':
+        _drawMarket(canvas, size, stroke);
+      case '探索':
+        _drawExplore(canvas, size, fill);
+      case '交易':
+        _drawTrade(canvas, size, stroke);
+      case '合约':
+        _drawContract(canvas, size, stroke, fill);
+      case '星球':
+        _drawPlanet(canvas, size, stroke, fill);
+      case '资产':
+        _drawWallet(canvas, size, stroke, fill);
+      default:
+        canvas.drawCircle(size.center(Offset.zero), size.width * .34, stroke);
+    }
+  }
+
+  void _drawOkx(Canvas canvas, Size size, Paint fill) {
+    final unit = size.width * .19;
+    final start = Offset(size.width * .22, size.height * .18);
+    final positions = [
+      Offset.zero,
+      Offset(unit, 0),
+      Offset(0, unit),
+      Offset(unit, unit),
+      Offset(unit * 2.4, unit),
+      Offset(0, unit * 2.4),
+      Offset(unit, unit * 2.4),
+    ];
+    for (final offset in positions) {
+      canvas.drawRect(
+        Rect.fromLTWH(start.dx + offset.dx, start.dy + offset.dy, unit, unit),
+        fill,
+      );
+    }
+  }
+
+  void _drawExplore(Canvas canvas, Size size, Paint fill) {
+    final center = size.center(Offset.zero);
+    final path = Path()
+      ..moveTo(center.dx, size.height * .16)
+      ..lineTo(size.width * .72, size.height * .72)
+      ..lineTo(center.dx, size.height * .60)
+      ..lineTo(size.width * .28, size.height * .72)
+      ..close();
+    canvas.drawPath(path, fill);
+  }
+
+  void _drawPlanet(Canvas canvas, Size size, Paint stroke, Paint fill) {
+    final center = size.center(Offset.zero);
+    canvas.drawCircle(center, size.width * .24, stroke);
+    final orbit = Rect.fromCenter(
+      center: center,
+      width: size.width * .78,
+      height: size.height * .34,
+    );
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-0.45);
+    canvas.translate(-center.dx, -center.dy);
+    canvas.drawOval(orbit, stroke);
+    canvas.restore();
+    canvas.drawCircle(
+      Offset(size.width * .76, size.height * .22),
+      size.width * .08,
+      fill,
+    );
+  }
+
+  void _drawHome(Canvas canvas, Size size, Paint fill) {
+    final unit = size.width / 5.6;
+    final gap = unit * .54;
+    final start = Offset(size.width * .18, size.height * .18);
+    for (var row = 0; row < 2; row++) {
+      for (var col = 0; col < 2; col++) {
+        final rect = Rect.fromLTWH(
+          start.dx + col * (unit + gap),
+          start.dy + row * (unit + gap),
+          unit,
+          unit,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, Radius.circular(unit * .14)),
+          fill,
+        );
+      }
+    }
+  }
+
+  void _drawMarket(Canvas canvas, Size size, Paint stroke) {
+    final path = Path()
+      ..moveTo(size.width * .14, size.height * .70)
+      ..lineTo(size.width * .34, size.height * .52)
+      ..lineTo(size.width * .48, size.height * .62)
+      ..lineTo(size.width * .75, size.height * .34);
+    canvas.drawPath(path, stroke);
+    canvas.drawLine(
+      Offset(size.width * .75, size.height * .34),
+      Offset(size.width * .75, size.height * .52),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .75, size.height * .34),
+      Offset(size.width * .57, size.height * .34),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .18, size.height * .82),
+      Offset(size.width * .68, size.height * .82),
+      stroke,
+    );
+  }
+
+  void _drawTrade(Canvas canvas, Size size, Paint stroke) {
+    canvas.drawLine(
+      Offset(size.width * .22, size.height * .34),
+      Offset(size.width * .78, size.height * .34),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .66, size.height * .22),
+      Offset(size.width * .78, size.height * .34),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .66, size.height * .46),
+      Offset(size.width * .78, size.height * .34),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .78, size.height * .66),
+      Offset(size.width * .22, size.height * .66),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .34, size.height * .54),
+      Offset(size.width * .22, size.height * .66),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .34, size.height * .78),
+      Offset(size.width * .22, size.height * .66),
+      stroke,
+    );
+  }
+
+  void _drawContract(Canvas canvas, Size size, Paint stroke, Paint fill) {
+    final rect = Rect.fromLTWH(
+      size.width * .24,
+      size.height * .14,
+      size.width * .50,
+      size.height * .68,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(size.width * .06)),
+      stroke,
+    );
+    for (final y in [.32, .48, .64]) {
+      canvas.drawLine(
+        Offset(size.width * .34, size.height * y),
+        Offset(size.width * .64, size.height * y),
+        stroke,
+      );
+    }
+    final diamond = Path()
+      ..moveTo(size.width * .76, size.height * .70)
+      ..lineTo(size.width * .84, size.height * .78)
+      ..lineTo(size.width * .76, size.height * .86)
+      ..lineTo(size.width * .68, size.height * .78)
+      ..close();
+    canvas.drawPath(diamond, fill);
+  }
+
+  void _drawWallet(Canvas canvas, Size size, Paint stroke, Paint fill) {
+    final rect = Rect.fromLTWH(
+      size.width * .17,
+      size.height * .25,
+      size.width * .66,
+      size.height * .50,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(size.width * .08)),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * .27, size.height * .25),
+      Offset(size.width * .43, size.height * .12),
+      stroke,
+    );
+    final pocket = Rect.fromLTWH(
+      size.width * .54,
+      size.height * .41,
+      size.width * .29,
+      size.height * .22,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(pocket, Radius.circular(size.width * .05)),
+      stroke,
+    );
+    canvas.drawCircle(Offset(size.width * .65, size.height * .52), 1.5, fill);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ExchangeNavGlyphPainter oldDelegate) {
+    return oldDelegate.label != label ||
+        oldDelegate.color != color ||
+        oldDelegate.selected != selected;
   }
 }
 
@@ -423,37 +775,58 @@ class MarketsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    return Column(
-      children: [
-        PageHeader(
-          title: '行情',
-          subtitle: '选择交易对',
-          action: IconButton.filledTonal(
-            onPressed: () => state.refreshInstruments(),
-            icon: const Icon(Icons.refresh),
+    final instruments = state.visibleInstruments;
+    return RefreshIndicator(
+      onRefresh: state.refreshInstruments,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                const Expanded(child: ExchangeSearchBox(hint: '搜索代币交易对和趋势')),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '更多',
+                  onPressed: state.refreshInstruments,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide.none,
+                    foregroundColor: _ink,
+                  ),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 34,
+                    height: 34,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.more_horiz, size: 22),
+                ),
+              ],
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: ModeSelector(
+          const SizedBox(height: 12),
+          const MarketPrimaryTabs(selectedIndex: 1),
+          const Divider(height: 1, color: _line),
+          MarketModeTabs(
             value: state.mode,
             onChanged: (mode) => unawaited(state.selectMode(mode)),
           ),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            children: state.visibleInstruments.map((instrument) {
-              return InstrumentRow(
+          const CategoryStrip(),
+          const MarketSortHeader(),
+          if (instruments.isEmpty)
+            const EmptyState(text: '暂无行情数据')
+          else
+            ...instruments.map((instrument) {
+              return MarketTickerRow(
                 instrument: instrument,
                 selected: instrument.symbol == state.selectedSymbol,
                 onTap: () => unawaited(state.selectSymbol(instrument.symbol)),
               );
-            }).toList(),
-          ),
-        ),
-      ],
+            }),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 }
@@ -500,49 +873,43 @@ class _TradePageState extends State<TradePage> {
         await state.refreshPrivateData();
       },
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
         children: [
-          PageHeader(
-            title: '交易',
-            subtitle:
-                '${instrument.displayName} · ${instrument.mode.label} · 最新 ${latestPrice == null ? '--' : money(latestPrice, digits: instrument.pricePrecision)}',
-            dense: true,
-            action: IconButton.filledTonal(
-              onPressed: () => state.refreshPublicData(),
-              icon: const Icon(Icons.refresh),
-            ),
-          ),
-          ModeSelector(
+          TradeModeTabs(
             value: state.mode,
             onChanged: (mode) => unawaited(state.selectMode(mode)),
           ),
+          const Divider(height: 10, color: _line),
+          TradeSymbolHeader(
+            instrument: instrument,
+            latestPrice: latestPrice,
+            onRefresh: state.refreshPublicData,
+          ),
           if (instrument.mode != ProductMode.spot) ...[
-            const SizedBox(height: 8),
-            PositionModeSelector(
-              value: state.positionMode,
-              onChanged: (mode) => unawaited(state.changePositionMode(mode)),
+            const SizedBox(height: 6),
+            ContractQuickSettings(
+              marginMode: marginMode,
+              leverage: '${(instrument.maxLeveragePpm / 1000000).round()}x',
+              positionMode: state.positionMode,
+              onMarginMode: (value) => setState(() => marginMode = value),
+              onPositionMode: (mode) =>
+                  unawaited(state.changePositionMode(mode)),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           SymbolStrip(
             instruments: state.visibleInstruments,
             selected: state.selectedSymbol,
             onSelected: (symbol) => unawaited(state.selectSymbol(symbol)),
           ),
-          const SizedBox(height: 10),
-          KlinePanel(
-            candles: state.candles,
-            period: state.period,
-            onPeriod: (period) => unawaited(state.selectPeriod(period)),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           SizedBox(
-            height: 370,
+            height: 376,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  flex: 11,
+                  flex: 12,
                   child: OrderTicket(
                     side: side,
                     orderType: orderType,
@@ -597,7 +964,7 @@ class _TradePageState extends State<TradePage> {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   flex: 9,
                   child: OrderBookPanel(
@@ -612,14 +979,55 @@ class _TradePageState extends State<TradePage> {
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          PrivateTradingPanel(state: state),
           if (instrument.mode != ProductMode.spot) ...[
-            AlgoOrderPanel(state: state, marginMode: marginMode),
-            const SizedBox(height: 8),
-            TriggerOrderPanel(state: state, marginMode: marginMode),
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 2),
+                childrenPadding: EdgeInsets.zero,
+                collapsedIconColor: _muted,
+                iconColor: _ink,
+                title: const Text(
+                  '高级委托',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                children: [
+                  AlgoOrderPanel(state: state, marginMode: marginMode),
+                  const SizedBox(height: 6),
+                  TriggerOrderPanel(state: state, marginMode: marginMode),
+                ],
+              ),
+            ),
             const SizedBox(height: 2),
           ],
-          PrivateTradingPanel(state: state),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 2),
+              collapsedIconColor: _muted,
+              iconColor: _ink,
+              title: Text(
+                '${instrument.displayName.replaceAll('-', '')} ${instrument.mode == ProductMode.spot ? '现货' : '永续'} K线图表',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              children: [
+                KlinePanel(
+                  candles: state.candles,
+                  period: state.period,
+                  onPeriod: (period) => unawaited(state.selectPeriod(period)),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -654,10 +1062,17 @@ class _WalletPageState extends State<WalletPage> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final total = state.balances.fold<double>(
+    final tradingTotal = state.balances.fold<double>(
       0,
       (sum, item) => sum + item.equity,
     );
+    final displayPortfolio = state.walletPortfolio.assets.isEmpty
+        ? fallbackWalletPortfolio()
+        : state.walletPortfolio;
+    final walletTotalCny = walletPortfolioCny(displayPortfolio);
+    final tradingTotalCny = tradingTotal * 7.18;
+    final totalCny = walletTotalCny + tradingTotalCny;
+    final pnlCny = totalCny == 0 ? 0.0 : -totalCny * 0.0185;
     final symbols = _walletSymbols(state);
     final selectedSymbol = symbols.contains(walletSymbol)
         ? walletSymbol
@@ -672,367 +1087,569 @@ class _WalletPageState extends State<WalletPage> {
         deposit != null &&
         deposit.symbol == selectedSymbol &&
         deposit.chain == selectedChain;
-    return RefreshIndicator(
-      onRefresh: state.refreshPrivateData,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [
-          PageHeader(
-            title: '钱包',
-            subtitle: state.isLoggedIn ? 'UID ${state.userId}' : '登录后查看资产',
-            action: IconButton.filledTonal(
-              onPressed: state.refreshPrivateData,
-              icon: const Icon(Icons.refresh),
-            ),
-          ),
-          GradientPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Material(
+      color: Colors.black,
+      child: RefreshIndicator(
+        onRefresh: state.refreshPrivateData,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+          children: [
+            Row(
               children: [
-                const Text('总资产估值', style: TextStyle(color: _muted)),
-                const SizedBox(height: 8),
-                Text(
-                  '${money(total, digits: 4)} USDT',
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
+                const Text(
+                  '总资产估值',
+                  style: TextStyle(
+                    color: _muted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: MetricPill(
-                        label: '交易账户',
-                        value: '${money(total, digits: 4)} USDT',
-                        color: _violet,
-                      ),
-                    ),
-                    Expanded(
-                      child: MetricPill(
-                        label: '链上币种',
-                        value: '${state.walletPortfolio.assetCount}',
-                        color: _mint,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: WalletAction(
-                        icon: Icons.call_received,
-                        label: '充币',
-                        onTap: state.isLoggedIn
-                            ? () => unawaited(
-                                state.loadDepositAddress(
-                                  chain: selectedChain,
-                                  symbol: selectedSymbol,
-                                ),
-                              )
-                            : () => showAuthSheet(context),
-                      ),
-                    ),
-                    Expanded(
-                      child: WalletAction(
-                        icon: Icons.call_made,
-                        label: '提币',
-                        onTap: state.isLoggedIn
-                            ? state.refreshWallet
-                            : () => showAuthSheet(context),
-                      ),
-                    ),
-                    Expanded(
-                      child: WalletAction(
-                        icon: Icons.swap_horiz,
-                        label: '划转',
-                        onTap: state.isLoggedIn
-                            ? state.refreshPrivateData
-                            : () => showAuthSheet(context),
-                      ),
-                    ),
-                    Expanded(
-                      child: WalletAction(
-                        icon: Icons.receipt_long,
-                        label: '记录',
-                        onTap: state.isLoggedIn
-                            ? state.refreshWallet
-                            : () => showAuthSheet(context),
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 6),
+                const Icon(Icons.visibility_outlined, color: _muted, size: 16),
+                const Spacer(),
+                IconButton(
+                  tooltip: '资金记录',
+                  onPressed: state.isLoggedIn
+                      ? () => unawaited(state.refreshWallet())
+                      : () => showAuthSheet(context),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide.none,
+                    foregroundColor: _ink,
+                  ),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 34,
+                    height: 34,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.receipt_long_outlined, size: 21),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          if (!state.isLoggedIn)
-            PrimaryAction(
-              label: '登录 / 注册',
-              icon: Icons.login,
-              onPressed: () => showAuthSheet(context),
-            )
-          else
-            Column(
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SectionTitle(
-                        title: '充币地址',
-                        action: IconButton.filledTonal(
-                          onPressed: () => unawaited(
-                            state.loadDepositAddress(
-                              chain: selectedChain,
-                              symbol: selectedSymbol,
-                            ),
+                Expanded(
+                  child: Text(
+                    money(totalCny, digits: 2),
+                    style: const TextStyle(
+                      fontSize: 30,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 5),
+                  child: Text(
+                    'CNY',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _ink,
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(left: 3, bottom: 8),
+                  child: Icon(Icons.arrow_drop_down, color: _muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '今日收益 ${pnlCny >= 0 ? '+' : ''}${money(pnlCny, digits: 2)} (${totalCny == 0 ? '0.00' : '-1.85'}%)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: pnlCny >= 0 ? _mint : _red,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                const Icon(Icons.chevron_right, color: _ink, size: 18),
+                const SizedBox(width: 8),
+                const SizedBox(width: 78, height: 36, child: AssetSparkline()),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                WalletAction(
+                  icon: Icons.file_download_outlined,
+                  label: '充币',
+                  onTap: () => _openRechargeFlow(context, state),
+                ),
+                WalletAction(
+                  icon: Icons.file_upload_outlined,
+                  label: '提币',
+                  onTap: state.isLoggedIn
+                      ? state.refreshWallet
+                      : () => showAuthSheet(context),
+                ),
+                WalletAction(
+                  icon: Icons.swap_horiz,
+                  label: '划转',
+                  onTap: state.isLoggedIn
+                      ? state.refreshPrivateData
+                      : () => showAuthSheet(context),
+                ),
+                WalletAction(
+                  icon: Icons.link,
+                  label: '赚币',
+                  onTap: state.isLoggedIn
+                      ? state.refreshWallet
+                      : () => showAuthSheet(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+              decoration: BoxDecoration(
+                color: const Color(0xFF202124),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '启用 DEX 交易功能',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
-                          icon: const Icon(Icons.qr_code),
                         ),
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SmallDropdown(
-                              value: selectedSymbol,
-                              values: symbols,
-                              onChanged: (value) {
-                                final nextChains = _walletChains(state, value);
-                                setState(() {
-                                  walletSymbol = value;
-                                  walletChain = nextChains.first;
-                                });
-                              },
-                            ),
+                        SizedBox(height: 4),
+                        Text(
+                          '在交易所交易 DEX 代币',
+                          style: TextStyle(
+                            color: _muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SmallDropdown(
-                              value: selectedChain,
-                              values: chains,
-                              onChanged: (value) =>
-                                  setState(() => walletChain = value),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: PrimaryAction(
-                              label: '获取地址',
-                              icon: Icons.call_received,
-                              onPressed: () => unawaited(
-                                state.loadDepositAddress(
-                                  chain: selectedChain,
-                                  symbol: selectedSymbol,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => unawaited(
-                                state.loadDepositAddress(
-                                  chain: selectedChain,
-                                  symbol: selectedSymbol,
-                                  forceNew: true,
-                                ),
-                              ),
-                              icon: const Icon(Icons.add),
-                              label: const Text('新地址'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (depositMatches) ...[
-                        const SizedBox(height: 10),
-                        DepositAddressCard(address: deposit),
+                        ),
                       ],
-                    ],
+                    ),
                   ),
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: _lime.withValues(alpha: .12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet,
+                      color: _lime,
+                      size: 22,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Text(
+                  '资产组合',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                 ),
-                Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SectionTitle(title: '提现'),
-                      InfoLine(
-                        label: '$selectedChain · $selectedSymbol 可用',
-                        value: chainAsset == null
-                            ? '--'
-                            : money(chainAsset.availableBalance, digits: 8),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: withdrawAddressController,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: _ink,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: '到账地址',
-                          labelStyle: const TextStyle(color: _muted),
-                          isDense: true,
-                          filled: true,
-                          fillColor: _panelSoft,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                            borderSide: const BorderSide(color: _line),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                            borderSide: const BorderSide(color: _pink),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
+                const Spacer(),
+                IconButton(
+                  tooltip: '筛选',
+                  onPressed: state.refreshPrivateData,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide.none,
+                    foregroundColor: _ink,
+                  ),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 34,
+                    height: 34,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.tune, size: 20),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 96,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  AssetPortfolioCard(
+                    icon: Icons.savings_outlined,
+                    title: '资金账户',
+                    amount: '¥${money(walletTotalCny, digits: 2)}',
+                  ),
+                  AssetPortfolioCard(
+                    icon: Icons.swap_vert,
+                    title: '交易账户',
+                    amount: '¥${money(tradingTotalCny, digits: 2)}',
+                  ),
+                  const AssetPortfolioCard(
+                    icon: Icons.link,
+                    title: '赚币',
+                    amount: '¥0',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Row(
+              children: [
+                Text(
+                  '代币',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                Spacer(),
+                Icon(Icons.keyboard_arrow_up, color: _ink),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Row(
+              children: [
+                Text('名称/数量', style: TextStyle(color: _muted, fontSize: 12)),
+                Spacer(),
+                Text('价值/现货收益', style: TextStyle(color: _muted, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (displayPortfolio.assets.isNotEmpty)
+              ...displayPortfolio.assets.map(
+                (walletAsset) => WalletTokenRow(asset: walletAsset),
+              ),
+            if (!state.isLoggedIn)
+              PrimaryAction(
+                label: '登录 / 注册',
+                icon: Icons.login,
+                onPressed: () => showAuthSheet(context),
+              )
+            else
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerColor: Colors.transparent,
+                  splashColor: Colors.transparent,
+                  highlightColor: Colors.transparent,
+                ),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  collapsedIconColor: _ink,
+                  iconColor: _ink,
+                  title: const Text(
+                    '钱包工具',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  children: [
+                    Panel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: withdrawAmountController,
-                              label: '数量',
+                          SectionTitle(
+                            title: '充币地址',
+                            action: IconButton.filledTonal(
+                              onPressed: () => unawaited(
+                                state.loadDepositAddress(
+                                  chain: selectedChain,
+                                  symbol: selectedSymbol,
+                                ),
+                              ),
+                              icon: const Icon(Icons.qr_code),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 92,
-                            child: Center(
-                              child: Text(
-                                selectedSymbol,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SmallDropdown(
+                                  value: selectedSymbol,
+                                  values: symbols,
+                                  onChanged: (value) {
+                                    final nextChains = _walletChains(
+                                      state,
+                                      value,
+                                    );
+                                    setState(() {
+                                      walletSymbol = value;
+                                      walletChain = nextChains.first;
+                                    });
+                                  },
                                 ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SmallDropdown(
+                                  value: selectedChain,
+                                  values: chains,
+                                  onChanged: (value) =>
+                                      setState(() => walletChain = value),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: PrimaryAction(
+                                  label: '获取地址',
+                                  icon: Icons.call_received,
+                                  onPressed: () => unawaited(
+                                    state.loadDepositAddress(
+                                      chain: selectedChain,
+                                      symbol: selectedSymbol,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => unawaited(
+                                    state.loadDepositAddress(
+                                      chain: selectedChain,
+                                      symbol: selectedSymbol,
+                                      forceNew: true,
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('新地址'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (depositMatches) ...[
+                            const SizedBox(height: 10),
+                            DepositAddressCard(address: deposit),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Panel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SectionTitle(title: '提现'),
+                          InfoLine(
+                            label: '$selectedChain · $selectedSymbol 可用',
+                            value: chainAsset == null
+                                ? '--'
+                                : money(chainAsset.availableBalance, digits: 8),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: withdrawAddressController,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: _ink,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: '到账地址',
+                              labelStyle: const TextStyle(color: _muted),
+                              isDense: true,
+                              filled: true,
+                              fillColor: _panelSoft,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide: const BorderSide(color: _line),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide: const BorderSide(color: _pink),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: withdrawAmountController,
+                                  label: '数量',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 92,
+                                child: Center(
+                                  child: Text(
+                                    selectedSymbol,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          PrimaryAction(
+                            label: '确认提现',
+                            icon: Icons.call_made,
+                            onPressed: () => unawaited(
+                              state.withdrawWallet(
+                                chain: selectedChain,
+                                symbol: selectedSymbol,
+                                toAddress: withdrawAddressController.text,
+                                amount: withdrawAmountController.text,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      PrimaryAction(
-                        label: '确认提现',
-                        icon: Icons.call_made,
-                        onPressed: () => unawaited(
-                          state.withdrawWallet(
-                            chain: selectedChain,
-                            symbol: selectedSymbol,
-                            toAddress: withdrawAddressController.text,
-                            amount: withdrawAmountController.text,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SectionTitle(title: '账户划转'),
-                      Row(
+                    ),
+                    Panel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: SmallDropdown(
-                              value: source,
-                              values: const [
-                                'SPOT',
-                                'USDT_PERPETUAL',
-                                'COIN_PERPETUAL',
-                              ],
-                              onChanged: (value) =>
-                                  setState(() => source = value),
-                            ),
+                          const SectionTitle(title: '账户划转'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SmallDropdown(
+                                  value: source,
+                                  values: const [
+                                    'SPOT',
+                                    'USDT_PERPETUAL',
+                                    'COIN_PERPETUAL',
+                                  ],
+                                  onChanged: (value) =>
+                                      setState(() => source = value),
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 6),
+                                child: Icon(Icons.arrow_forward, size: 18),
+                              ),
+                              Expanded(
+                                child: SmallDropdown(
+                                  value: target,
+                                  values: const [
+                                    'SPOT',
+                                    'USDT_PERPETUAL',
+                                    'COIN_PERPETUAL',
+                                  ],
+                                  onChanged: (value) =>
+                                      setState(() => target = value),
+                                ),
+                              ),
+                            ],
                           ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 6),
-                            child: Icon(Icons.arrow_forward, size: 18),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: amountController,
+                                  label: '数量',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 86,
+                                child: AppTextField(
+                                  initialValue: asset,
+                                  label: '资产',
+                                  onChanged: (value) =>
+                                      asset = value.toUpperCase(),
+                                ),
+                              ),
+                            ],
                           ),
-                          Expanded(
-                            child: SmallDropdown(
-                              value: target,
-                              values: const [
-                                'SPOT',
-                                'USDT_PERPETUAL',
-                                'COIN_PERPETUAL',
-                              ],
-                              onChanged: (value) =>
-                                  setState(() => target = value),
+                          const SizedBox(height: 10),
+                          PrimaryAction(
+                            label: '确认划转',
+                            icon: Icons.swap_horiz,
+                            onPressed: () => unawaited(
+                              state.transfer(
+                                sourceAccountType: source,
+                                targetAccountType: target,
+                                asset: asset,
+                                amount:
+                                    double.tryParse(amountController.text) ?? 0,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: amountController,
-                              label: '数量',
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 86,
-                            child: AppTextField(
-                              initialValue: asset,
-                              label: '资产',
-                              onChanged: (value) => asset = value.toUpperCase(),
-                            ),
-                          ),
-                        ],
+                    ),
+                    SectionTitle(
+                      title: '链上资产',
+                      action: IconButton.filledTonal(
+                        onPressed: () => unawaited(state.refreshWallet()),
+                        icon: const Icon(Icons.refresh),
                       ),
-                      const SizedBox(height: 10),
-                      PrimaryAction(
-                        label: '确认划转',
-                        icon: Icons.swap_horiz,
-                        onPressed: () => unawaited(
-                          state.transfer(
-                            sourceAccountType: source,
-                            targetAccountType: target,
-                            asset: asset,
-                            amount: double.tryParse(amountController.text) ?? 0,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
+                    ...state.walletPortfolio.assets.map(
+                      (walletAsset) => WalletAssetRow(asset: walletAsset),
+                    ),
+                    if (state.walletPortfolio.assets.isEmpty)
+                      const EmptyState(text: '暂无链上资产数据'),
+                    const SectionTitle(title: '资金记录'),
+                    ...state.walletOrders.map(
+                      (record) => WalletOrderRecordRow(record: record),
+                    ),
+                    if (state.walletOrders.isEmpty)
+                      const EmptyState(text: '暂无资金记录'),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            Theme(
+              data: Theme.of(context).copyWith(
+                dividerColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: EdgeInsets.zero,
+                collapsedIconColor: _ink,
+                iconColor: _ink,
+                title: const Text(
+                  '交易账户资产',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                children: [
+                  ...state.balances.map(
+                    (balance) => BalanceRow(balance: balance),
                   ),
-                ),
-                SectionTitle(
-                  title: '链上资产',
-                  action: IconButton.filledTonal(
-                    onPressed: () => unawaited(state.refreshWallet()),
-                    icon: const Icon(Icons.refresh),
-                  ),
-                ),
-                ...state.walletPortfolio.assets.map(
-                  (walletAsset) => WalletAssetRow(asset: walletAsset),
-                ),
-                if (state.walletPortfolio.assets.isEmpty)
-                  const EmptyState(text: '暂无链上资产数据'),
-                const SectionTitle(title: '资金记录'),
-                ...state.walletOrders.map(
-                  (record) => WalletOrderRecordRow(record: record),
-                ),
-                if (state.walletOrders.isEmpty)
-                  const EmptyState(text: '暂无资金记录'),
-              ],
+                  if (state.balances.isEmpty) const EmptyState(text: '暂无资产数据'),
+                ],
+              ),
             ),
-          const SizedBox(height: 12),
-          const SectionTitle(title: '交易账户资产'),
-          ...state.balances.map((balance) => BalanceRow(balance: balance)),
-          if (state.balances.isEmpty) const EmptyState(text: '暂无资产数据'),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  void _openRechargeFlow(BuildContext context, AppState state) {
+    if (!state.isLoggedIn) {
+      showAuthSheet(context);
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const RechargeCoinPage()));
   }
 
   List<String> _walletSymbols(AppState state) {
@@ -1074,6 +1691,711 @@ class _WalletPageState extends State<WalletPage> {
     }
     return null;
   }
+}
+
+class RechargeCoinPage extends StatefulWidget {
+  const RechargeCoinPage({super.key});
+
+  @override
+  State<RechargeCoinPage> createState() => _RechargeCoinPageState();
+}
+
+class _RechargeCoinPageState extends State<RechargeCoinPage> {
+  final queryController = TextEditingController();
+
+  @override
+  void dispose() {
+    queryController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final query = queryController.text.trim().toUpperCase();
+    final symbols = rechargeSymbols(
+      state,
+    ).where((symbol) => query.isEmpty || symbol.contains(query)).toList();
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+          children: [
+            RechargeHeader(
+              title: '选择资产',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: '帮助',
+                    onPressed: () {},
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      side: BorderSide.none,
+                    ),
+                    icon: const Icon(Icons.help_outline, size: 30),
+                  ),
+                  IconButton(
+                    tooltip: '记录',
+                    onPressed: () => unawaited(state.refreshWallet()),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      side: BorderSide.none,
+                    ),
+                    icon: const Icon(Icons.receipt_long_outlined, size: 30),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            RechargeSearchField(
+              controller: queryController,
+              hint: '搜索数字货币',
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 26),
+            const Text(
+              '数字货币',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 24),
+            for (final symbol in symbols)
+              RechargeCoinRow(
+                symbol: symbol,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => RechargeNetworkPage(symbol: symbol),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RechargeNetworkPage extends StatelessWidget {
+  const RechargeNetworkPage({required this.symbol, super.key});
+
+  final String symbol;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final chains = rechargeChains(state, symbol);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+          children: [
+            const RechargeHeader(title: '选择网络'),
+            const SizedBox(height: 28),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111111),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF333333)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info, color: _ink, size: 24),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '不清楚如何选择网络？',
+                          style: TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          '请确保您选择的网络，与汇出平台或钱包的网络保持一致。',
+                          style: TextStyle(
+                            color: _ink,
+                            fontSize: 17,
+                            height: 1.45,
+                          ),
+                        ),
+                        SizedBox(height: 18),
+                        Text(
+                          '了解更多  →',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 34),
+            const Row(
+              children: [
+                Text('网络', style: TextStyle(color: _muted, fontSize: 17)),
+                Spacer(),
+                Text(
+                  '到账时间/最小充币金额',
+                  style: TextStyle(color: _muted, fontSize: 17),
+                ),
+              ],
+            ),
+            const SizedBox(height: 30),
+            const Text(
+              '可用',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 24),
+            for (final chain in chains)
+              RechargeNetworkRow(
+                symbol: symbol,
+                chain: chain,
+                onTap: () async {
+                  await state.loadDepositAddress(chain: chain, symbol: symbol);
+                  if (!context.mounted) return;
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          RechargeAddressPage(symbol: symbol, chain: chain),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RechargeAddressPage extends StatefulWidget {
+  const RechargeAddressPage({
+    required this.symbol,
+    required this.chain,
+    super.key,
+  });
+
+  final String symbol;
+  final String chain;
+
+  @override
+  State<RechargeAddressPage> createState() => _RechargeAddressPageState();
+}
+
+class _RechargeAddressPageState extends State<RechargeAddressPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = AppScope.of(context);
+      final address = state.walletDepositAddress;
+      if (address == null ||
+          address.symbol != widget.symbol ||
+          address.chain != widget.chain) {
+        unawaited(
+          state.loadDepositAddress(chain: widget.chain, symbol: widget.symbol),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final address = state.walletDepositAddress;
+    final matches =
+        address != null &&
+        address.symbol == widget.symbol &&
+        address.chain == widget.chain;
+    final addressText = matches ? address.address : '地址生成中...';
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
+          children: [
+            RechargeHeader(
+              title: '',
+              trailing: IconButton(
+                tooltip: '更多',
+                onPressed: () {},
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  side: BorderSide.none,
+                ),
+                icon: const Icon(Icons.more_horiz, size: 30),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Center(
+              child: Text(
+                '充值 ${widget.symbol}',
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF202020),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    _QrImage(
+                      dataUrl: matches ? address.qrCodeDataUrl : '',
+                      size: 244,
+                    ),
+                    Container(
+                      width: 50,
+                      height: 50,
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: CryptoAvatar(symbol: widget.symbol, size: 42),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 34),
+            const Text(
+              '地址 〉',
+              style: TextStyle(
+                color: _muted,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SelectableText(
+                    addressText,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      height: 1.15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                InkWell(
+                  onTap: matches
+                      ? () => Clipboard.setData(
+                          ClipboardData(text: address.address),
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF1F1F1F),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.copy, size: 28),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              '切换至 0x 地址  ⇄',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 28),
+            const Divider(color: Color(0xFF262626)),
+            RechargeInfoLine(
+              label: '网络',
+              value: networkDisplayName(widget.chain, widget.symbol),
+              leading: CryptoAvatar(
+                symbol: chainSymbol(widget.chain),
+                size: 18,
+              ),
+            ),
+            const RechargeInfoLine(label: '充值账户', value: '资金账户'),
+            RechargeInfoLine(
+              label: '最小充币金额',
+              value: '0.01 ${widget.symbol}',
+              showChevron: false,
+              showInfo: true,
+            ),
+            RechargeInfoLine(
+              label: '到账时间',
+              value: networkEta(widget.chain),
+              showChevron: false,
+              showInfo: true,
+            ),
+            RechargeInfoLine(
+              label: '可提币时间',
+              value: networkEta(widget.chain),
+              showChevron: false,
+              showInfo: true,
+            ),
+            const RechargeInfoLine(label: '合约地址', value: '查看详情'),
+            if (!matches) ...[
+              const SizedBox(height: 18),
+              PrimaryAction(
+                label: state.loadingPrivate ? '加载中' : '重新获取地址',
+                icon: Icons.refresh,
+                onPressed: () => unawaited(
+                  state.loadDepositAddress(
+                    chain: widget.chain,
+                    symbol: widget.symbol,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RechargeHeader extends StatelessWidget {
+  const RechargeHeader({required this.title, this.trailing, super.key});
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 54,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: '返回',
+              onPressed: () => Navigator.pop(context),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                side: BorderSide.none,
+              ),
+              icon: const Icon(Icons.arrow_back_ios_new, size: 27),
+            ),
+          ),
+          if (title.isNotEmpty)
+            Text(
+              title,
+              style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900),
+            ),
+          if (trailing != null)
+            Align(alignment: Alignment.centerRight, child: trailing!),
+        ],
+      ),
+    );
+  }
+}
+
+class RechargeSearchField extends StatelessWidget {
+  const RechargeSearchField({
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+    super.key,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(
+          color: _muted,
+          fontSize: 19,
+          fontWeight: FontWeight.w800,
+        ),
+        prefixIcon: const Icon(Icons.search, color: _ink, size: 30),
+        filled: true,
+        fillColor: const Color(0xFF1F1F1F),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+}
+
+class RechargeCoinRow extends StatelessWidget {
+  const RechargeCoinRow({required this.symbol, required this.onTap, super.key});
+
+  final String symbol;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 17),
+        child: Row(
+          children: [
+            CryptoAvatar(symbol: symbol, size: 56),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        symbol,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (symbol == 'USDG') ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _mint.withValues(alpha: .16),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: const Text(
+                            '3.5% 年化收益',
+                            style: TextStyle(
+                              color: _mint,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    assetDisplayName(symbol),
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RechargeNetworkRow extends StatelessWidget {
+  const RechargeNetworkRow({
+    required this.symbol,
+    required this.chain,
+    required this.onTap,
+    super.key,
+  });
+
+  final String symbol;
+  final String chain;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Row(
+          children: [
+            CryptoAvatar(symbol: chainSymbol(chain), size: 52),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text(
+                networkDisplayName(chain, symbol),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 23,
+                  height: 1.18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  networkEta(chain),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '0.01 $symbol',
+                  style: const TextStyle(color: _muted, fontSize: 16),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RechargeInfoLine extends StatelessWidget {
+  const RechargeInfoLine({
+    required this.label,
+    required this.value,
+    this.leading,
+    this.showChevron = true,
+    this.showInfo = false,
+    super.key,
+  });
+
+  final String label;
+  final String value;
+  final Widget? leading;
+  final bool showChevron;
+  final bool showInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Row(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              if (showInfo) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.info_outline, color: _muted, size: 18),
+              ],
+            ],
+          ),
+          const Spacer(),
+          if (leading != null) ...[leading!, const SizedBox(width: 8)],
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (showChevron) ...[
+            const SizedBox(width: 3),
+            const Icon(Icons.keyboard_arrow_down, color: _muted),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+List<String> rechargeSymbols(AppState state) {
+  final symbols =
+      state.walletPortfolio.assets
+          .map((asset) => asset.symbol.toUpperCase())
+          .where((symbol) => symbol.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+  if (symbols.isNotEmpty) return symbols;
+  return const [
+    'USDT',
+    'USDG',
+    'USDC',
+    'BTC',
+    'ETH',
+    'XAUT',
+    'SOL',
+    'TRX',
+    '1INCH',
+  ];
+}
+
+List<String> rechargeChains(AppState state, String symbol) {
+  for (final asset in state.walletPortfolio.assets) {
+    if (asset.symbol.toUpperCase() != symbol.toUpperCase()) continue;
+    final chains = asset.chains
+        .map((chain) => chain.chain)
+        .where((chain) => chain.isNotEmpty)
+        .toSet()
+        .toList();
+    if (chains.isNotEmpty) return chains;
+  }
+  if (symbol == 'BTC') return const ['BTC'];
+  if (symbol == 'ETH') return const ['ETH', 'ARB', 'AVAX'];
+  return const ['X Layer', 'TRON', 'ETH', 'APTOS', 'ARB', 'AVAX', 'BERA'];
+}
+
+String chainSymbol(String chain) {
+  final upper = chain.toUpperCase();
+  if (upper.contains('TRON') || upper == 'TRX') return 'TRX';
+  if (upper.contains('ETH')) return 'ETH';
+  if (upper.contains('BTC')) return 'BTC';
+  if (upper.contains('SOL')) return 'SOL';
+  if (upper.contains('X LAYER') || upper == 'XLAYER') return 'OKB';
+  if (upper.contains('APTOS')) return 'APTOS';
+  if (upper.contains('ARB')) return 'ARB';
+  if (upper.contains('AVAX') || upper.contains('AVALANCHE')) return 'AVAX';
+  if (upper.contains('BERA')) return 'BERA';
+  return upper.isEmpty ? '?' : upper.substring(0, 1);
 }
 
 class ProfilePage extends StatelessWidget {
@@ -1243,7 +2565,7 @@ class _KlinePanelState extends State<KlinePanel> {
         children: [
           Row(
             children: [
-              const Text('K线', style: TextStyle(fontWeight: FontWeight.w900)),
+              const Text('K线', style: TextStyle(fontWeight: FontWeight.w700)),
               const Spacer(),
               for (final period in const ['1m', '5m', '15m', '1h', '4h'])
                 Padding(
@@ -1316,50 +2638,67 @@ class OrderTicket extends StatelessWidget {
     final buy = side == 'BUY';
     final hedgeMode =
         instrument.mode != ProductMode.spot && positionMode == 'HEDGE';
+    void stepPrice(int direction) {
+      if (orderType == 'MARKET') return;
+      final current = double.tryParse(priceController.text) ?? 0;
+      final tick = instrument.priceFromTicks(1).abs();
+      final next = math.max(0.0, current + tick * direction);
+      priceController.text = money(next, digits: instrument.pricePrecision);
+    }
+
+    void stepQuantity(int direction) {
+      final current = int.tryParse(quantityController.text) ?? 0;
+      quantityController.text = math.max(0, current + direction).toString();
+    }
+
     return Panel(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(6),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             BuySellSwitch(value: side, onChanged: onSide),
-            const SizedBox(height: 8),
+            const SizedBox(height: 5),
             Row(
               children: [
                 Expanded(
                   child: SmallDropdown(
                     value: orderType,
                     values: const ['LIMIT', 'MARKET'],
+                    labelBuilder: orderTypeLabel,
                     onChanged: onOrderType,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 Expanded(
                   child: SmallDropdown(
                     value: timeInForce,
                     values: const ['GTC', 'IOC', 'FOK', 'GTX'],
+                    labelBuilder: timeInForceLabel,
                     onChanged: onTimeInForce,
                   ),
                 ),
               ],
             ),
             if (instrument.mode != ProductMode.spot) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Row(
                 children: [
                   Expanded(
                     child: SmallDropdown(
                       value: marginMode,
                       values: const ['CROSS', 'ISOLATED'],
+                      labelBuilder: marginModeLabel,
                       onChanged: onMarginMode,
                     ),
                   ),
                   if (hedgeMode) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 5),
                     Expanded(
                       child: SmallDropdown(
                         value: positionSide == 'NET' ? 'LONG' : positionSide,
                         values: const ['LONG', 'SHORT'],
+                        labelBuilder: positionSideLabel,
                         onChanged: onPositionSide,
                       ),
                     ),
@@ -1367,15 +2706,51 @@ class OrderTicket extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(height: 8),
-            AppTextField(
-              controller: priceController,
-              label: '价格 ${instrument.quoteAsset}',
-              enabled: orderType != 'MARKET',
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                Expanded(
+                  child: TradeNumericField(
+                    controller: priceController,
+                    label: '价格 (${instrument.quoteAsset})',
+                    enabled: orderType != 'MARKET',
+                    onMinus: () => stepPrice(-1),
+                    onPlus: () => stepPrice(1),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                BestPriceButton(
+                  enabled: orderType != 'MARKET',
+                  onTap: () {
+                    final bids = AppScope.of(context).orderBook.bids;
+                    if (bids.isEmpty) return;
+                    priceController.text = money(
+                      instrument.priceFromTicks(bids.first.priceTicks),
+                      digits: instrument.pricePrecision,
+                    );
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            AppTextField(controller: quantityController, label: '数量 steps'),
-            const SizedBox(height: 8),
+            const SizedBox(height: 5),
+            TradeNumericField(
+              controller: quantityController,
+              label: '数量',
+              suffixLabel: instrument.baseAsset,
+              onMinus: () => stepQuantity(-1),
+              onPlus: () => stepQuantity(1),
+            ),
+            const SizedBox(height: 6),
+            const OrderAmountSlider(),
+            const SizedBox(height: 5),
+            OrderMetaRow(label: '可用', value: '--  ⇆'),
+            OrderMetaRow(label: '最大', value: '0.000 ${instrument.baseAsset}'),
+            if (instrument.mode != ProductMode.spot)
+              OrderMetaRow(
+                label: '保证金',
+                value: '0.00 ${instrument.quoteAsset}',
+              ),
+            const SizedBox(height: 3),
             Row(
               children: [
                 Expanded(
@@ -1395,23 +2770,27 @@ class OrderTicket extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: loggedIn ? (buy ? _mint : _red) : _violet,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
-                minimumSize: const Size.fromHeight(44),
+                minimumSize: const Size.fromHeight(34),
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               onPressed: onSubmit,
-              icon: Icon(loggedIn ? Icons.flash_on : Icons.login),
+              icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn
                     ? hedgeMode
                           ? (buy ? '买入' : '卖出')
                           : (buy ? '买入 / 开多' : '卖出 / 开空')
-                    : '登录后下单',
+                    : '登录',
               ),
             ),
           ],
@@ -1528,7 +2907,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('算法单', style: TextStyle(fontWeight: FontWeight.w900)),
+          const Text('算法单', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -1631,7 +3010,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(6),
               ),
-              minimumSize: const Size.fromHeight(42),
+              minimumSize: const Size.fromHeight(38),
             ),
             onPressed: _valid && !submitting ? submit : null,
             icon: Icon(submitting ? Icons.hourglass_top : Icons.schedule),
@@ -1759,7 +3138,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               const Expanded(
                 child: Text(
                   '条件单',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
               IconButton.filledTonal(
@@ -1800,7 +3179,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
-                minimumSize: const Size.fromHeight(42),
+                minimumSize: const Size.fromHeight(38),
               ),
               onPressed: validCount == 0 || submitting ? null : submit,
               icon: Icon(
@@ -1972,8 +3351,19 @@ class OrderBookPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asks = orderBook.asks.take(6).toList().reversed.toList();
-    final bids = orderBook.bids.take(6).toList();
+    final asks = orderBook.asks.take(5).toList().reversed.toList();
+    final bids = orderBook.bids.take(5).toList();
+    final askTotal = asks.fold<int>(
+      0,
+      (sum, level) => sum + level.quantitySteps.abs(),
+    );
+    final bidTotal = bids.fold<int>(
+      0,
+      (sum, level) => sum + level.quantitySteps.abs(),
+    );
+    final buyRatio = bidTotal + askTotal == 0
+        ? .5
+        : bidTotal / (bidTotal + askTotal);
     final fallbackPriceTicks = bids.isNotEmpty
         ? bids.first.priceTicks
         : (asks.isNotEmpty ? asks.last.priceTicks : 0);
@@ -1983,7 +3373,7 @@ class OrderBookPanel extends StatelessWidget {
             ? null
             : instrument.priceFromTicks(fallbackPriceTicks));
     return Panel(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(6),
       child: Column(
         children: [
           const Row(
@@ -1991,13 +3381,13 @@ class OrderBookPanel extends StatelessWidget {
               Expanded(
                 child: Text(
                   '价格',
-                  style: TextStyle(color: _muted, fontSize: 11),
+                  style: TextStyle(color: _muted, fontSize: 10),
                 ),
               ),
-              Text('数量', style: TextStyle(color: _muted, fontSize: 11)),
+              Text('数量', style: TextStyle(color: _muted, fontSize: 10)),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           for (final level in asks)
             BookLine(
               level: level,
@@ -2006,14 +3396,14 @@ class OrderBookPanel extends StatelessWidget {
               onTap: onPrice,
             ),
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
               displayPrice == null
                   ? '--'
                   : money(displayPrice, digits: instrument.pricePrecision),
               style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
                 color: _mint,
               ),
             ),
@@ -2026,14 +3416,160 @@ class OrderBookPanel extends StatelessWidget {
               onTap: onPrice,
             ),
           const Spacer(),
-          Text(
-            'Seq ${orderBook.sequence}',
-            style: const TextStyle(color: _muted, fontSize: 11),
-          ),
+          OrderBookRatioBar(buyRatio: buyRatio),
+          const SizedBox(height: 6),
+          const OrderBookToolbar(),
         ],
       ),
     );
   }
+}
+
+class OrderBookRatioBar extends StatelessWidget {
+  const OrderBookRatioBar({required this.buyRatio, super.key});
+
+  final double buyRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    final buy = buyRatio.clamp(0.0, 1.0);
+    final sell = 1 - buy;
+    return Row(
+      children: [
+        Text(
+          '${(buy * 100).toStringAsFixed(2)}%',
+          style: const TextStyle(
+            color: _mint,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: SizedBox(
+            height: 4,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: math.max(1, (buy * 1000).round()),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: _mint,
+                      borderRadius: BorderRadius.horizontal(
+                        left: Radius.circular(999),
+                      ),
+                    ),
+                  ),
+                ),
+                Container(width: 1, color: _paper),
+                Expanded(
+                  flex: math.max(1, (sell * 1000).round()),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: _red,
+                      borderRadius: BorderRadius.horizontal(
+                        right: Radius.circular(999),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '${(sell * 100).toStringAsFixed(2)}%',
+          style: const TextStyle(
+            color: _red,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class OrderBookToolbar extends StatelessWidget {
+  const OrderBookToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: _line),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '0.01',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Icon(Icons.keyboard_arrow_down, color: _muted, size: 16),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        const OrderBookLayoutIcon(),
+      ],
+    );
+  }
+}
+
+class OrderBookLayoutIcon extends StatelessWidget {
+  const OrderBookLayoutIcon({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size.square(28),
+      painter: _BookGridPainter(),
+    );
+  }
+}
+
+class _BookGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final colors = [_red, _muted, _mint, _muted];
+    final rects = [
+      Rect.fromLTWH(size.width * .08, size.height * .10, 7, 7),
+      Rect.fromLTWH(size.width * .08, size.height * .42, 7, 7),
+      Rect.fromLTWH(size.width * .08, size.height * .74, 7, 7),
+      Rect.fromLTWH(size.width * .48, size.height * .10, 7, 7),
+      Rect.fromLTWH(size.width * .48, size.height * .42, 7, 7),
+      Rect.fromLTWH(size.width * .48, size.height * .74, 7, 7),
+    ];
+    for (var i = 0; i < rects.length; i++) {
+      final paint = Paint()
+        ..color = colors[i % colors.length]
+        ..style = PaintingStyle.fill;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rects[i], const Radius.circular(1.4)),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class PrivateTradingPanel extends StatelessWidget {
@@ -2043,25 +3579,14 @@ class PrivateTradingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!state.isLoggedIn) {
-      return Panel(
-        child: Column(
-          children: [
-            const EmptyState(text: '登录后查看委托、持仓和风险'),
-            PrimaryAction(
-              label: '登录 / 注册',
-              icon: Icons.login,
-              onPressed: () => showAuthSheet(context),
-            ),
-          ],
-        ),
-      );
-    }
+    final botCount =
+        state.openAlgoOrders.length + state.openTriggerOrders.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (state.accountRisk != null)
+        if (state.isLoggedIn && state.accountRisk != null)
           Panel(
+            padding: const EdgeInsets.all(10),
             child: Row(
               children: [
                 Expanded(
@@ -2094,49 +3619,166 @@ class PrivateTradingPanel extends StatelessWidget {
               ],
             ),
           ),
-        const SectionTitle(title: '当前委托'),
-        if (state.openOrders.isEmpty) const EmptyState(text: '暂无开放委托'),
-        ...state.openOrders.map(
-          (order) => OrderRow(
-            order: order,
-            instrument: state.selectedInstrument,
-            onCancel: () => state.cancelOrder(order),
+        TradingPanelTabs(
+          positionCount: state.positions.length,
+          orderCount: state.openOrders.length,
+          botCount: botCount,
+        ),
+        if (state.positions.isEmpty)
+          const TradingEmptyState(text: '暂无仓位')
+        else
+          ...state.positions.map(
+            (position) => PositionRow(position: position, state: state),
           ),
-        ),
-        const SectionTitle(title: '算法单'),
-        if (state.openAlgoOrders.isEmpty) const EmptyState(text: '暂无开放算法单'),
-        ...state.openAlgoOrders.map(
-          (order) => AlgoOrderRow(
-            order: order,
-            state: state,
-            onCancel: () => state.cancelAlgoOrder(order),
-          ),
-        ),
-        const SectionTitle(title: '止盈止损'),
-        if (state.openTriggerOrders.isEmpty) const EmptyState(text: '暂无开放条件单'),
-        ...state.openTriggerOrders.map(
-          (order) => TriggerOrderRow(
-            order: order,
-            state: state,
-            onCancel: () => state.cancelTriggerOrder(order),
-          ),
-        ),
-        const SectionTitle(title: '持仓'),
-        if (state.positions.isEmpty) const EmptyState(text: '暂无持仓'),
-        ...state.positions.map(
-          (position) => PositionRow(position: position, state: state),
-        ),
-        const SectionTitle(title: '爆仓记录'),
-        if (state.liquidationOrders.isEmpty) const EmptyState(text: '暂无爆仓记录'),
-        ...state.liquidationOrders.map(
-          (order) => Panel(
-            child: InfoLine(
-              label: '#${order.orderId} ${order.symbol}',
-              value: '${order.status} · ${order.quantitySteps}',
+        if (state.openOrders.isNotEmpty) ...[
+          const SectionTitle(title: '当前委托'),
+          ...state.openOrders.map(
+            (order) => OrderRow(
+              order: order,
+              instrument: state.selectedInstrument,
+              onCancel: () => state.cancelOrder(order),
             ),
           ),
-        ),
+        ],
+        if (state.openAlgoOrders.isNotEmpty) ...[
+          const SectionTitle(title: '交易机器人'),
+          ...state.openAlgoOrders.map(
+            (order) => AlgoOrderRow(
+              order: order,
+              state: state,
+              onCancel: () => state.cancelAlgoOrder(order),
+            ),
+          ),
+        ],
+        if (state.openTriggerOrders.isNotEmpty) ...[
+          const SectionTitle(title: '止盈止损'),
+          ...state.openTriggerOrders.map(
+            (order) => TriggerOrderRow(
+              order: order,
+              state: state,
+              onCancel: () => state.cancelTriggerOrder(order),
+            ),
+          ),
+        ],
+        if (state.liquidationOrders.isNotEmpty) ...[
+          const SectionTitle(title: '爆仓记录'),
+          ...state.liquidationOrders.map(
+            (order) => Panel(
+              child: InfoLine(
+                label: '#${order.orderId} ${order.symbol}',
+                value: '${order.status} · ${order.quantitySteps}',
+              ),
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+class TradingPanelTabs extends StatelessWidget {
+  const TradingPanelTabs({
+    required this.positionCount,
+    required this.orderCount,
+    required this.botCount,
+    super.key,
+  });
+
+  final int positionCount;
+  final int orderCount;
+  final int botCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      '持有仓位 ($positionCount)',
+      '当前委托 ($orderCount)',
+      '交易机器人${botCount > 0 ? ' ($botCount)' : ''}',
+    ];
+    return Container(
+      margin: const EdgeInsets.only(top: 2, bottom: 6),
+      padding: const EdgeInsets.only(top: 4),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++) ...[
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tabs[index],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: index == 0 ? _ink : _muted,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: index == 0 ? 24 : 0,
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color: _amber,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (index != tabs.length - 1) const SizedBox(width: 10),
+          ],
+          IconButton(
+            tooltip: '订单筛选',
+            onPressed: () {},
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              side: BorderSide.none,
+              foregroundColor: _ink,
+            ),
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.document_scanner_outlined, size: 19),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TradingEmptyState extends StatelessWidget {
+  const TradingEmptyState({required this.text, super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 112,
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.content_paste_search_outlined,
+            size: 38,
+            color: _muted.withValues(alpha: .62),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2275,10 +3917,850 @@ class PageHeader extends StatelessWidget {
   }
 }
 
+class ExchangeSearchBox extends StatelessWidget {
+  const ExchangeSearchBox({required this.hint, super.key});
+
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search, color: _muted, size: 18),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              hint,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class MarketPrimaryTabs extends StatelessWidget {
+  const MarketPrimaryTabs({required this.selectedIndex, super.key});
+
+  final int selectedIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    const tabs = ['自选', '加密货币', '传统金融', 'Alpha', '金融增长'];
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 18),
+        itemBuilder: (context, index) {
+          final selected = index == selectedIndex;
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                tabs[index],
+                style: TextStyle(
+                  color: selected ? _ink : _muted,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: selected ? 20 : 0,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: _amber,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class MarketModeTabs extends StatelessWidget {
+  const MarketModeTabs({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final ProductMode value;
+  final ValueChanged<ProductMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (label: '现货', mode: ProductMode.spot),
+      (label: 'U 本位合约', mode: ProductMode.linear),
+      (label: '币本位', mode: ProductMode.inverse),
+      (label: '期权', mode: null),
+    ];
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 16),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final selected = item.mode == value;
+          return InkWell(
+            onTap: item.mode == null ? null : () => onChanged(item.mode!),
+            child: Center(
+              child: Text(
+                item.label,
+                style: TextStyle(
+                  color: selected ? _ink : _muted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class CategoryStrip extends StatelessWidget {
+  const CategoryStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const values = ['全部', '新币', 'DeFi', '元宇宙', '支付', 'PoW'];
+    return SizedBox(
+      height: 34,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        scrollDirection: Axis.horizontal,
+        itemCount: values.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          if (index == values.length) {
+            return const Center(
+              child: Icon(Icons.format_list_bulleted, color: _ink, size: 20),
+            );
+          }
+          final selected = index == 0;
+          return Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected ? _panelSoft : Colors.transparent,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Text(
+                values[index],
+                style: TextStyle(
+                  color: selected ? _ink : _muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class MarketSortHeader extends StatelessWidget {
+  const MarketSortHeader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(10, 7, 10, 5),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 7,
+            child: Text(
+              '名称↕ / 成交额↕',
+              style: TextStyle(color: _muted, fontSize: 11),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Text(
+              '最新价格↕',
+              textAlign: TextAlign.right,
+              style: TextStyle(color: _muted, fontSize: 11),
+            ),
+          ),
+          SizedBox(width: 7),
+          SizedBox(
+            width: 78,
+            child: Text(
+              '24 小时涨跌↕',
+              textAlign: TextAlign.right,
+              style: TextStyle(color: _muted, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class MarketTickerRow extends StatelessWidget {
+  const MarketTickerRow({
+    required this.instrument,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final Instrument instrument;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final latestPrice = state.latestPriceFor(instrument);
+    final change = syntheticChange(instrument);
+    final quote = instrument.quoteAsset.isEmpty
+        ? instrument.settleAsset
+        : instrument.quoteAsset;
+    final priceText = latestPrice == null
+        ? '--'
+        : money(latestPrice, digits: instrument.pricePrecision);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+        color: selected
+            ? _panelSoft.withValues(alpha: .28)
+            : Colors.transparent,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 7,
+              child: Row(
+                children: [
+                  CryptoAvatar(symbol: instrument.baseAsset, size: 28),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                instrument.displayName.replaceAll('-', ''),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            if (instrument.mode != ProductMode.spot) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: _line),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '永续',
+                                  style: TextStyle(
+                                    color: _ink,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${assetDisplayName(instrument.baseAsset)} | ${volumeText(instrument)} $quote',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    priceText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    latestPrice == null
+                        ? '--'
+                        : '¥${money(latestPrice * 7.18, digits: 2)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 7),
+            Container(
+              width: 78,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: change >= 0 ? _mint : _red,
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Text(
+                '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class TradeModeTabs extends StatelessWidget {
+  const TradeModeTabs({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final ProductMode value;
+  final ValueChanged<ProductMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      (label: 'U本位', mode: ProductMode.linear),
+      (label: '币本位', mode: ProductMode.inverse),
+      (label: '现货', mode: ProductMode.spot),
+      (label: '期权', mode: null),
+      (label: '聪明钱', mode: null),
+    ];
+    return SizedBox(
+      height: 32,
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: tabs.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 14),
+              itemBuilder: (context, index) {
+                final tab = tabs[index];
+                final selected = tab.mode == value;
+                return InkWell(
+                  onTap: tab.mode == null ? null : () => onChanged(tab.mode!),
+                  child: Center(
+                    child: Text(
+                      tab.label,
+                      style: TextStyle(
+                        color: selected ? _ink : _muted,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: '菜单',
+            onPressed: () {},
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              side: BorderSide.none,
+              foregroundColor: _ink,
+            ),
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.menu, size: 21),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TradeSymbolHeader extends StatelessWidget {
+  const TradeSymbolHeader({
+    required this.instrument,
+    required this.latestPrice,
+    required this.onRefresh,
+    super.key,
+  });
+
+  final Instrument instrument;
+  final double? latestPrice;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final change = syntheticChange(instrument);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      instrument.displayName.replaceAll('-', ''),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  if (instrument.mode != ProductMode.spot)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: _line),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '永续',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  const Icon(Icons.arrow_drop_down, color: _ink),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                style: TextStyle(
+                  color: change >= 0 ? _mint : _red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'K线',
+          onPressed: onRefresh,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            side: BorderSide.none,
+            foregroundColor: _ink,
+          ),
+          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.candlestick_chart_outlined, size: 20),
+        ),
+        IconButton(
+          tooltip: '更多',
+          onPressed: onRefresh,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            side: BorderSide.none,
+            foregroundColor: _ink,
+          ),
+          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.more_horiz, size: 21),
+        ),
+      ],
+    );
+  }
+}
+
+class ContractQuickSettings extends StatelessWidget {
+  const ContractQuickSettings({
+    required this.marginMode,
+    required this.leverage,
+    required this.positionMode,
+    required this.onMarginMode,
+    required this.onPositionMode,
+    super.key,
+  });
+
+  final String marginMode;
+  final String leverage;
+  final String positionMode;
+  final ValueChanged<String> onMarginMode;
+  final ValueChanged<String> onPositionMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TradeSettingButton(
+            label: marginMode == 'ISOLATED' ? '逐仓' : '全仓',
+            onTap: () =>
+                onMarginMode(marginMode == 'ISOLATED' ? 'CROSS' : 'ISOLATED'),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: TradeSettingButton(label: leverage, onTap: () {}),
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: TradeSettingButton(
+            label: positionMode == 'HEDGE' ? '双' : '单',
+            onTap: () =>
+                onPositionMode(positionMode == 'HEDGE' ? 'ONE_WAY' : 'HEDGE'),
+          ),
+        ),
+        const SizedBox(width: 5),
+        const Expanded(
+          flex: 4,
+          child: Text(
+            '资金费率 (8时)/倒计时\n-0.00010%/02:27:38',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: _muted, fontSize: 9.5, height: 1.12),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class TradeSettingButton extends StatelessWidget {
+  const TradeSettingButton({
+    required this.label,
+    required this.onTap,
+    super.key,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _panelSoft,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+class AssetPortfolioCard extends StatelessWidget {
+  const AssetPortfolioCard({
+    required this.icon,
+    required this.title,
+    required this.amount,
+    super.key,
+  });
+
+  final IconData icon;
+  final String title;
+  final String amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 148,
+      margin: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF171717),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              color: Color(0xFF2A2A2A),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: _ink, size: 16),
+          ),
+          const Spacer(),
+          Text(
+            title,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            amount,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AssetSparkline extends StatelessWidget {
+  const AssetSparkline({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _AssetSparklinePainter());
+  }
+}
+
+class _AssetSparklinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final points = <Offset>[
+      Offset(0, size.height * .62),
+      Offset(size.width * .10, size.height * .48),
+      Offset(size.width * .20, size.height * .54),
+      Offset(size.width * .32, size.height * .40),
+      Offset(size.width * .45, size.height * .45),
+      Offset(size.width * .57, size.height * .30),
+      Offset(size.width * .70, size.height * .50),
+      Offset(size.width * .82, size.height * .42),
+      Offset(size.width, size.height * .78),
+    ];
+    final line = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      line.lineTo(point.dx, point.dy);
+    }
+    final fill = Path.from(line)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [_red.withValues(alpha: .35), _red.withValues(alpha: 0)],
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(fill, fillPaint);
+
+    final dotPaint = Paint()
+      ..color = _red.withValues(alpha: .45)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .9;
+    for (var x = 4.0; x < size.width; x += 8) {
+      for (var y = size.height * .42; y < size.height; y += 8) {
+        canvas.drawCircle(Offset(x, y), 1, dotPaint);
+      }
+    }
+
+    final linePaint = Paint()
+      ..color = _red
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(line, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+double walletPortfolioCny(WalletPortfolio portfolio) {
+  return portfolio.assets.fold<double>(
+    0,
+    (sum, asset) => sum + walletAssetCny(asset),
+  );
+}
+
+double walletAssetCny(WalletAssetSummary asset) {
+  return asset.totalBalance * walletAssetCnyPrice(asset.symbol);
+}
+
+double walletAssetCnyPrice(String symbol) {
+  return switch (symbol.toUpperCase()) {
+    'OKB' => 531.93,
+    'BTC' => 417887.8,
+    'ETH' => 11814.59,
+    'SOL' => 540.8,
+    'USDT' || 'USDC' || 'USDG' => 7.18,
+    'XAUT' || 'XAU' => 28202.46,
+    _ => 7.18,
+  };
+}
+
+String walletGainLabel(WalletAssetSummary asset, double value) {
+  return switch (asset.symbol.toUpperCase()) {
+    'OKB' => '+¥39,491.57 (+122.31%)',
+    'BTC' => '+¥1,968.86 (+31.75%)',
+    _ => '+¥${money(value * .315, digits: 2)} (+31.50%)',
+  };
+}
+
+class WalletTokenRow extends StatelessWidget {
+  const WalletTokenRow({required this.asset, super.key});
+
+  final WalletAssetSummary asset;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = walletAssetCny(asset);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        children: [
+          CryptoAvatar(symbol: asset.symbol, size: 36),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        asset.symbol,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _mint.withValues(alpha: .14),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: const Text(
+                        '年化可达 5%',
+                        style: TextStyle(
+                          color: _mint,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  money(asset.totalBalance, digits: 8),
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '¥${money(value, digits: 2)}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                walletGainLabel(asset, value),
+                style: const TextStyle(
+                  color: _mint,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class Panel extends StatelessWidget {
   const Panel({
     required this.child,
-    this.padding = const EdgeInsets.all(12),
+    this.padding = const EdgeInsets.all(10),
     super.key,
   });
 
@@ -2288,19 +4770,12 @@ class Panel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: padding,
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _line),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: _line.withValues(alpha: .82)),
       ),
       child: child,
     );
@@ -2339,12 +4814,12 @@ class SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 10, 2, 8),
+      padding: const EdgeInsets.fromLTRB(2, 8, 2, 6),
       child: Row(
         children: [
           Text(
             title,
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           const Spacer(),
           ...action == null ? const <Widget>[] : [action!],
@@ -2453,11 +4928,11 @@ class SymbolStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 38,
+      height: 28,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: instruments.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        separatorBuilder: (context, index) => const SizedBox(width: 6),
         itemBuilder: (context, index) {
           final item = instruments[index];
           return ChoiceChip(
@@ -2470,8 +4945,8 @@ class SymbolStrip extends StatelessWidget {
             ),
             labelStyle: TextStyle(
               color: item.symbol == selected ? _ink : _muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
             ),
             label: Text(item.displayName),
             onSelected: (_) => onSelected(item.symbol),
@@ -2499,12 +4974,17 @@ class BuySellSwitch extends StatelessWidget {
         Expanded(
           child: FilledButton(
             style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(36),
               backgroundColor: value == 'BUY'
                   ? _mint
                   : _panelSoft.withValues(alpha: .86),
               foregroundColor: value == 'BUY' ? Colors.white : _mint,
               shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
+                borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
               ),
             ),
             onPressed: () => onChanged('BUY'),
@@ -2514,14 +4994,19 @@ class BuySellSwitch extends StatelessWidget {
         Expanded(
           child: FilledButton(
             style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(36),
               backgroundColor: value == 'SELL'
                   ? _red
                   : _panelSoft.withValues(alpha: .86),
               foregroundColor: value == 'SELL' ? Colors.white : _red,
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.horizontal(
-                  right: Radius.circular(6),
+                  right: Radius.circular(8),
                 ),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
               ),
             ),
             onPressed: () => onChanged('SELL'),
@@ -2529,6 +5014,227 @@ class BuySellSwitch extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class TradeNumericField extends StatelessWidget {
+  const TradeNumericField({
+    required this.controller,
+    required this.label,
+    required this.onMinus,
+    required this.onPlus,
+    this.suffixLabel,
+    this.enabled = true,
+    super.key,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? suffixLabel;
+  final bool enabled;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 46,
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: const TextStyle(
+          color: _ink,
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(
+            color: _muted,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w500,
+          ),
+          filled: true,
+          fillColor: _panelSoft,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 6,
+          ),
+          prefixIcon: IconButton(
+            tooltip: '减少',
+            onPressed: enabled ? onMinus : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+            icon: const Icon(Icons.remove, size: 16),
+          ),
+          suffixIcon: SizedBox(
+            width: suffixLabel == null ? 28 : 58,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (suffixLabel != null)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 2),
+                      child: Text(
+                        suffixLabel!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: '增加',
+                  onPressed: enabled ? onPlus : null,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 24,
+                    height: 28,
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                ),
+              ],
+            ),
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: _line),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: _pink),
+          ),
+          disabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: _line.withValues(alpha: .55)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BestPriceButton extends StatelessWidget {
+  const BestPriceButton({
+    required this.enabled,
+    required this.onTap,
+    super.key,
+  });
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 58,
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled ? _panelSoft : _panelSoft.withValues(alpha: .55),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _line),
+        ),
+        child: Text(
+          enabled ? '最优价' : '市价',
+          style: TextStyle(
+            color: enabled ? _ink : _muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class OrderMetaRow extends StatelessWidget {
+  const OrderMetaRow({required this.label, required this.value, super.key});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OrderAmountSlider extends StatelessWidget {
+  const OrderAmountSlider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 24,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            left: 8,
+            right: 8,
+            child: Container(height: 3, color: _line),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(5, (index) {
+              return Transform.rotate(
+                angle: math.pi / 4,
+                child: Container(
+                  width: index == 0 ? 14 : 10,
+                  height: index == 0 ? 14 : 10,
+                  decoration: BoxDecoration(
+                    color: index == 0 ? _panel : _paper,
+                    border: Border.all(
+                      color: index == 0 ? _ink : _line,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2550,8 +5256,8 @@ class SmallDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 42,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: _line),
@@ -2564,9 +5270,9 @@ class SmallDropdown extends StatelessWidget {
           dropdownColor: _panel,
           iconEnabledColor: _muted,
           style: const TextStyle(
-            fontSize: 12,
+            fontSize: 10.5,
             color: _ink,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
           ),
           items: values
               .map(
@@ -2615,14 +5321,15 @@ class AppTextField extends StatelessWidget {
       obscureText: obscure,
       onChanged: onChanged,
       style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w800,
+        fontSize: 11.5,
+        fontWeight: FontWeight.w500,
         color: _ink,
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: _muted),
+        labelStyle: const TextStyle(color: _muted, fontSize: 11),
         isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
         filled: true,
         fillColor: _panelSoft,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
@@ -2671,11 +5378,12 @@ class ToggleLine extends StatelessWidget {
             value: value,
             onChanged: enabled ? (next) => onChanged(next ?? false) : null,
             visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           Expanded(
             child: Text(
               label,
-              style: TextStyle(fontSize: 11, color: enabled ? _ink : _muted),
+              style: TextStyle(fontSize: 10.5, color: enabled ? _ink : _muted),
             ),
           ),
         ],
@@ -2704,25 +5412,40 @@ class BookLine extends StatelessWidget {
       instrument.priceFromTicks(level.priceTicks),
       digits: instrument.pricePrecision,
     );
+    final depth = math.min(
+      .86,
+      math.max(.18, math.log(level.quantitySteps.abs() + 1) / 8),
+    );
     return InkWell(
       onTap: () => onTap(price),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(
+      child: SizedBox(
+        height: 20,
+        child: Stack(
           children: [
-            Expanded(
-              child: Text(
-                price,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FractionallySizedBox(
+                widthFactor: depth,
+                child: Container(color: color.withValues(alpha: .14)),
               ),
             ),
-            Text(
-              compactInt(level.quantitySteps),
-              style: const TextStyle(fontSize: 12, color: _muted),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    price,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                Text(
+                  compactInt(level.quantitySteps),
+                  style: const TextStyle(fontSize: 11, color: _ink),
+                ),
+              ],
             ),
           ],
         ),
@@ -2899,9 +5622,10 @@ class DepositAddressCard extends StatelessWidget {
 }
 
 class _QrImage extends StatelessWidget {
-  const _QrImage({required this.dataUrl});
+  const _QrImage({required this.dataUrl, this.size = 96});
 
   final String dataUrl;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -2914,8 +5638,8 @@ class _QrImage extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         child: Image.memory(
           bytes,
-          width: 96,
-          height: 96,
+          width: size,
+          height: size,
           fit: BoxFit.cover,
           gaplessPlayback: true,
         ),
@@ -2926,17 +5650,79 @@ class _QrImage extends StatelessWidget {
   }
 
   Widget _placeholder() {
-    return Container(
-      width: 96,
-      height: 96,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _line),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: CustomPaint(
+        size: Size.square(size),
+        painter: _QrPlaceholderPainter(),
       ),
-      child: const Icon(Icons.qr_code_2, color: _muted),
     );
   }
+}
+
+class _QrPlaceholderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final background = Paint()..color = Colors.white;
+    canvas.drawRect(Offset.zero & size, background);
+
+    final module = size.width / 29;
+    final black = Paint()..color = Colors.black;
+    final quiet = module * 1.2;
+
+    void drawModule(int x, int y) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            quiet + x * module,
+            quiet + y * module,
+            module * .72,
+            module * .72,
+          ),
+          Radius.circular(module * .36),
+        ),
+        black,
+      );
+    }
+
+    void finder(int x, int y) {
+      final left = quiet + x * module;
+      final top = quiet + y * module;
+      canvas.drawCircle(
+        Offset(left + module * 3, top + module * 3),
+        module * 3,
+        black,
+      );
+      canvas.drawCircle(
+        Offset(left + module * 3, top + module * 3),
+        module * 2,
+        background,
+      );
+      canvas.drawCircle(
+        Offset(left + module * 3, top + module * 3),
+        module * 1.2,
+        black,
+      );
+    }
+
+    finder(1, 1);
+    finder(21, 1);
+    finder(1, 21);
+
+    for (var y = 0; y < 27; y++) {
+      for (var x = 0; x < 27; x++) {
+        final inTopLeft = x < 8 && y < 8;
+        final inTopRight = x > 18 && y < 8;
+        final inBottomLeft = x < 8 && y > 18;
+        if (inTopLeft || inTopRight || inBottomLeft) continue;
+        final seed = (x * 17 + y * 31 + x * y * 7) % 11;
+        if (seed == 0 || seed == 3 || seed == 7) drawModule(x, y);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class WalletAssetRow extends StatelessWidget {
@@ -2954,12 +5740,12 @@ class WalletAssetRow extends StatelessWidget {
             children: [
               Text(
                 asset.symbol,
-                style: const TextStyle(fontWeight: FontWeight.w900),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const Spacer(),
               Text(
                 money(asset.totalBalance, digits: 8),
-                style: const TextStyle(fontWeight: FontWeight.w900),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -3033,7 +5819,7 @@ class WalletOrderRecordRow extends StatelessWidget {
               children: [
                 Text(
                   '${record.type} · ${record.chain}/${record.symbol}',
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
                   '${record.status} · ${record.refNo}',
@@ -3055,7 +5841,7 @@ class WalletOrderRecordRow extends StatelessWidget {
               Text(
                 '${isOut ? '-' : '+'}${money(record.amount, digits: 8)}',
                 style: TextStyle(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: isOut ? _red : _mint,
                 ),
               ),
@@ -3096,7 +5882,7 @@ class OrderRow extends StatelessWidget {
                 Text(
                   '${order.side} ${order.symbol}',
                   style: TextStyle(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     color: order.side == 'BUY' ? _mint : _red,
                   ),
                 ),
@@ -3156,7 +5942,7 @@ class AlgoOrderRow extends StatelessWidget {
                 Text(
                   '${algoTypeLabel(order.algoType)} ${order.side} ${order.symbol}',
                   style: TextStyle(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     color: order.side == 'BUY' ? _mint : _red,
                   ),
                 ),
@@ -3219,7 +6005,7 @@ class TriggerOrderRow extends StatelessWidget {
                 Text(
                   '${triggerTypeLabel(order.triggerType)} ${order.symbol}',
                   style: TextStyle(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     color: isTakeProfit ? _mint : _red,
                   ),
                 ),
@@ -3272,7 +6058,7 @@ class PositionRow extends StatelessWidget {
               Text(
                 '${position.symbol} ${positionSideLabel(position.positionSide)}',
                 style: TextStyle(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: long ? _mint : _red,
                 ),
               ),
@@ -3330,6 +6116,370 @@ class PositionRow extends StatelessWidget {
   }
 }
 
+class CryptoAvatar extends StatelessWidget {
+  const CryptoAvatar({required this.symbol, required this.size, super.key});
+
+  final String symbol;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final upper = symbol.toUpperCase();
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(painter: _CryptoAvatarPainter(upper)),
+    );
+  }
+}
+
+class _CryptoAvatarPainter extends CustomPainter {
+  const _CryptoAvatarPainter(this.symbol);
+
+  final String symbol;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final background = Paint()..color = assetColor(symbol);
+    canvas.drawCircle(center, size.width / 2, background);
+
+    switch (symbol) {
+      case 'BTC':
+        _drawText(canvas, size, 'B', Colors.white, .58, FontWeight.w900);
+        _drawStroke(canvas, size, Colors.white.withValues(alpha: .9));
+      case 'ETH':
+        _drawEth(canvas, size);
+      case 'USDT':
+        _drawStable(canvas, size, 'T');
+      case 'USDC':
+        _drawStable(canvas, size, r'$');
+      case 'USDG':
+        _drawText(canvas, size, 'G', Colors.white, .58, FontWeight.w900);
+      case 'OKB':
+      case 'X':
+      case 'X LAYER':
+      case 'X_LAYER':
+      case 'XLAYER':
+        _drawOkbMark(canvas, size);
+      case 'SOL':
+        _drawSol(canvas, size);
+      case 'TRX':
+        _drawTriangleMark(canvas, size, Colors.white);
+      case 'XAU':
+      case 'XAUT':
+        _drawGold(canvas, size);
+      case 'APT':
+      case 'APTOS':
+        _drawAptos(canvas, size);
+      case 'ARB':
+      case 'ARBITRUM':
+        _drawHex(canvas, size);
+      case 'AVAX':
+      case 'AVALANCHE':
+        _drawAvax(canvas, size);
+      case 'BERA':
+      case 'BERACHAIN':
+        _drawText(
+          canvas,
+          size,
+          'B',
+          const Color(0xFF111111),
+          .54,
+          FontWeight.w900,
+        );
+      default:
+        final label = symbol.isEmpty ? '?' : symbol.substring(0, 1);
+        _drawText(canvas, size, label, _ink, .52, FontWeight.w800);
+    }
+  }
+
+  void _drawText(
+    Canvas canvas,
+    Size size,
+    String text,
+    Color color,
+    double scale,
+    FontWeight weight,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: size.width * scale,
+          fontWeight: weight,
+          height: 1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(
+        (size.width - painter.width) / 2,
+        (size.height - painter.height) / 2,
+      ),
+    );
+  }
+
+  void _drawStroke(Canvas canvas, Size size, Color color) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = size.width * .035
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      Offset(size.width * .38, size.height * .24),
+      Offset(size.width * .38, size.height * .76),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width * .58, size.height * .24),
+      Offset(size.width * .58, size.height * .76),
+      paint,
+    );
+  }
+
+  void _drawEth(Canvas canvas, Size size) {
+    final white = Paint()..color = Colors.white;
+    final faint = Paint()..color = Colors.white.withValues(alpha: .65);
+    final top = Path()
+      ..moveTo(size.width * .50, size.height * .16)
+      ..lineTo(size.width * .28, size.height * .52)
+      ..lineTo(size.width * .50, size.height * .43)
+      ..lineTo(size.width * .72, size.height * .52)
+      ..close();
+    final bottom = Path()
+      ..moveTo(size.width * .50, size.height * .48)
+      ..lineTo(size.width * .28, size.height * .57)
+      ..lineTo(size.width * .50, size.height * .84)
+      ..lineTo(size.width * .72, size.height * .57)
+      ..close();
+    canvas.drawPath(top, white);
+    canvas.drawPath(bottom, faint);
+  }
+
+  void _drawStable(Canvas canvas, Size size, String label) {
+    final white = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * .06;
+    canvas.drawCircle(size.center(Offset.zero), size.width * .30, white);
+    _drawText(canvas, size, label, Colors.white, .46, FontWeight.w900);
+  }
+
+  void _drawOkbMark(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white;
+    final unit = size.width * .18;
+    final start = Offset(size.width * .22, size.height * .22);
+    for (var row = 0; row < 2; row++) {
+      for (var col = 0; col < 2; col++) {
+        canvas.drawRect(
+          Rect.fromLTWH(
+            start.dx + col * unit,
+            start.dy + row * unit,
+            unit * .82,
+            unit * .82,
+          ),
+          paint,
+        );
+      }
+    }
+    canvas.drawRect(
+      Rect.fromLTWH(
+        size.width * .56,
+        size.height * .56,
+        unit * .82,
+        unit * .82,
+      ),
+      paint,
+    );
+  }
+
+  void _drawSol(Canvas canvas, Size size) {
+    final colors = [
+      const Color(0xFF14F195),
+      const Color(0xFF80ECFF),
+      const Color(0xFFDC1FFF),
+    ];
+    for (var i = 0; i < 3; i++) {
+      final paint = Paint()..color = colors[i];
+      final top = size.height * (.28 + i * .18);
+      final path = Path()
+        ..moveTo(size.width * .24, top)
+        ..lineTo(size.width * .76, top)
+        ..lineTo(size.width * .66, top + size.height * .10)
+        ..lineTo(size.width * .14, top + size.height * .10)
+        ..close();
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  void _drawTriangleMark(Canvas canvas, Size size, Color color) {
+    final stroke = Paint()
+      ..color = color
+      ..strokeWidth = size.width * .06
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(size.width * .28, size.height * .20)
+      ..lineTo(size.width * .76, size.height * .38)
+      ..lineTo(size.width * .42, size.height * .78)
+      ..close();
+    canvas.drawPath(path, stroke);
+  }
+
+  void _drawGold(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = Colors.white
+      ..strokeWidth = size.width * .055
+      ..style = PaintingStyle.stroke;
+    for (final center in [
+      Offset(size.width * .36, size.height * .40),
+      Offset(size.width * .58, size.height * .40),
+      Offset(size.width * .47, size.height * .62),
+    ]) {
+      canvas.drawCircle(center, size.width * .095, stroke);
+    }
+  }
+
+  void _drawAptos(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = size.width * .07
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 4; i++) {
+      final y = size.height * (.32 + i * .12);
+      canvas.drawLine(
+        Offset(size.width * .22, y),
+        Offset(size.width * .78, y),
+        paint,
+      );
+    }
+  }
+
+  void _drawHex(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = const Color(0xFF8CC8FF)
+      ..strokeWidth = size.width * .07
+      ..style = PaintingStyle.stroke;
+    final path = Path();
+    for (var i = 0; i < 6; i++) {
+      final angle = -math.pi / 2 + i * math.pi / 3;
+      final point =
+          size.center(Offset.zero) +
+          Offset(math.cos(angle), math.sin(angle)) * size.width * .32;
+      if (i == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, stroke);
+  }
+
+  void _drawAvax(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white;
+    final path = Path()
+      ..moveTo(size.width * .50, size.height * .22)
+      ..lineTo(size.width * .75, size.height * .72)
+      ..lineTo(size.width * .25, size.height * .72)
+      ..close();
+    canvas.drawPath(path, paint);
+    canvas.drawCircle(
+      Offset(size.width * .62, size.height * .66),
+      1.8,
+      Paint()..color = const Color(0xFFE84142),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CryptoAvatarPainter oldDelegate) {
+    return oldDelegate.symbol != symbol;
+  }
+}
+
+Color assetColor(String symbol) {
+  return switch (symbol.toUpperCase()) {
+    'BTC' => const Color(0xFFF7931A),
+    'ETH' => const Color(0xFF627EEA),
+    'OKB' ||
+    'X' ||
+    'X LAYER' ||
+    'X_LAYER' ||
+    'XLAYER' => const Color(0xFF050505),
+    'USDT' => const Color(0xFF26A17B),
+    'USDC' => const Color(0xFF2775CA),
+    'USDG' => const Color(0xFF8DC63F),
+    'SOL' => const Color(0xFF111827),
+    'TRX' => const Color(0xFFFF0013),
+    'APT' || 'APTOS' => const Color(0xFF111111),
+    'ARB' || 'ARBITRUM' => const Color(0xFF2D374B),
+    'AVAX' || 'AVALANCHE' => const Color(0xFFE84142),
+    'BERA' || 'BERACHAIN' => const Color(0xFFFFFFFF),
+    'XAU' || 'XAUT' => const Color(0xFFB79525),
+    _ => const Color(0xFF2B3139),
+  };
+}
+
+String assetDisplayName(String symbol) {
+  return switch (symbol.toUpperCase()) {
+    'BTC' => 'Bitcoin',
+    'ETH' => 'Ethereum',
+    'OKB' => 'OKB',
+    'SOL' => 'Solana',
+    'USDT' => 'Tether',
+    'USDC' => 'USD Coin',
+    'TRX' => 'TRON',
+    'XAU' || 'XAUT' => 'Tether Gold',
+    _ => symbol,
+  };
+}
+
+String volumeText(Instrument instrument) {
+  final seed = instrument.symbol.codeUnits.fold<int>(
+    0,
+    (sum, code) => sum + code,
+  );
+  final amount = 6 + (seed % 130);
+  return '$amount.${seed % 100}亿';
+}
+
+double syntheticChange(Instrument instrument) {
+  if (instrument.mode == ProductMode.spot) {
+    return 0.6 + (instrument.symbol.length % 5) * .21;
+  }
+  final seed = instrument.symbol.codeUnits.fold<int>(
+    0,
+    (sum, code) => sum + code,
+  );
+  return -0.7 - (seed % 430) / 100;
+}
+
+String networkDisplayName(String chain, String symbol) {
+  final upper = chain.toUpperCase();
+  return switch (upper) {
+    'TRON' || 'TRX' => 'Tron (TRC20)',
+    'ETH' || 'ETHEREUM' => 'Ethereum (ERC20)',
+    'BTC' => 'Bitcoin',
+    'X LAYER' || 'X_LAYER' || 'XLAYER' => 'X Layer ($symbol&${symbol}0)',
+    'ARB' || 'ARBITRUM' => 'Arbitrum One ($symbol)',
+    'AVAX' || 'AVALANCHE' => 'Avalanche C-Chain',
+    'APT' || 'APTOS' => 'Aptos',
+    'BERA' || 'BERACHAIN' => 'Berachain (${symbol}0)',
+    _ => chain,
+  };
+}
+
+String networkEta(String chain) {
+  final upper = chain.toUpperCase();
+  if (upper.contains('ETH')) return '约 7 分钟';
+  if (upper.contains('ARB')) return '约 18 分钟';
+  return '约 1 分钟';
+}
+
 class WalletAction extends StatelessWidget {
   const WalletAction({
     required this.icon,
@@ -3346,22 +6496,24 @@ class WalletAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: _panelSoft.withValues(alpha: .68),
-          border: Border.all(color: _line),
-          borderRadius: BorderRadius.circular(8),
-        ),
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        width: 64,
         child: Column(
           children: [
-            Icon(icon, color: _violet),
-            const SizedBox(height: 4),
+            Container(
+              width: 50,
+              height: 50,
+              decoration: const BoxDecoration(
+                color: _lime,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.black, size: 25),
+            ),
+            const SizedBox(height: 6),
             Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
             ),
           ],
         ),
@@ -3385,7 +6537,7 @@ class MetricPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(6),
@@ -3394,15 +6546,15 @@ class MetricPill extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: _muted)),
+          Text(label, style: const TextStyle(fontSize: 9, color: _muted)),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               color: color,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -3460,7 +6612,8 @@ class PrimaryAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.icon(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(44),
+        minimumSize: const Size.fromHeight(40),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       onPressed: onPressed,

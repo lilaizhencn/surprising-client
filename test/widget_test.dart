@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
@@ -16,6 +17,178 @@ void main() {
     expect(find.text('Surprising'), findsOneWidget);
     expect(find.text('首页'), findsWidgets);
     expect(find.text('交易'), findsWidgets);
+  });
+
+  testWidgets('opens the deposit coin and network selection flow', (
+    tester,
+  ) async {
+    final state = AppState(offline: true)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 1,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      )
+      ..walletPortfolio = WalletPortfolio.fromJson({
+        'generatedAt': '2026-07-06T00:00:00Z',
+        'assetCount': 1,
+        'assets': [
+          {
+            'symbol': 'USDT',
+            'availableBalance': '12.5',
+            'lockedBalance': 0,
+            'totalBalance': '12.5',
+            'chains': [
+              {
+                'chain': 'ETH',
+                'symbol': 'USDT',
+                'network': 'Ethereum',
+                'nativeAsset': false,
+                'nativeSymbol': 'ETH',
+                'availableBalance': '12.5',
+                'lockedBalance': 0,
+                'totalBalance': '12.5',
+                'addresses': const [],
+              },
+            ],
+          },
+        ],
+      });
+
+    await tester.pumpWidget(
+      SurprisingClientApp(state: state, bootstrap: false),
+    );
+
+    await tester.tap(find.text('资产').last);
+    await tester.pumpAndSettle();
+    expect(find.text('欧易'), findsOneWidget);
+    expect(find.text('探索'), findsOneWidget);
+    expect(find.text('星球'), findsOneWidget);
+    await tester.tap(find.text('充币').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择资产'), findsOneWidget);
+    expect(find.text('USDT'), findsWidgets);
+
+    await tester.tap(find.text('USDT').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择网络'), findsOneWidget);
+    expect(find.text('Ethereum (ERC20)'), findsOneWidget);
+  });
+
+  testWidgets('shows fallback deposit networks for an empty wallet', (
+    tester,
+  ) async {
+    final state = AppState(offline: true)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 1,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      );
+
+    await tester.pumpWidget(
+      SurprisingClientApp(state: state, bootstrap: false),
+    );
+
+    await tester.tap(find.text('资产').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('充币').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('USDT').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择网络'), findsOneWidget);
+    expect(find.text('X Layer (USDT&USDT0)'), findsOneWidget);
+    expect(find.text('Tron (TRC20)'), findsOneWidget);
+    expect(find.text('Ethereum (ERC20)'), findsOneWidget);
+  });
+
+  testWidgets('renders the deposit address show page details', (tester) async {
+    final state = AppState(offline: true)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 1,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      )
+      ..walletDepositAddress = const WalletDepositAddress(
+        chain: 'X Layer',
+        symbol: 'USDT',
+        network: 'X Layer',
+        standard: 'USDT0',
+        nativeAsset: false,
+        nativeSymbol: 'OKB',
+        address: 'XK00861E9d78139CD68Ae6C78A5b5F7384325e60950',
+        qrCodeDataUrl: '',
+        ownerAddress: '',
+        accountId: '1',
+        addressIndex: 0,
+        memo: '',
+        warnings: [],
+      );
+
+    await tester.pumpWidget(
+      AppScope(
+        notifier: state,
+        child: const MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: RechargeAddressPage(symbol: 'USDT', chain: 'X Layer'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('充值 USDT'), findsOneWidget);
+    expect(
+      find.text('XK00861E9d78139CD68Ae6C78A5b5F7384325e60950'),
+      findsOneWidget,
+    );
+
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pump();
+
+    expect(find.text('X Layer (USDT&USDT0)'), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline), findsNWidgets(3));
+  });
+
+  testWidgets('switches product modes from the contract trade tabs', (
+    tester,
+  ) async {
+    final state = AppState(offline: true);
+
+    await tester.pumpWidget(
+      SurprisingClientApp(state: state, bootstrap: false),
+    );
+
+    await tester.tap(find.text('合约').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('U本位'), findsWidgets);
+    expect(find.text('币本位'), findsWidgets);
+    expect(find.text('现货'), findsWidgets);
+    expect(state.mode, ProductMode.linear);
+
+    await tester.tap(find.text('币本位').first);
+    await tester.pumpAndSettle();
+    expect(state.mode, ProductMode.inverse);
+
+    await tester.tap(find.text('现货').first);
+    await tester.pumpAndSettle();
+    expect(state.mode, ProductMode.spot);
   });
 
   test('converts price decimals to backend ticks', () {

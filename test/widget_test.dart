@@ -442,6 +442,20 @@ void main() {
     expect(state.latestPriceFor(state.selectedInstrument), 65012.3);
   });
 
+  test('ignores realtime market events from another product line', () {
+    final state = AppState(offline: true);
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'trades',
+      'symbol': 'BTC-USDT',
+      'productLine': 'OPTION',
+      'data': {'priceTicks': 650123},
+    });
+
+    expect(state.latestPrices, isNot(contains('BTC-USDT')));
+  });
+
   test('merges depth deltas into the existing order book', () {
     final state = AppState(offline: true);
     state.orderBook = const OrderBook(
@@ -482,6 +496,63 @@ void main() {
     ]);
     expect(state.orderBook.bids.first.quantitySteps, 8);
     expect(state.orderBook.asks.first.quantitySteps, 6);
+  });
+
+  test('ignores realtime depth deltas from another product line', () {
+    final state = AppState(offline: true);
+    state.orderBook = const OrderBook(
+      symbol: 'BTC-USDT',
+      sequence: 10,
+      bids: [OrderBookLevel(priceTicks: 650000, quantitySteps: 5, orderCount: 1)],
+      asks: [OrderBookLevel(priceTicks: 650010, quantitySteps: 4, orderCount: 1)],
+    );
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'depth',
+      'symbol': 'BTC-USDT',
+      'productLine': 'OPTION',
+      'data': {
+        'updateType': 'DELTA',
+        'sequence': 11,
+        'previousSequence': 10,
+        'depth': 50,
+        'bids': [
+          {'priceTicks': 650000, 'quantitySteps': 0, 'orderCount': 0},
+        ],
+        'asks': [
+          {'priceTicks': 650010, 'quantitySteps': 9, 'orderCount': 2},
+        ],
+      },
+    });
+
+    expect(state.orderBook.sequence, 10);
+    expect(state.orderBook.bids.first.quantitySteps, 5);
+    expect(state.orderBook.asks.first.quantitySteps, 4);
+  });
+
+  test('ignores realtime account risk from another product line', () {
+    final state = AppState(offline: true)
+      ..mode = ProductMode.linear
+      ..selectedSymbol = 'BTC-USDT';
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'accountRisk',
+      'productLine': 'OPTION',
+      'data': {
+        'userId': 1001,
+        'accountType': 'OPTION',
+        'settleAsset': 'USDT',
+        'riskStatus': 'NORMAL',
+        'totalEquityUnits': 100,
+        'totalMaintenanceMarginUnits': 10,
+        'marginRatioPpm': 100000,
+        'eventTime': '2026-07-01T00:00:00Z',
+      },
+    });
+
+    expect(state.accountRisk, isNull);
   });
 }
 

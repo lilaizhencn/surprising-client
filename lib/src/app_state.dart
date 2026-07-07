@@ -171,37 +171,48 @@ class AppState extends ChangeNotifier {
     try {
       final productLine = mode.productLine;
       final accountType = mode.accountType;
+      final isDerivativeMode = mode.isDerivative;
       final results = await Future.wait([
         api.productBalances(
           id,
           accountType: accountType,
           productLine: productLine,
         ),
-        api.positions(id, productLine: productLine),
+        isDerivativeMode
+            ? api.positions(id, productLine: productLine)
+            : Future<List<Position>>.value(const []),
         api.openOrders(id, symbol: selectedSymbol, productLine: productLine),
-        mode.isSpot
-            ? Future<List<AlgoOrderModel>>.value(const [])
-            : api.openAlgoOrders(
+        isDerivativeMode
+            ? api.openAlgoOrders(
                 id,
                 symbol: selectedSymbol,
                 productLine: productLine,
-              ),
-        mode.isSpot
-            ? Future<List<TriggerOrderModel>>.value(const [])
-            : api.openTriggerOrders(
+              )
+            : Future<List<AlgoOrderModel>>.value(const []),
+        isDerivativeMode
+            ? api.openTriggerOrders(
                 id,
                 symbol: selectedSymbol,
                 productLine: productLine,
-              ),
-        api.positionMode(id, productLine: productLine),
-        api.accountRisk(
-          id,
-          selectedInstrument.settleAsset,
-          accountType: accountType,
-          productLine: productLine,
-        ),
-        api.positionRisks(id, productLine: productLine),
-        api.liquidationOrders(id, productLine: productLine),
+              )
+            : Future<List<TriggerOrderModel>>.value(const []),
+        isDerivativeMode
+            ? api.positionMode(id, productLine: productLine)
+            : Future<String>.value('ONE_WAY'),
+        isDerivativeMode
+            ? api.accountRisk(
+                id,
+                selectedInstrument.settleAsset,
+                accountType: accountType,
+                productLine: productLine,
+              )
+            : Future<AccountRisk?>.value(null),
+        isDerivativeMode
+            ? api.positionRisks(id, productLine: productLine)
+            : Future<List<PositionRisk>>.value(const []),
+        isDerivativeMode
+            ? api.liquidationOrders(id, productLine: productLine)
+            : Future<List<LiquidationOrder>>.value(const []),
         api.walletPortfolio(id),
         api.walletOrders(id),
       ]);
@@ -748,6 +759,7 @@ class AppState extends ChangeNotifier {
   void _subscribePrivateSelected() {
     if (!isLoggedIn) return;
     final productLine = _productLineForSymbol(selectedSymbol);
+    final instrument = _instrumentForSymbol(selectedSymbol);
     privateRealtime.subscribe(
       'orders',
       symbol: selectedSymbol,
@@ -763,6 +775,7 @@ class AppState extends ChangeNotifier {
       symbol: selectedSymbol,
       productLine: productLine,
     );
+    if (!instrument.isDerivative) return;
     privateRealtime.subscribe(
       'positions',
       symbol: selectedSymbol,

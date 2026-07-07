@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
+import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/models.dart';
 
 void main() {
@@ -258,6 +259,35 @@ void main() {
     expect(option.optionExerciseStyle, 'EUROPEAN');
   });
 
+  test('spot private refresh skips derivative-only product services', () async {
+    final api = _SpotRefreshApiClient();
+    final state = AppState(apiClient: api)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 1,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      )
+      ..mode = ProductMode.spot
+      ..selectedSymbol = fallbackInstruments()
+          .firstWhere((instrument) => instrument.mode == ProductMode.spot)
+          .symbol;
+
+    await state.refreshPrivateData();
+
+    expect(api.productBalanceProductLine, 'SPOT');
+    expect(api.openOrdersProductLine, 'SPOT');
+    expect(api.derivativeCalls, isZero);
+    expect(state.positionMode, 'ONE_WAY');
+    expect(state.accountRisk, isNull);
+    expect(state.positionRisks, isEmpty);
+    expect(state.liquidationOrders, isEmpty);
+  });
+
   test('parses wallet portfolio and order records', () {
     final portfolio = WalletPortfolio.fromJson({
       'generatedAt': '2026-07-03T00:00:00Z',
@@ -453,4 +483,109 @@ void main() {
     expect(state.orderBook.bids.first.quantitySteps, 8);
     expect(state.orderBook.asks.first.quantitySteps, 6);
   });
+}
+
+class _SpotRefreshApiClient extends ApiClient {
+  _SpotRefreshApiClient() : super(const AppConfig());
+
+  String? productBalanceProductLine;
+  String? openOrdersProductLine;
+  int derivativeCalls = 0;
+
+  @override
+  Future<List<ProductBalance>> productBalances(
+    int userId, {
+    String? accountType,
+    String? productLine,
+  }) async {
+    productBalanceProductLine = productLine;
+    return const [];
+  }
+
+  @override
+  Future<List<OrderModel>> openOrders(
+    int userId, {
+    String? symbol,
+    String? productLine,
+  }) async {
+    openOrdersProductLine = productLine;
+    return const [];
+  }
+
+  @override
+  Future<List<Position>> positions(int userId, {String? productLine}) async {
+    derivativeCalls++;
+    return const [];
+  }
+
+  @override
+  Future<List<AlgoOrderModel>> openAlgoOrders(
+    int userId, {
+    String? symbol,
+    String? productLine,
+  }) async {
+    derivativeCalls++;
+    return const [];
+  }
+
+  @override
+  Future<List<TriggerOrderModel>> openTriggerOrders(
+    int userId, {
+    String? symbol,
+    String? productLine,
+  }) async {
+    derivativeCalls++;
+    return const [];
+  }
+
+  @override
+  Future<String> positionMode(int userId, {String? productLine}) async {
+    derivativeCalls++;
+    return 'HEDGE';
+  }
+
+  @override
+  Future<AccountRisk?> accountRisk(
+    int userId,
+    String settleAsset, {
+    String? accountType,
+    String? productLine,
+  }) async {
+    derivativeCalls++;
+    return null;
+  }
+
+  @override
+  Future<List<PositionRisk>> positionRisks(
+    int userId, {
+    String? productLine,
+  }) async {
+    derivativeCalls++;
+    return const [];
+  }
+
+  @override
+  Future<List<LiquidationOrder>> liquidationOrders(
+    int userId, {
+    String? productLine,
+  }) async {
+    derivativeCalls++;
+    return const [];
+  }
+
+  @override
+  Future<WalletPortfolio> walletPortfolio(
+    int userId, {
+    bool hideZero = false,
+  }) async {
+    return WalletPortfolio.empty();
+  }
+
+  @override
+  Future<List<WalletOrderRecord>> walletOrders(
+    int userId, {
+    int limit = 30,
+  }) async {
+    return const [];
+  }
 }

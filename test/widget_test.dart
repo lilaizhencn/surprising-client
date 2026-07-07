@@ -259,6 +259,42 @@ void main() {
     expect(option.optionExerciseStyle, 'EUROPEAN');
   });
 
+  test('scopes selected instrument lookup by current product mode', () {
+    final state = AppState(offline: true)
+      ..instruments = [
+        Instrument.fromJson({
+          'symbol': 'BTC-USDT',
+          'instrumentType': 'PERPETUAL',
+          'contractType': 'LINEAR_PERPETUAL',
+        }),
+        Instrument.fromJson({
+          'symbol': 'BTC-USDT',
+          'instrumentType': 'SPOT',
+          'contractType': 'SPOT',
+        }),
+      ]
+      ..mode = ProductMode.spot
+      ..selectedSymbol = 'BTC-USDT';
+
+    expect(state.selectedInstrument.mode, ProductMode.spot);
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'trades',
+      'productLine': 'LINEAR_PERPETUAL',
+      'data': {'symbol': 'BTC-USDT', 'price': 65000.0},
+    });
+    expect(state.latestPrices, isNot(contains('BTC-USDT')));
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'trades',
+      'productLine': 'SPOT',
+      'data': {'symbol': 'BTC-USDT', 'price': 65001.0},
+    });
+    expect(state.latestPrices['BTC-USDT'], 65001.0);
+  });
+
   test('spot private refresh skips derivative-only product services', () async {
     final api = _SpotRefreshApiClient();
     final state = AppState(apiClient: api)

@@ -59,10 +59,7 @@ class AppState extends ChangeNotifier {
   int? get userId => session?.user.userId;
 
   Instrument get selectedInstrument {
-    return instruments.firstWhere(
-      (instrument) => instrument.symbol == selectedSymbol,
-      orElse: () => fallbackInstruments().first,
-    );
+    return _instrumentForSymbol(selectedSymbol);
   }
 
   List<Instrument> get visibleInstruments {
@@ -107,7 +104,7 @@ class AppState extends ChangeNotifier {
       if (loaded.isNotEmpty) {
         instruments = loaded;
         final candidates = visibleInstruments;
-        if (!loaded.any((instrument) => instrument.symbol == selectedSymbol)) {
+        if (!candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
           selectedSymbol = candidates.isNotEmpty
               ? candidates.first.symbol
               : loaded.first.symbol;
@@ -918,8 +915,11 @@ class AppState extends ChangeNotifier {
 
   Instrument _instrumentForSymbol(String symbol) {
     return instruments.firstWhere(
-      (instrument) => instrument.symbol == symbol,
-      orElse: () => selectedInstrument,
+      (instrument) => instrument.symbol == symbol && instrument.mode == mode,
+      orElse: () => instruments.firstWhere(
+        (instrument) => instrument.symbol == symbol,
+        orElse: () => fallbackInstruments().first,
+      ),
     );
   }
 

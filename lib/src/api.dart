@@ -111,12 +111,13 @@ class ApiClient {
     ).map((item) => Position.fromJson(asMap(item))).toList();
   }
 
-  Future<String> positionMode(int userId) async {
+  Future<String> positionMode(int userId, {String? productLine}) async {
     try {
       final json = await get(
         '/api/v1/gateway/account/position-mode',
         query: {'userId': '$userId'},
         userId: userId,
+        productLine: productLine,
       );
       return asString(json['positionMode'], fallback: 'ONE_WAY');
     } catch (_) {
@@ -124,11 +125,16 @@ class ApiClient {
     }
   }
 
-  Future<String> updatePositionMode(int userId, String positionMode) async {
+  Future<String> updatePositionMode(
+    int userId,
+    String positionMode, {
+    String? productLine,
+  }) async {
     final json = await post('/api/v1/gateway/account/position-mode', {
       'userId': userId,
+      if (productLine != null && productLine.isNotEmpty) 'productLine': productLine,
       'positionMode': positionMode,
-    }, userId: userId);
+    }, userId: userId, productLine: productLine);
     return asString(json['positionMode'], fallback: positionMode);
   }
 

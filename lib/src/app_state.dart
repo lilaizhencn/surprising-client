@@ -193,7 +193,7 @@ class AppState extends ChangeNotifier {
                 symbol: selectedSymbol,
                 productLine: productLine,
               ),
-        api.positionMode(id),
+        api.positionMode(id, productLine: productLine),
         api.accountRisk(
           id,
           selectedInstrument.settleAsset,
@@ -540,7 +540,11 @@ class AppState extends ChangeNotifier {
     }
     if (nextMode == positionMode) return;
     try {
-      positionMode = await api.updatePositionMode(id, nextMode);
+      positionMode = await api.updatePositionMode(
+        id,
+        nextMode,
+        productLine: mode.productLine,
+      );
       lastNotice = '持仓模式已切换为${positionModeLabel(positionMode)}';
       await refreshPrivateData();
     } catch (error) {

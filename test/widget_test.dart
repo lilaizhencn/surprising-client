@@ -472,10 +472,24 @@ void main() {
       'op': 'event',
       'channel': 'trades',
       'symbol': 'BTC-USDT',
+      'productLine': 'LINEAR_PERPETUAL',
       'data': {'priceTicks': 650123},
     });
 
     expect(state.latestPriceFor(state.selectedInstrument), 65012.3);
+  });
+
+  test('ignores realtime events without product line', () {
+    final state = AppState(offline: true);
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'trades',
+      'symbol': 'BTC-USDT',
+      'data': {'priceTicks': 650123},
+    });
+
+    expect(state.latestPrices, isNot(contains('BTC-USDT')));
   });
 
   test('ignores realtime market events from another product line', () {
@@ -510,6 +524,7 @@ void main() {
       'op': 'event',
       'channel': 'depth',
       'symbol': 'BTC-USDT',
+      'productLine': 'LINEAR_PERPETUAL',
       'data': {
         'updateType': 'DELTA',
         'sequence': 11,
@@ -539,8 +554,12 @@ void main() {
     state.orderBook = const OrderBook(
       symbol: 'BTC-USDT',
       sequence: 10,
-      bids: [OrderBookLevel(priceTicks: 650000, quantitySteps: 5, orderCount: 1)],
-      asks: [OrderBookLevel(priceTicks: 650010, quantitySteps: 4, orderCount: 1)],
+      bids: [
+        OrderBookLevel(priceTicks: 650000, quantitySteps: 5, orderCount: 1),
+      ],
+      asks: [
+        OrderBookLevel(priceTicks: 650010, quantitySteps: 4, orderCount: 1),
+      ],
     );
 
     state.handleRealtimeMessage({

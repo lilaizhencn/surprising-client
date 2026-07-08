@@ -888,6 +888,14 @@ class _TradePageState extends State<TradePage> {
             latestPrice: latestPrice,
             onRefresh: state.refreshPublicData,
           ),
+          if (instrument.isDelivery || instrument.isOption) ...[
+            const SizedBox(height: 6),
+            ProductLifecyclePanel(
+              state: state,
+              instrument: instrument,
+              latestPrice: latestPrice,
+            ),
+          ],
           if (instrument.isDerivative) ...[
             const SizedBox(height: 6),
             ContractQuickSettings(
@@ -952,7 +960,8 @@ class _TradePageState extends State<TradePage> {
                               ? 'CROSS'
                               : marginMode,
                           positionSide:
-                              instrument.isSpot || state.positionMode == 'ONE_WAY'
+                              instrument.isSpot ||
+                                  state.positionMode == 'ONE_WAY'
                               ? 'NET'
                               : positionSide == 'NET'
                               ? (side == 'SELL' ? 'SHORT' : 'LONG')
@@ -4435,6 +4444,233 @@ class TradeSymbolHeader extends StatelessWidget {
   }
 }
 
+class ProductLifecyclePanel extends StatelessWidget {
+  const ProductLifecyclePanel({
+    required this.state,
+    required this.instrument,
+    required this.latestPrice,
+    super.key,
+  });
+
+  final AppState state;
+  final Instrument instrument;
+  final double? latestPrice;
+
+  @override
+  Widget build(BuildContext context) {
+    final isOption = instrument.isOption;
+    final underlying = _underlyingInstrument();
+    final underlyingPrice = underlying == null
+        ? null
+        : state.latestPriceFor(underlying);
+    final strike = instrument.strikePrice;
+    final intrinsic = _intrinsicValue(instrument, underlyingPrice, strike);
+    final chain = _optionChainRows(instrument, state.instruments);
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isOption ? Icons.auto_graph : Icons.event_available_outlined,
+                size: 18,
+                color: _amber,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  isOption ? '期权链路' : '交割合约生命周期',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                instrument.mode.productLine,
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              LifecycleChip(label: '状态', value: instrument.status),
+              LifecycleChip(
+                label: '到期',
+                value: shortDateTime(instrument.expiryTime),
+              ),
+              LifecycleChip(
+                label: isOption ? '行权' : '交割',
+                value: shortDateTime(instrument.deliveryTime),
+              ),
+              LifecycleChip(
+                label: '剩余',
+                value: timeLeft(
+                  instrument.deliveryTime ?? instrument.expiryTime,
+                ),
+              ),
+              LifecycleChip(
+                label: '结算',
+                value: instrument.settlementMethod ?? '--',
+              ),
+              LifecycleChip(label: '账户', value: instrument.mode.accountType),
+            ],
+          ),
+          if (isOption) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                MetricPill(
+                  label: '底层',
+                  value: underlyingPrice == null
+                      ? instrument.underlyingSymbol ?? '--'
+                      : money(
+                          underlyingPrice,
+                          digits: underlying?.pricePrecision ?? 2,
+                        ),
+                  color: _violet,
+                ),
+                MetricPill(
+                  label: '行权价',
+                  value: strike == null
+                      ? '--'
+                      : money(strike, digits: instrument.pricePrecision),
+                  color: _amber,
+                ),
+                MetricPill(
+                  label: '权利金',
+                  value: latestPrice == null
+                      ? '--'
+                      : money(latestPrice!, digits: instrument.pricePrecision),
+                  color: _mint,
+                ),
+                MetricPill(
+                  label: '内在价值',
+                  value: intrinsic == null
+                      ? '--'
+                      : money(intrinsic, digits: instrument.pricePrecision),
+                  color: intrinsic != null && intrinsic > 0 ? _mint : _muted,
+                ),
+                MetricPill(
+                  label: 'Delta估算',
+                  value: estimatedDelta(instrument, underlyingPrice, strike),
+                  color: _violet,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (chain.isEmpty)
+              const Text(
+                '暂无同到期期权链',
+                style: TextStyle(color: _muted, fontSize: 12),
+              )
+            else
+              Column(
+                children: [
+                  const InfoLine(label: '期权链', value: '到期 / 行权价 / CALL / PUT'),
+                  ...chain
+                      .take(6)
+                      .map(
+                        (row) => InfoLine(
+                          label:
+                              '${row.expiry} ${money(row.strike, digits: instrument.pricePrecision)}',
+                          value: '${row.call ?? '-'} / ${row.put ?? '-'}',
+                        ),
+                      ),
+                ],
+              ),
+          ] else ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: MetricPill(
+                    label: '方向',
+                    value: instrument.mode == ProductMode.inverseDelivery
+                        ? '币本位反向'
+                        : 'U本位正向',
+                    color: _violet,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: MetricPill(
+                    label: '结算资产',
+                    value: instrument.settleAsset,
+                    color: _amber,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: MetricPill(
+                    label: '最大杠杆',
+                    value: '${(instrument.maxLeveragePpm / 1000000).round()}x',
+                    color: _mint,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Instrument? _underlyingInstrument() {
+    final target = instrument.underlyingSymbol;
+    if (target == null || target.isEmpty) return null;
+    for (final item in state.instruments) {
+      if (item.symbol == target) return item;
+    }
+    return null;
+  }
+}
+
+class LifecycleChip extends StatelessWidget {
+  const LifecycleChip({required this.label, required this.value, super.key});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 96, maxWidth: 168),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: _muted, fontSize: 9)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ContractQuickSettings extends StatelessWidget {
   const ContractQuickSettings({
     required this.marginMode,
@@ -6443,6 +6679,113 @@ String volumeText(Instrument instrument) {
   );
   final amount = 6 + (seed % 130);
   return '$amount.${seed % 100}亿';
+}
+
+String shortDateTime(DateTime? value) {
+  if (value == null) return '--';
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
+}
+
+String timeLeft(DateTime? value) {
+  if (value == null) return '--';
+  final seconds = value.difference(DateTime.now()).inSeconds;
+  if (seconds <= 0) return '已到期';
+  final days = seconds ~/ 86400;
+  final hours = (seconds % 86400) ~/ 3600;
+  final minutes = (seconds % 3600) ~/ 60;
+  if (days > 0) return '$days天$hours小时';
+  return '$hours小时$minutes分';
+}
+
+double? _intrinsicValue(
+  Instrument instrument,
+  double? underlyingPrice,
+  double? strike,
+) {
+  if (underlyingPrice == null || strike == null) return null;
+  if (instrument.optionType == 'PUT') {
+    return math.max(0, strike - underlyingPrice);
+  }
+  return math.max(0, underlyingPrice - strike);
+}
+
+String estimatedDelta(
+  Instrument instrument,
+  double? underlyingPrice,
+  double? strike,
+) {
+  if (underlyingPrice == null || strike == null || strike <= 0) return '--';
+  final ratio = underlyingPrice / strike;
+  final call = instrument.optionType != 'PUT';
+  if (call) {
+    if (ratio >= 1.03) return '0.7500';
+    if (ratio <= 0.97) return '0.2500';
+    return '0.5000';
+  }
+  if (ratio <= 0.97) return '-0.7500';
+  if (ratio >= 1.03) return '-0.2500';
+  return '-0.5000';
+}
+
+List<OptionChainRow> _optionChainRows(
+  Instrument selected,
+  List<Instrument> instruments,
+) {
+  final targetExpiry = _dateKey(selected.expiryTime ?? selected.deliveryTime);
+  final targetUnderlying = selected.underlyingSymbol ?? selected.baseAsset;
+  final rows = <String, OptionChainRow>{};
+  for (final item in instruments) {
+    if (!item.isOption) continue;
+    if ((item.underlyingSymbol ?? item.baseAsset) != targetUnderlying) continue;
+    final expiry = _dateKey(item.expiryTime ?? item.deliveryTime);
+    if (targetExpiry.isNotEmpty && expiry != targetExpiry) continue;
+    final strike = item.strikePrice;
+    if (strike == null) continue;
+    final key = '$expiry:$strike';
+    final current = rows[key] ?? OptionChainRow(expiry: expiry, strike: strike);
+    rows[key] = item.optionType == 'PUT'
+        ? current.copyWith(put: item.symbol)
+        : current.copyWith(call: item.symbol);
+  }
+  final sorted = rows.values.toList()
+    ..sort((left, right) => left.strike.compareTo(right.strike));
+  return sorted;
+}
+
+String _dateKey(DateTime? value) {
+  if (value == null) return '';
+  final utc = value.toUtc();
+  final month = utc.month.toString().padLeft(2, '0');
+  final day = utc.day.toString().padLeft(2, '0');
+  return '${utc.year}-$month-$day';
+}
+
+class OptionChainRow {
+  const OptionChainRow({
+    required this.expiry,
+    required this.strike,
+    this.call,
+    this.put,
+  });
+
+  final String expiry;
+  final double strike;
+  final String? call;
+  final String? put;
+
+  OptionChainRow copyWith({String? call, String? put}) {
+    return OptionChainRow(
+      expiry: expiry,
+      strike: strike,
+      call: call ?? this.call,
+      put: put ?? this.put,
+    );
+  }
 }
 
 double syntheticChange(Instrument instrument) {

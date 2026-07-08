@@ -806,7 +806,7 @@ class AppState extends ChangeNotifier {
       message['productLine'],
       fallback: asString(data['productLine']),
     );
-    if (messageProductLine.isNotEmpty &&
+    if (messageProductLine.isEmpty ||
         messageProductLine != _productLineForSymbol(symbol)) {
       return;
     }

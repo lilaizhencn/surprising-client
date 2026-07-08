@@ -104,7 +104,9 @@ class AppState extends ChangeNotifier {
       if (loaded.isNotEmpty) {
         instruments = loaded;
         final candidates = visibleInstruments;
-        if (!candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
+        if (!candidates.any(
+          (instrument) => instrument.symbol == selectedSymbol,
+        )) {
           selectedSymbol = candidates.isNotEmpty
               ? candidates.first.symbol
               : loaded.first.symbol;
@@ -307,8 +309,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     await refreshPublicData(silent: true);
     await refreshPrivateData();
-    _subscribePublicSelected();
-    _subscribePrivateSelected();
+    await _reconnectRealtimeForSelectedProduct();
   }
 
   Future<void> selectSymbol(String symbol) async {
@@ -574,8 +575,7 @@ class AppState extends ChangeNotifier {
       price: 0,
       quantitySteps: position.signedQuantitySteps.abs(),
       marginMode: position.marginMode,
-      positionSide:
-          instrument.isSpot || positionMode == 'ONE_WAY'
+      positionSide: instrument.isSpot || positionMode == 'ONE_WAY'
           ? 'NET'
           : position.positionSide,
       reduceOnly: instrument.isDerivative,
@@ -727,11 +727,20 @@ class AppState extends ChangeNotifier {
     if (realtimeLog.length > 20) realtimeLog.removeLast();
   }
 
+  Future<void> _reconnectRealtimeForSelectedProduct() async {
+    if (offline) return;
+    await publicRealtime.close();
+    await _connectPublicRealtime();
+    await privateRealtime.close();
+    await _connectPrivateRealtime();
+  }
+
   void _subscribePublicSelected() {
     final selectedProductLine = _productLineForSymbol(selectedSymbol);
     final instrumentsBySymbol = <String, Instrument>{
       selectedSymbol: selectedInstrument,
-      for (final instrument in visibleInstruments) instrument.symbol: instrument,
+      for (final instrument in visibleInstruments)
+        instrument.symbol: instrument,
     };
     for (final entry in instrumentsBySymbol.entries) {
       publicRealtime.subscribe(

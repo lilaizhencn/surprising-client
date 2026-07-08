@@ -198,8 +198,8 @@ class _ClientShellState extends State<ClientShell> {
     final page = switch (index) {
       0 => const HomePage(),
       1 => const MarketsPage(),
-      2 => const TradePage(),
-      3 => const TradePage(),
+      2 => TradePage(key: ValueKey('trade-${state.mode.name}')),
+      3 => TradePage(key: ValueKey('contract-${state.mode.name}')),
       _ => const WalletPage(),
     };
     return Scaffold(
@@ -267,18 +267,7 @@ class ExchangeBottomNav extends StatelessWidget {
         '资产',
       ),
     ];
-    const assetItems = [
-      _ExchangeNavItem(Icons.grid_view_outlined, Icons.grid_view, '欧易'),
-      _ExchangeNavItem(Icons.explore_outlined, Icons.explore, '探索'),
-      _ExchangeNavItem(Icons.sync_alt, Icons.sync_alt, '交易'),
-      _ExchangeNavItem(Icons.public_outlined, Icons.public, '星球'),
-      _ExchangeNavItem(
-        Icons.account_balance_wallet_outlined,
-        Icons.account_balance_wallet,
-        '资产',
-      ),
-    ];
-    final items = selectedIndex == 4 ? assetItems : exchangeItems;
+    const items = exchangeItems;
     return Container(
       height: 56 + bottomInset,
       padding: EdgeInsets.only(bottom: bottomInset),
@@ -403,8 +392,6 @@ class _ExchangeNavGlyphPainter extends CustomPainter {
     switch (label) {
       case '首页':
         _drawHome(canvas, size, fill);
-      case '欧易':
-        _drawOkx(canvas, size, fill);
       case '行情':
         _drawMarket(canvas, size, stroke);
       case '探索':
@@ -413,32 +400,10 @@ class _ExchangeNavGlyphPainter extends CustomPainter {
         _drawTrade(canvas, size, stroke);
       case '合约':
         _drawContract(canvas, size, stroke, fill);
-      case '星球':
-        _drawPlanet(canvas, size, stroke, fill);
       case '资产':
         _drawWallet(canvas, size, stroke, fill);
       default:
         canvas.drawCircle(size.center(Offset.zero), size.width * .34, stroke);
-    }
-  }
-
-  void _drawOkx(Canvas canvas, Size size, Paint fill) {
-    final unit = size.width * .19;
-    final start = Offset(size.width * .22, size.height * .18);
-    final positions = [
-      Offset.zero,
-      Offset(unit, 0),
-      Offset(0, unit),
-      Offset(unit, unit),
-      Offset(unit * 2.4, unit),
-      Offset(0, unit * 2.4),
-      Offset(unit, unit * 2.4),
-    ];
-    for (final offset in positions) {
-      canvas.drawRect(
-        Rect.fromLTWH(start.dx + offset.dx, start.dy + offset.dy, unit, unit),
-        fill,
-      );
     }
   }
 
@@ -451,27 +416,6 @@ class _ExchangeNavGlyphPainter extends CustomPainter {
       ..lineTo(size.width * .28, size.height * .72)
       ..close();
     canvas.drawPath(path, fill);
-  }
-
-  void _drawPlanet(Canvas canvas, Size size, Paint stroke, Paint fill) {
-    final center = size.center(Offset.zero);
-    canvas.drawCircle(center, size.width * .24, stroke);
-    final orbit = Rect.fromCenter(
-      center: center,
-      width: size.width * .78,
-      height: size.height * .34,
-    );
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(-0.45);
-    canvas.translate(-center.dx, -center.dy);
-    canvas.drawOval(orbit, stroke);
-    canvas.restore();
-    canvas.drawCircle(
-      Offset(size.width * .76, size.height * .22),
-      size.width * .08,
-      fill,
-    );
   }
 
   void _drawHome(Canvas canvas, Size size, Paint fill) {
@@ -653,10 +597,7 @@ class HomePage extends StatelessWidget {
                         color: _ink,
                       ),
                     ),
-                    Text(
-                      '现货 · 永续 · 交割 · 期权',
-                      style: TextStyle(color: _muted),
-                    ),
+                    Text('现货 · 永续 · 交割 · 期权', style: TextStyle(color: _muted)),
                   ],
                 ),
               ),
@@ -811,8 +752,9 @@ class MarketsPage extends StatelessWidget {
           const SizedBox(height: 12),
           const MarketPrimaryTabs(selectedIndex: 1),
           const Divider(height: 1, color: _line),
-          MarketModeTabs(
+          ProductPageSelector(
             value: state.mode,
+            title: '行情产品页',
             onChanged: (mode) => unawaited(state.selectMode(mode)),
           ),
           const CategoryStrip(),
@@ -878,8 +820,10 @@ class _TradePageState extends State<TradePage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
         children: [
-          TradeModeTabs(
+          ProductPageSelector(
             value: state.mode,
+            title: '交易产品页',
+            compact: true,
             onChanged: (mode) => unawaited(state.selectMode(mode)),
           ),
           const Divider(height: 10, color: _line),
@@ -956,9 +900,7 @@ class _TradePageState extends State<TradePage> {
                           price: double.tryParse(priceController.text) ?? 0,
                           quantitySteps:
                               int.tryParse(quantityController.text) ?? 0,
-                          marginMode: instrument.isSpot
-                              ? 'CROSS'
-                              : marginMode,
+                          marginMode: instrument.isSpot ? 'CROSS' : marginMode,
                           positionSide:
                               instrument.isSpot ||
                                   state.positionMode == 'ONE_WAY'
@@ -2384,7 +2326,15 @@ List<String> rechargeChains(AppState state, String symbol) {
   }
   if (symbol == 'BTC') return const ['BTC'];
   if (symbol == 'ETH') return const ['ETH', 'ARB', 'AVAX'];
-  return const ['X Layer', 'TRON', 'ETH', 'APTOS', 'ARB', 'AVAX', 'BERA'];
+  return const [
+    'Surprising Chain',
+    'TRON',
+    'ETH',
+    'APTOS',
+    'ARB',
+    'AVAX',
+    'BERA',
+  ];
 }
 
 String chainSymbol(String chain) {
@@ -2393,7 +2343,7 @@ String chainSymbol(String chain) {
   if (upper.contains('ETH')) return 'ETH';
   if (upper.contains('BTC')) return 'BTC';
   if (upper.contains('SOL')) return 'SOL';
-  if (upper.contains('X LAYER') || upper == 'XLAYER') return 'OKB';
+  if (upper.contains('SURPRISING')) return 'SPEX';
   if (upper.contains('APTOS')) return 'APTOS';
   if (upper.contains('ARB')) return 'ARB';
   if (upper.contains('AVAX') || upper.contains('AVALANCHE')) return 'AVAX';
@@ -4002,50 +3952,159 @@ class MarketPrimaryTabs extends StatelessWidget {
   }
 }
 
-class MarketModeTabs extends StatelessWidget {
-  const MarketModeTabs({
+class ProductPageSelector extends StatelessWidget {
+  const ProductPageSelector({
     required this.value,
+    required this.title,
     required this.onChanged,
+    this.compact = false,
     super.key,
   });
 
   final ProductMode value;
+  final String title;
   final ValueChanged<ProductMode> onChanged;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _openProductPagePicker(context),
+        child: Container(
+          constraints: BoxConstraints(minHeight: compact ? 42 : 50),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 12,
+            vertical: compact ? 8 : 10,
+          ),
+          decoration: BoxDecoration(
+            color: _panelSoft,
+            border: Border.all(color: _line),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: _pink.withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.open_in_new, color: _pink, size: 17),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value.label,
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: _muted, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openProductPagePicker(BuildContext context) async {
+    final selected = await showModalBottomSheet<ProductMode>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        return ProductPagePickerSheet(current: value);
+      },
+    );
+    if (selected != null && selected != value) {
+      onChanged(selected);
+    }
+  }
+}
+
+class ProductPagePickerSheet extends StatelessWidget {
+  const ProductPagePickerSheet({required this.current, super.key});
+
+  final ProductMode current;
 
   @override
   Widget build(BuildContext context) {
     final items = [
-      (label: '现货', mode: ProductMode.spot),
-      (label: 'U 永续', mode: ProductMode.linear),
-      (label: '币永续', mode: ProductMode.inverse),
-      (label: 'U 交割', mode: ProductMode.linearDelivery),
-      (label: '币交割', mode: ProductMode.inverseDelivery),
-      (label: '期权', mode: ProductMode.option),
+      (label: 'U本位永续', detail: 'USDT 保证金永续合约', mode: ProductMode.linear),
+      (label: '币本位永续', detail: '币本位保证金永续合约', mode: ProductMode.inverse),
+      (label: 'U本位交割', detail: '到期现金交割合约', mode: ProductMode.linearDelivery),
+      (label: '币本位交割', detail: '币本位到期交割合约', mode: ProductMode.inverseDelivery),
+      (label: '期权', detail: '欧式现金行权期权', mode: ProductMode.option),
+      (label: '现货', detail: '资产和资产直接兑换', mode: ProductMode.spot),
     ];
-    return SizedBox(
-      height: 38,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 16),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          final selected = item.mode == value;
-          return InkWell(
-            onTap: () => onChanged(item.mode),
-            child: Center(
-              child: Text(
-                item.label,
-                style: TextStyle(
-                  color: selected ? _ink : _muted,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            '打开产品页',
+            style: TextStyle(
+              color: _ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: item.mode == current ? _pink : _line),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                tileColor: item.mode == current
+                    ? _pink.withValues(alpha: .14)
+                    : _panelSoft,
+                title: Text(
+                  item.label,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                subtitle: Text(
+                  item.detail,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+                trailing: item.mode == current
+                    ? const Icon(Icons.check_circle, color: _pink)
+                    : const Icon(Icons.chevron_right, color: _muted),
+                onTap: () => Navigator.of(context).pop(item.mode),
               ),
             ),
-          );
-        },
+        ],
       ),
     );
   }
@@ -4274,72 +4333,6 @@ class MarketTickerRow extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class TradeModeTabs extends StatelessWidget {
-  const TradeModeTabs({
-    required this.value,
-    required this.onChanged,
-    super.key,
-  });
-
-  final ProductMode value;
-  final ValueChanged<ProductMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final tabs = [
-      (label: 'U永续', mode: ProductMode.linear),
-      (label: '币永续', mode: ProductMode.inverse),
-      (label: 'U交割', mode: ProductMode.linearDelivery),
-      (label: '币交割', mode: ProductMode.inverseDelivery),
-      (label: '期权', mode: ProductMode.option),
-      (label: '现货', mode: ProductMode.spot),
-    ];
-    return SizedBox(
-      height: 32,
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: tabs.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 14),
-              itemBuilder: (context, index) {
-                final tab = tabs[index];
-                final selected = tab.mode == value;
-                return InkWell(
-                  onTap: () => onChanged(tab.mode),
-                  child: Center(
-                    child: Text(
-                      tab.label,
-                      style: TextStyle(
-                        color: selected ? _ink : _muted,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          IconButton(
-            tooltip: '菜单',
-            onPressed: () {},
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              side: BorderSide.none,
-              foregroundColor: _ink,
-            ),
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-            padding: EdgeInsets.zero,
-            icon: const Icon(Icons.menu, size: 21),
-          ),
-        ],
       ),
     );
   }
@@ -4886,7 +4879,7 @@ double walletAssetCny(WalletAssetSummary asset) {
 
 double walletAssetCnyPrice(String symbol) {
   return switch (symbol.toUpperCase()) {
-    'OKB' => 531.93,
+    'SPEX' => 7.18,
     'BTC' => 417887.8,
     'ETH' => 11814.59,
     'SOL' => 540.8,
@@ -4898,7 +4891,7 @@ double walletAssetCnyPrice(String symbol) {
 
 String walletGainLabel(WalletAssetSummary asset, double value) {
   return switch (asset.symbol.toUpperCase()) {
-    'OKB' => '+¥39,491.57 (+122.31%)',
+    'SPEX' => '+¥39,491.57 (+122.31%)',
     'BTC' => '+¥1,968.86 (+31.75%)',
     _ => '+¥${money(value * .315, digits: 2)} (+31.50%)',
   };
@@ -6391,12 +6384,9 @@ class _CryptoAvatarPainter extends CustomPainter {
         _drawStable(canvas, size, r'$');
       case 'USDG':
         _drawText(canvas, size, 'G', Colors.white, .58, FontWeight.w900);
-      case 'OKB':
-      case 'X':
-      case 'X LAYER':
-      case 'X_LAYER':
-      case 'XLAYER':
-        _drawOkbMark(canvas, size);
+      case 'SPEX':
+      case 'SURPRISING CHAIN':
+        _drawPlatformTokenMark(canvas, size);
       case 'SOL':
         _drawSol(canvas, size);
       case 'TRX':
@@ -6503,7 +6493,7 @@ class _CryptoAvatarPainter extends CustomPainter {
     _drawText(canvas, size, label, Colors.white, .46, FontWeight.w900);
   }
 
-  void _drawOkbMark(Canvas canvas, Size size) {
+  void _drawPlatformTokenMark(Canvas canvas, Size size) {
     final paint = Paint()..color = Colors.white;
     final unit = size.width * .18;
     final start = Offset(size.width * .22, size.height * .22);
@@ -6639,11 +6629,7 @@ Color assetColor(String symbol) {
   return switch (symbol.toUpperCase()) {
     'BTC' => const Color(0xFFF7931A),
     'ETH' => const Color(0xFF627EEA),
-    'OKB' ||
-    'X' ||
-    'X LAYER' ||
-    'X_LAYER' ||
-    'XLAYER' => const Color(0xFF050505),
+    'SPEX' || 'SURPRISING CHAIN' => const Color(0xFF050505),
     'USDT' => const Color(0xFF26A17B),
     'USDC' => const Color(0xFF2775CA),
     'USDG' => const Color(0xFF8DC63F),
@@ -6662,7 +6648,7 @@ String assetDisplayName(String symbol) {
   return switch (symbol.toUpperCase()) {
     'BTC' => 'Bitcoin',
     'ETH' => 'Ethereum',
-    'OKB' => 'OKB',
+    'SPEX' => 'Surprising EX',
     'SOL' => 'Solana',
     'USDT' => 'Tether',
     'USDC' => 'USD Coin',
@@ -6805,7 +6791,7 @@ String networkDisplayName(String chain, String symbol) {
     'TRON' || 'TRX' => 'Tron (TRC20)',
     'ETH' || 'ETHEREUM' => 'Ethereum (ERC20)',
     'BTC' => 'Bitcoin',
-    'X LAYER' || 'X_LAYER' || 'XLAYER' => 'X Layer ($symbol&${symbol}0)',
+    'SURPRISING CHAIN' => 'Surprising Chain ($symbol)',
     'ARB' || 'ARBITRUM' => 'Arbitrum One ($symbol)',
     'AVAX' || 'AVALANCHE' => 'Avalanche C-Chain',
     'APT' || 'APTOS' => 'Aptos',

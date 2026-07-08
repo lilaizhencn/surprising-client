@@ -17,8 +17,7 @@ enum ProductMode {
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>
-      this == ProductMode.linearDelivery ||
-      this == ProductMode.inverseDelivery;
+      this == ProductMode.linearDelivery || this == ProductMode.inverseDelivery;
   bool get isOption => this == ProductMode.option;
   bool get isDerivative => !isSpot;
 
@@ -1184,19 +1183,19 @@ WalletPortfolio fallbackWalletPortfolio() {
     assetCount: 2,
     assets: [
       WalletAssetSummary(
-        symbol: 'OKB',
+        symbol: 'SPEX',
         availableBalance: 135.00000009,
         lockedBalance: 0,
         totalBalance: 135.00000009,
         chains: [
           WalletChainAsset(
-            chain: 'X Layer',
-            symbol: 'OKB',
-            network: 'X Layer',
+            chain: 'Surprising Chain',
+            symbol: 'SPEX',
+            network: 'Surprising Chain',
             family: 'EVM',
             standard: 'Native',
             nativeAsset: true,
-            nativeSymbol: 'OKB',
+            nativeSymbol: 'SPEX',
             availableBalance: 135.00000009,
             lockedBalance: 0,
             totalBalance: 135.00000009,

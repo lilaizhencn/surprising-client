@@ -66,9 +66,9 @@ void main() {
 
     await tester.tap(find.text('资产').last);
     await tester.pumpAndSettle();
-    expect(find.text('欧易'), findsOneWidget);
-    expect(find.text('探索'), findsOneWidget);
-    expect(find.text('星球'), findsOneWidget);
+    expect(find.text('首页'), findsWidgets);
+    expect(find.text('行情'), findsWidgets);
+    expect(find.text('合约'), findsWidgets);
     await tester.tap(find.text('充币').first);
     await tester.pumpAndSettle();
 
@@ -109,7 +109,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择网络'), findsOneWidget);
-    expect(find.text('X Layer (USDT&USDT0)'), findsOneWidget);
+    expect(find.text('Surprising Chain (USDT)'), findsOneWidget);
     expect(find.text('Tron (TRC20)'), findsOneWidget);
     expect(find.text('Ethereum (ERC20)'), findsOneWidget);
   });
@@ -127,13 +127,13 @@ void main() {
         refreshToken: 'refresh',
       )
       ..walletDepositAddress = const WalletDepositAddress(
-        chain: 'X Layer',
+        chain: 'Surprising Chain',
         symbol: 'USDT',
-        network: 'X Layer',
-        standard: 'USDT0',
+        network: 'Surprising Chain',
+        standard: 'SPEX',
         nativeAsset: false,
-        nativeSymbol: 'OKB',
-        address: 'XK00861E9d78139CD68Ae6C78A5b5F7384325e60950',
+        nativeSymbol: 'SPEX',
+        address: 'SX00861E9d78139CD68Ae6C78A5b5F7384325e60950',
         qrCodeDataUrl: '',
         ownerAddress: '',
         accountId: '1',
@@ -147,7 +147,7 @@ void main() {
         notifier: state,
         child: const MaterialApp(
           debugShowCheckedModeBanner: false,
-          home: RechargeAddressPage(symbol: 'USDT', chain: 'X Layer'),
+          home: RechargeAddressPage(symbol: 'USDT', chain: 'Surprising Chain'),
         ),
       ),
     );
@@ -155,18 +155,18 @@ void main() {
 
     expect(find.text('充值 USDT'), findsOneWidget);
     expect(
-      find.text('XK00861E9d78139CD68Ae6C78A5b5F7384325e60950'),
+      find.text('SX00861E9d78139CD68Ae6C78A5b5F7384325e60950'),
       findsOneWidget,
     );
 
     await tester.drag(find.byType(ListView), const Offset(0, -700));
     await tester.pump();
 
-    expect(find.text('X Layer (USDT&USDT0)'), findsOneWidget);
+    expect(find.text('Surprising Chain (USDT)'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsNWidgets(3));
   });
 
-  testWidgets('switches product modes from the contract trade tabs', (
+  testWidgets('opens product pages from the trade product selector', (
     tester,
   ) async {
     final state = AppState(offline: true);
@@ -178,26 +178,32 @@ void main() {
     await tester.tap(find.text('合约').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('U永续'), findsWidgets);
-    expect(find.text('币永续'), findsWidgets);
-    expect(find.text('U交割'), findsWidgets);
-    expect(find.text('期权'), findsWidgets);
-    expect(find.text('现货'), findsWidgets);
+    expect(find.text('交易产品页'), findsOneWidget);
+    expect(find.text('U本位永续'), findsWidgets);
     expect(state.mode, ProductMode.linear);
 
-    await tester.tap(find.text('币永续').first);
+    await tester.tap(find.text('交易产品页'));
+    await tester.pumpAndSettle();
+    expect(find.text('打开产品页'), findsOneWidget);
+    await tester.tap(find.text('币本位永续').last);
     await tester.pumpAndSettle();
     expect(state.mode, ProductMode.inverse);
 
-    await tester.tap(find.text('U交割').first);
+    await tester.tap(find.text('交易产品页'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('U本位交割').last);
     await tester.pumpAndSettle();
     expect(state.mode, ProductMode.linearDelivery);
 
-    await tester.tap(find.text('期权').first);
+    await tester.tap(find.text('交易产品页'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('期权').last);
     await tester.pumpAndSettle();
     expect(state.mode, ProductMode.option);
 
-    await tester.tap(find.text('现货').first);
+    await tester.tap(find.text('交易产品页'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('现货').last);
     await tester.pumpAndSettle();
     expect(state.mode, ProductMode.spot);
   });
@@ -226,6 +232,40 @@ void main() {
     expect(ProductMode.inverseDelivery.productLine, 'INVERSE_DELIVERY');
     expect(ProductMode.option.productLine, 'OPTION');
   });
+
+  test(
+    'reconnects realtime subscriptions when opening another product page',
+    () async {
+      final publicRealtime = _RecordingRealtimeClient();
+      final privateRealtime = _RecordingRealtimeClient();
+      final state = AppState(
+        apiClient: _RealtimeSwitchApiClient(),
+        publicRealtimeClient: publicRealtime,
+        privateRealtimeClient: privateRealtime,
+      );
+
+      await state.selectMode(ProductMode.option);
+
+      expect(state.mode, ProductMode.option);
+      expect(publicRealtime.closeCount, 1);
+      expect(publicRealtime.connectCount, 1);
+      expect(
+        publicRealtime.subscriptions.any(
+          (item) =>
+              item.channel == 'depth' &&
+              item.symbol == state.selectedSymbol &&
+              item.productLine == 'OPTION',
+        ),
+        isTrue,
+      );
+      expect(
+        publicRealtime.subscriptions.any(
+          (item) => item.productLine == 'LINEAR_PERPETUAL',
+        ),
+        isFalse,
+      );
+    },
+  );
 
   test('parses expiring and option instrument metadata', () {
     final delivery = Instrument.fromJson({
@@ -714,4 +754,85 @@ class _SpotRefreshApiClient extends ApiClient {
   }) async {
     return const [];
   }
+}
+
+class _RealtimeSwitchApiClient extends ApiClient {
+  _RealtimeSwitchApiClient() : super(const AppConfig());
+
+  @override
+  Future<OrderBook> orderBook(
+    String symbol, {
+    int depth = 50,
+    String? productLine,
+  }) async {
+    final instrument = fallbackInstruments().firstWhere(
+      (item) => item.symbol == symbol && item.mode.productLine == productLine,
+      orElse: () => fallbackInstruments().first,
+    );
+    return fallbackOrderBook(instrument);
+  }
+
+  @override
+  Future<List<Candle>> candles(
+    String symbol,
+    String period, {
+    String? productLine,
+  }) async {
+    return fallbackCandles();
+  }
+}
+
+class _RecordingRealtimeClient extends RealtimeClient {
+  _RecordingRealtimeClient() : super(const AppConfig());
+
+  int connectCount = 0;
+  int closeCount = 0;
+  final List<_RecordedSubscription> subscriptions = [];
+
+  @override
+  Future<void> connect({
+    int? userId,
+    String? accessToken,
+    required void Function(Map<String, dynamic>) onEvent,
+    required void Function(Object error) onError,
+  }) async {
+    connectCount++;
+  }
+
+  @override
+  void subscribe(
+    String channel, {
+    String? symbol,
+    String? period,
+    String? productLine,
+  }) {
+    subscriptions.add(
+      _RecordedSubscription(
+        channel: channel,
+        symbol: symbol,
+        period: period,
+        productLine: productLine,
+      ),
+    );
+  }
+
+  @override
+  Future<void> close() async {
+    closeCount++;
+    subscriptions.clear();
+  }
+}
+
+class _RecordedSubscription {
+  const _RecordedSubscription({
+    required this.channel,
+    this.symbol,
+    this.period,
+    this.productLine,
+  });
+
+  final String channel;
+  final String? symbol;
+  final String? period;
+  final String? productLine;
 }

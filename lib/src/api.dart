@@ -513,7 +513,6 @@ class ApiClient {
     required String positionSide,
     int? activationPriceTicks,
     int? callbackRatePpm,
-    String triggerPriceType = 'MARK_PRICE',
     String? productLine,
   }) async {
     final payload = <String, Object?>{
@@ -523,7 +522,6 @@ class ApiClient {
       'symbol': symbol,
       'side': side,
       'triggerType': triggerType,
-      'triggerPriceType': triggerPriceType,
       'triggerPriceTicks': triggerPriceTicks,
       'activationPriceTicks': activationPriceTicks,
       'callbackRatePpm': callbackRatePpm,

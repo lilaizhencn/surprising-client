@@ -95,15 +95,6 @@ String triggerTypeLabel(String type) {
   };
 }
 
-String triggerPriceTypeLabel(String type) {
-  return switch (type) {
-    'MARK_PRICE' => '标记价',
-    'INDEX_PRICE' => '指数价',
-    'LAST_PRICE' => '最新价',
-    _ => type,
-  };
-}
-
 String triggerCloseLabel(String side, String positionSide) {
   if (positionSide == 'LONG') return '平多';
   if (positionSide == 'SHORT') return '平空';
@@ -921,7 +912,6 @@ class TriggerOrderModel {
     required this.symbol,
     required this.side,
     required this.triggerType,
-    required this.triggerPriceType,
     required this.triggerCondition,
     required this.triggerPriceTicks,
     this.activationPriceTicks,
@@ -943,7 +933,6 @@ class TriggerOrderModel {
   final String symbol;
   final String side;
   final String triggerType;
-  final String triggerPriceType;
   final String triggerCondition;
   final int triggerPriceTicks;
   final int? activationPriceTicks;
@@ -967,10 +956,6 @@ class TriggerOrderModel {
       symbol: asString(json['symbol']),
       side: asString(json['side'], fallback: 'SELL'),
       triggerType: asString(json['triggerType'], fallback: 'TAKE_PROFIT'),
-      triggerPriceType: asString(
-        json['triggerPriceType'],
-        fallback: 'MARK_PRICE',
-      ),
       triggerCondition: asString(json['triggerCondition']),
       triggerPriceTicks: asInt(json['triggerPriceTicks']),
       activationPriceTicks: asNullableInt(json['activationPriceTicks']),
@@ -1045,7 +1030,6 @@ class TriggerOrderDraft {
   const TriggerOrderDraft({
     required this.side,
     required this.triggerType,
-    required this.triggerPriceType,
     required this.triggerPriceTicks,
     this.activationPriceTicks,
     this.callbackRatePpm,
@@ -1056,7 +1040,6 @@ class TriggerOrderDraft {
 
   final String side;
   final String triggerType;
-  final String triggerPriceType;
   final int triggerPriceTicks;
   final int? activationPriceTicks;
   final int? callbackRatePpm;

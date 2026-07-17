@@ -494,7 +494,6 @@ class AppState extends ChangeNotifier {
             symbol: selectedSymbol,
             side: draft.side,
             triggerType: draft.triggerType,
-            triggerPriceType: draft.triggerPriceType,
             triggerPriceTicks: draft.triggerPriceTicks,
             activationPriceTicks: draft.activationPriceTicks,
             callbackRatePpm: draft.callbackRatePpm,

@@ -3001,7 +3001,6 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
         _TriggerLevelInput(
           id: '${DateTime.now().microsecondsSinceEpoch}-${levels.length}',
           triggerType: triggerType,
-          triggerPriceType: 'MARK_PRICE',
           closeTarget: 'LONG',
           triggerPriceTicks: triggerType == 'TRAILING_STOP'
               ? '0'
@@ -3040,7 +3039,6 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
           return TriggerOrderDraft(
             side: level.closeTarget == 'LONG' ? 'SELL' : 'BUY',
             triggerType: level.triggerType,
-            triggerPriceType: level.triggerPriceType,
             triggerPriceTicks: triggerPriceTicks,
             activationPriceTicks: level.triggerType == 'TRAILING_STOP'
                 ? activationPriceTicks
@@ -3198,16 +3196,6 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 ),
               ),
               const SizedBox(width: 6),
-              Expanded(
-                child: SmallDropdown(
-                  value: level.triggerPriceType,
-                  values: const ['MARK_PRICE', 'INDEX_PRICE', 'LAST_PRICE'],
-                  labelBuilder: triggerPriceTypeLabel,
-                  onChanged: (value) =>
-                      setState(() => level.triggerPriceType = value),
-                ),
-              ),
-              const SizedBox(width: 6),
               IconButton.filledTonal(
                 tooltip: '删除',
                 onPressed: () => setState(() => levels.remove(level)),
@@ -3271,7 +3259,6 @@ class _TriggerLevelInput {
   _TriggerLevelInput({
     required this.id,
     required this.triggerType,
-    required this.triggerPriceType,
     required this.closeTarget,
     required this.triggerPriceTicks,
     required this.activationPriceTicks,
@@ -3281,7 +3268,6 @@ class _TriggerLevelInput {
 
   final String id;
   String triggerType;
-  String triggerPriceType;
   String closeTarget;
   String triggerPriceTicks;
   String activationPriceTicks;

@@ -438,7 +438,6 @@ void main() {
       'symbol': 'BTC-USDT',
       'side': 'SELL',
       'triggerType': 'TAKE_PROFIT',
-      'triggerPriceType': 'LAST_PRICE',
       'triggerPriceTicks': 705000,
       'orderType': 'MARKET',
       'timeInForce': 'IOC',
@@ -449,8 +448,6 @@ void main() {
     });
 
     expect(order.triggerOrderId, 7);
-    expect(order.triggerPriceType, 'LAST_PRICE');
-    expect(triggerPriceTypeLabel(order.triggerPriceType), '最新价');
     expect(order.positionSide, 'LONG');
     expect(triggerTypeLabel(order.triggerType), '止盈');
     expect(triggerCloseLabel(order.side, order.positionSide), '平多');
@@ -462,7 +459,6 @@ void main() {
       'symbol': 'BTC-USDT',
       'side': 'SELL',
       'triggerType': 'STOP_LOSS',
-      'triggerPriceType': 'MARK_PRICE',
       'triggerCondition': 'LESS_OR_EQUAL',
       'triggerPriceTicks': 605000,
       'orderType': 'MARKET',

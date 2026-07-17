@@ -97,10 +97,7 @@ class ApiClient {
     ).map((item) => ProductBalance.fromJson(asMap(item))).toList();
   }
 
-  Future<List<Position>> positions(
-    int userId, {
-    String? productLine,
-  }) async {
+  Future<List<Position>> positions(int userId, {String? productLine}) async {
     final json = await get(
       '/api/v1/gateway/account/positions',
       query: {'userId': '$userId'},
@@ -130,11 +127,17 @@ class ApiClient {
     String positionMode, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/account/position-mode', {
-      'userId': userId,
-      if (productLine != null && productLine.isNotEmpty) 'productLine': productLine,
-      'positionMode': positionMode,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/account/position-mode',
+      {
+        'userId': userId,
+        if (productLine != null && productLine.isNotEmpty)
+          'productLine': productLine,
+        'positionMode': positionMode,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return asString(json['positionMode'], fallback: positionMode);
   }
 
@@ -231,9 +234,12 @@ class ApiClient {
     List<Map<String, dynamic>> orders, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/batch', {
-      'orders': orders,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/batch',
+      {'orders': orders},
+      userId: userId,
+      productLine: productLine,
+    );
     return OrderBatchResult.fromJson(json);
   }
 
@@ -280,9 +286,12 @@ class ApiClient {
     List<Map<String, dynamic>> orders, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/batch-amend', {
-      'orders': orders,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/batch-amend',
+      {'orders': orders},
+      userId: userId,
+      productLine: productLine,
+    );
     return AmendOrderBatchResult.fromJson(json);
   }
 
@@ -291,10 +300,12 @@ class ApiClient {
     int orderId, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/cancel', {
-      'userId': userId,
-      'orderId': orderId,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/cancel',
+      {'userId': userId, 'orderId': orderId},
+      userId: userId,
+      productLine: productLine,
+    );
     return OrderModel.fromJson(json);
   }
 
@@ -303,11 +314,16 @@ class ApiClient {
     List<int> orderIds, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/batch-cancel', {
-      'orders': orderIds
-          .map((orderId) => {'userId': userId, 'orderId': orderId})
-          .toList(),
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/batch-cancel',
+      {
+        'orders': orderIds
+            .map((orderId) => {'userId': userId, 'orderId': orderId})
+            .toList(),
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return OrderBatchResult.fromJson(json);
   }
 
@@ -317,11 +333,16 @@ class ApiClient {
     int limit = 1000,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/cancel-open', {
-      'userId': userId,
-      ...?symbol == null ? null : {'symbol': symbol},
-      'limit': limit,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/cancel-open',
+      {
+        'userId': userId,
+        ...?symbol == null ? null : {'symbol': symbol},
+        'limit': limit,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return OrderBatchResult.fromJson(json);
   }
 
@@ -358,28 +379,33 @@ class ApiClient {
     required bool postOnly,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/algo', {
-      'userId': userId,
-      'clientAlgoOrderId':
-          'app-algo-$userId-${DateTime.now().microsecondsSinceEpoch}',
-      'symbol': symbol,
-      'algoType': algoType,
-      'side': side,
-      'priceTicks': algoType == 'TWAP' && priceTicks <= 0 ? 0 : priceTicks,
-      'quantitySteps': quantitySteps,
-      'childQuantitySteps': childQuantitySteps,
-      'intervalSeconds': intervalSeconds,
-      'durationSeconds': durationSeconds,
-      'marginMode': marginMode,
-      'positionSide': positionSide,
-      'reduceOnly': reduceOnly,
-      'postOnly': algoType == 'ICEBERG' && postOnly,
-      'timeInForce': algoType == 'TWAP'
-          ? 'IOC'
-          : postOnly
-          ? 'GTX'
-          : 'GTC',
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/algo',
+      {
+        'userId': userId,
+        'clientAlgoOrderId':
+            'app-algo-$userId-${DateTime.now().microsecondsSinceEpoch}',
+        'symbol': symbol,
+        'algoType': algoType,
+        'side': side,
+        'priceTicks': algoType == 'TWAP' && priceTicks <= 0 ? 0 : priceTicks,
+        'quantitySteps': quantitySteps,
+        'childQuantitySteps': childQuantitySteps,
+        'intervalSeconds': intervalSeconds,
+        'durationSeconds': durationSeconds,
+        'marginMode': marginMode,
+        'positionSide': positionSide,
+        'reduceOnly': reduceOnly,
+        'postOnly': algoType == 'ICEBERG' && postOnly,
+        'timeInForce': algoType == 'TWAP'
+            ? 'IOC'
+            : postOnly
+            ? 'GTX'
+            : 'GTC',
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return AlgoOrderModel.fromJson(json);
   }
 
@@ -388,10 +414,12 @@ class ApiClient {
     int algoOrderId, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/algo/cancel', {
-      'userId': userId,
-      'algoOrderId': algoOrderId,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/algo/cancel',
+      {'userId': userId, 'algoOrderId': algoOrderId},
+      userId: userId,
+      productLine: productLine,
+    );
     return AlgoOrderModel.fromJson(json);
   }
 
@@ -401,11 +429,16 @@ class ApiClient {
     int limit = 1000,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/algo/cancel-open', {
-      'userId': userId,
-      ...?symbol == null ? null : {'symbol': symbol},
-      'limit': limit,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/algo/cancel-open',
+      {
+        'userId': userId,
+        ...?symbol == null ? null : {'symbol': symbol},
+        'limit': limit,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return AlgoOrderBatchResult.fromJson(json);
   }
 
@@ -415,11 +448,16 @@ class ApiClient {
     required int countdownMs,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/cancel-all-after', {
-      'userId': userId,
-      ...?symbol == null ? null : {'symbol': symbol},
-      'countdownMs': countdownMs,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/cancel-all-after',
+      {
+        'userId': userId,
+        ...?symbol == null ? null : {'symbol': symbol},
+        'countdownMs': countdownMs,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return CancelAllAfterResult.fromJson(json);
   }
 
@@ -430,14 +468,19 @@ class ApiClient {
     required String positionSide,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading/close-position', {
-      'userId': userId,
-      'clientOrderId':
-          'app-close-$userId-${DateTime.now().microsecondsSinceEpoch}',
-      'symbol': symbol,
-      'marginMode': marginMode,
-      'positionSide': positionSide,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading/close-position',
+      {
+        'userId': userId,
+        'clientOrderId':
+            'app-close-$userId-${DateTime.now().microsecondsSinceEpoch}',
+        'symbol': symbol,
+        'marginMode': marginMode,
+        'positionSide': positionSide,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return OrderModel.fromJson(json);
   }
 
@@ -506,10 +549,12 @@ class ApiClient {
     bool atomic = false,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading-trigger/batch', {
-      'atomic': atomic,
-      'orders': orders,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading-trigger/batch',
+      {'atomic': atomic, 'orders': orders},
+      userId: userId,
+      productLine: productLine,
+    );
     return TriggerOrderBatchResult.fromJson(json);
   }
 
@@ -518,10 +563,12 @@ class ApiClient {
     int triggerOrderId, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading-trigger/cancel', {
-      'userId': userId,
-      'triggerOrderId': triggerOrderId,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading-trigger/cancel',
+      {'userId': userId, 'triggerOrderId': triggerOrderId},
+      userId: userId,
+      productLine: productLine,
+    );
     return TriggerOrderModel.fromJson(json);
   }
 
@@ -530,16 +577,21 @@ class ApiClient {
     List<int> triggerOrderIds, {
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading-trigger/batch-cancel', {
-      'orders': triggerOrderIds
-          .map(
-            (triggerOrderId) => {
-              'userId': userId,
-              'triggerOrderId': triggerOrderId,
-            },
-          )
-          .toList(),
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading-trigger/batch-cancel',
+      {
+        'orders': triggerOrderIds
+            .map(
+              (triggerOrderId) => {
+                'userId': userId,
+                'triggerOrderId': triggerOrderId,
+              },
+            )
+            .toList(),
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return TriggerOrderBatchResult.fromJson(json);
   }
 
@@ -549,11 +601,16 @@ class ApiClient {
     int limit = 1000,
     String? productLine,
   }) async {
-    final json = await post('/api/v1/gateway/trading-trigger/cancel-open', {
-      'userId': userId,
-      ...?symbol == null ? null : {'symbol': symbol},
-      'limit': limit,
-    }, userId: userId, productLine: productLine);
+    final json = await post(
+      '/api/v1/gateway/trading-trigger/cancel-open',
+      {
+        'userId': userId,
+        ...?symbol == null ? null : {'symbol': symbol},
+        'limit': limit,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
     return TriggerOrderBatchResult.fromJson(json);
   }
 
@@ -860,14 +917,17 @@ class RealtimeClient {
   final AppConfig config;
   WebSocket? _socket;
   StreamSubscription<dynamic>? _subscription;
+  bool _closing = false;
 
   Future<void> connect({
     int? userId,
     String? accessToken,
     required void Function(Map<String, dynamic>) onEvent,
     required void Function(Object error) onError,
+    void Function()? onDone,
   }) async {
     await close();
+    _closing = false;
     final base = Uri.parse(config.websocketUrl);
     final query = <String, String>{};
     if (userId != null) {
@@ -891,7 +951,11 @@ class RealtimeClient {
         }
       },
       onError: onError,
-      onDone: () {},
+      onDone: () {
+        _socket = null;
+        _subscription = null;
+        if (!_closing) onDone?.call();
+      },
       cancelOnError: false,
     );
   }
@@ -910,6 +974,7 @@ class RealtimeClient {
       productLine: productLine,
     );
     subscribe('orders', productLine: productLine);
+    subscribe('triggerOrders', productLine: productLine);
     subscribe('matches', productLine: productLine);
     subscribe('executionReports', productLine: productLine);
     subscribe('positions', productLine: productLine);
@@ -939,9 +1004,11 @@ class RealtimeClient {
   }
 
   Future<void> close() async {
+    _closing = true;
     await _subscription?.cancel();
     _subscription = null;
     await _socket?.close();
     _socket = null;
+    _closing = false;
   }
 }

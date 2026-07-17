@@ -7,7 +7,7 @@ Flutter mobile client for Surprising Exchange.
 - Native Flutter K-line chart via `kline_chart`.
 - Login and register through `surprising-gateway`.
 - Market list, candlestick, L2 order book, spot, USDT-margined, and coin-margined trading views.
-- Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed.
+- Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed. TP/SL status snapshots update the open-trigger list immediately, with a full REST refresh after private WebSocket reconnect.
 
 ## Local Backend
 

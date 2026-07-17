@@ -267,6 +267,29 @@ void main() {
     },
   );
 
+  test(
+    'subscribes authenticated derivative sessions to trigger updates',
+    () async {
+      final privateRealtime = _RecordingRealtimeClient();
+      final state = AppState(
+        apiClient: _PrivateRealtimeApiClient(),
+        privateRealtimeClient: privateRealtime,
+      );
+
+      await state.login('demo_user', 'password');
+
+      expect(
+        privateRealtime.subscriptions.any(
+          (item) =>
+              item.channel == 'triggerOrders' &&
+              item.symbol == state.selectedSymbol &&
+              item.productLine == 'LINEAR_PERPETUAL',
+        ),
+        isTrue,
+      );
+    },
+  );
+
   test('parses expiring and option instrument metadata', () {
     final delivery = Instrument.fromJson({
       'symbol': 'BTC-USDT-260925',
@@ -431,6 +454,53 @@ void main() {
     expect(order.positionSide, 'LONG');
     expect(triggerTypeLabel(order.triggerType), '止盈');
     expect(triggerCloseLabel(order.side, order.positionSide), '平多');
+  });
+
+  test('applies pushed trigger snapshots and removes terminal orders', () {
+    Map<String, dynamic> orderJson(String status) => {
+      'triggerOrderId': 7,
+      'symbol': 'BTC-USDT',
+      'side': 'SELL',
+      'triggerType': 'STOP_LOSS',
+      'triggerPriceType': 'MARK_PRICE',
+      'triggerCondition': 'LESS_OR_EQUAL',
+      'triggerPriceTicks': 605000,
+      'orderType': 'MARKET',
+      'timeInForce': 'IOC',
+      'priceTicks': 0,
+      'quantitySteps': 3,
+      'marginMode': 'CROSS',
+      'positionSide': 'NET',
+      'status': status,
+    };
+    Map<String, dynamic> event(int eventId, String status) => {
+      'op': 'event',
+      'channel': 'triggerOrders',
+      'symbol': 'BTC-USDT',
+      'productLine': 'LINEAR_PERPETUAL',
+      'data': {
+        'eventId': eventId,
+        'productLine': 'LINEAR_PERPETUAL',
+        'order': orderJson(status),
+      },
+    };
+    final state = AppState(offline: true)
+      ..openTriggerOrders = [TriggerOrderModel.fromJson(orderJson('PENDING'))];
+
+    state.handleRealtimeMessage(event(10, 'CANCELED'));
+
+    expect(state.openTriggerOrders, isEmpty);
+
+    state.handleRealtimeMessage(event(9, 'PENDING'));
+    expect(
+      state.openTriggerOrders,
+      isEmpty,
+      reason: 'older replay must not restore a terminal order',
+    );
+
+    state.handleRealtimeMessage(event(11, 'PENDING'));
+    expect(state.openTriggerOrders.single.triggerOrderId, 7);
+    expect(state.openTriggerOrders.single.status, 'PENDING');
   });
 
   test('parses amend order batch responses', () {
@@ -756,6 +826,25 @@ class _SpotRefreshApiClient extends ApiClient {
   }
 }
 
+class _PrivateRealtimeApiClient extends _SpotRefreshApiClient {
+  @override
+  Future<AuthSession> login({
+    required String username,
+    required String password,
+  }) async {
+    return AuthSession(
+      user: AuthUser(
+        userId: 1001,
+        username: username,
+        email: 'demo@example.com',
+        status: 'ACTIVE',
+      ),
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    );
+  }
+}
+
 class _RealtimeSwitchApiClient extends ApiClient {
   _RealtimeSwitchApiClient() : super(const AppConfig());
 
@@ -795,6 +884,7 @@ class _RecordingRealtimeClient extends RealtimeClient {
     String? accessToken,
     required void Function(Map<String, dynamic>) onEvent,
     required void Function(Object error) onError,
+    void Function()? onDone,
   }) async {
     connectCount++;
   }

@@ -53,6 +53,11 @@ class AppState extends ChangeNotifier {
   String? lastNotice;
   final List<String> realtimeLog = [];
   Timer? _realtimeNotifyTimer;
+  Timer? _publicReconnectTimer;
+  Timer? _privateReconnectTimer;
+  int _publicReconnectAttempts = 0;
+  int _privateReconnectAttempts = 0;
+  final Map<int, int> _triggerOrderEventVersions = {};
 
   bool get isLoggedIn => session != null;
 
@@ -281,6 +286,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _privateReconnectTimer?.cancel();
+    _privateReconnectTimer = null;
     await privateRealtime.close();
     session = null;
     balances = const [];
@@ -288,6 +295,7 @@ class AppState extends ChangeNotifier {
     openOrders = const [];
     openAlgoOrders = const [];
     openTriggerOrders = const [];
+    _triggerOrderEventVersions.clear();
     positionMode = 'ONE_WAY';
     walletPortfolio = WalletPortfolio.empty();
     walletOrders = const [];
@@ -694,11 +702,14 @@ class AppState extends ChangeNotifier {
           _recordRealtimeIssue('公共行情 WebSocket：$error');
           notifyListeners();
         },
+        onDone: _schedulePublicReconnect,
       );
+      _publicReconnectAttempts = 0;
       _subscribePublicSelected();
     } catch (error) {
       _recordRealtimeIssue('实时行情连接失败：$error');
       notifyListeners();
+      _schedulePublicReconnect();
     }
   }
 
@@ -714,17 +725,54 @@ class AppState extends ChangeNotifier {
           _recordRealtimeIssue('账户 WebSocket：$error');
           notifyListeners();
         },
+        onDone: _schedulePrivateReconnect,
       );
+      _privateReconnectAttempts = 0;
       _subscribePrivateSelected();
     } catch (error) {
       _recordRealtimeIssue('账户实时连接失败：$error');
       notifyListeners();
+      _schedulePrivateReconnect();
     }
   }
 
   void _recordRealtimeIssue(String message) {
     realtimeLog.insert(0, message);
     if (realtimeLog.length > 20) realtimeLog.removeLast();
+  }
+
+  void _schedulePublicReconnect() {
+    if (offline || (_publicReconnectTimer?.isActive ?? false)) return;
+    _publicReconnectAttempts++;
+    _publicReconnectTimer = Timer(
+      _reconnectDelay(_publicReconnectAttempts),
+      () async {
+        _publicReconnectTimer = null;
+        await _connectPublicRealtime();
+        await refreshPublicData(silent: true);
+      },
+    );
+  }
+
+  void _schedulePrivateReconnect() {
+    if (offline || !isLoggedIn || (_privateReconnectTimer?.isActive ?? false)) {
+      return;
+    }
+    _privateReconnectAttempts++;
+    _privateReconnectTimer = Timer(
+      _reconnectDelay(_privateReconnectAttempts),
+      () async {
+        _privateReconnectTimer = null;
+        await _connectPrivateRealtime();
+        await refreshPrivateData();
+      },
+    );
+  }
+
+  Duration _reconnectDelay(int attempt) {
+    final capped = attempt < 1 ? 1 : (attempt > 4 ? 4 : attempt);
+    final seconds = 1 << (capped - 1);
+    return Duration(seconds: seconds);
   }
 
   Future<void> _reconnectRealtimeForSelectedProduct() async {
@@ -782,6 +830,11 @@ class AppState extends ChangeNotifier {
       productLine: productLine,
     );
     if (!instrument.isDerivative) return;
+    privateRealtime.subscribe(
+      'triggerOrders',
+      symbol: selectedSymbol,
+      productLine: productLine,
+    );
     privateRealtime.subscribe(
       'positions',
       symbol: selectedSymbol,
@@ -846,6 +899,16 @@ class AppState extends ChangeNotifier {
       latestPrices[symbol] = candle.close;
     } else if (channel == 'orders') {
       _upsertOrder(OrderModel.fromJson(data));
+    } else if (channel == 'triggerOrders') {
+      final eventId = asInt(data['eventId']);
+      final orderData = asMap(data['order']);
+      final order = TriggerOrderModel.fromJson(orderData);
+      final previousEventId =
+          _triggerOrderEventVersions[order.triggerOrderId] ?? 0;
+      if (eventId > previousEventId) {
+        _triggerOrderEventVersions[order.triggerOrderId] = eventId;
+        _upsertTriggerOrder(order);
+      }
     } else if (channel == 'positions') {
       final position = Position.fromJson(data);
       positions = [
@@ -992,6 +1055,8 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _realtimeNotifyTimer?.cancel();
+    _publicReconnectTimer?.cancel();
+    _privateReconnectTimer?.cancel();
     unawaited(publicRealtime.close());
     unawaited(privateRealtime.close());
     super.dispose();
@@ -999,7 +1064,7 @@ class AppState extends ChangeNotifier {
 }
 
 bool _isOpenTriggerStatus(String status) {
-  return status == 'NEW' || status == 'TRIGGERING';
+  return status == 'PENDING' || status == 'TRIGGERING';
 }
 
 bool _isOpenAlgoStatus(String status) {

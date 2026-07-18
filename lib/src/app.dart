@@ -3579,6 +3579,19 @@ class PrivateTradingPanel extends StatelessWidget {
               onCancel: () => state.cancelOrder(order),
             ),
           ),
+          if (state.openOrdersHasMore)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                onPressed: state.loadingMoreOpenOrders
+                    ? null
+                    : state.loadMoreOpenOrders,
+                icon: const Icon(Icons.expand_more),
+                label: Text(
+                  state.loadingMoreOpenOrders ? '加载中...' : '加载更多委托',
+                ),
+              ),
+            ),
         ],
         if (state.openAlgoOrders.isNotEmpty) ...[
           const SectionTitle(title: '交易机器人'),

@@ -141,21 +141,31 @@ class ApiClient {
     return asString(json['positionMode'], fallback: positionMode);
   }
 
-  Future<List<OrderModel>> openOrders(
+  Future<OpenOrdersPage> openOrders(
     int userId, {
     String? symbol,
     String? productLine,
+    String? cursor,
+    int limit = 100,
   }) async {
-    final query = {'userId': '$userId', 'limit': '100'};
+    final query = {'userId': '$userId', 'limit': '$limit'};
     if (symbol != null) query['symbol'] = symbol;
+    if (cursor != null && cursor.isNotEmpty) query['cursor'] = cursor;
     final json = await get(
       '/api/v1/gateway/trading/open',
       query: query,
       productLine: productLine,
     );
-    return asList(
-      json['orders'],
-    ).map((item) => OrderModel.fromJson(asMap(item))).toList();
+    final nextCursor = asString(json['nextCursor']).trim();
+    return OpenOrdersPage(
+      orders: asList(
+        json['orders'],
+      ).map((item) => OrderModel.fromJson(asMap(item))).toList(),
+      nextCursor: nextCursor.isEmpty ? null : nextCursor,
+      hasMore: asBool(json['hasMore']) && nextCursor.isNotEmpty,
+      sort: asString(json['sort'], fallback: 'orderId.desc'),
+      limit: asInt(json['limit'], fallback: limit),
+    );
   }
 
   Future<OrderModel> placeOrder({

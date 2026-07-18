@@ -563,6 +563,22 @@ class OrderModel {
   }
 }
 
+class OpenOrdersPage {
+  const OpenOrdersPage({
+    required this.orders,
+    required this.nextCursor,
+    required this.hasMore,
+    required this.sort,
+    required this.limit,
+  });
+
+  final List<OrderModel> orders;
+  final String? nextCursor;
+  final bool hasMore;
+  final String sort;
+  final int limit;
+}
+
 class TestOrderResult {
   const TestOrderResult({
     required this.accepted,

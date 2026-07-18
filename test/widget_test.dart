@@ -387,6 +387,59 @@ void main() {
     expect(state.liquidationOrders, isEmpty);
   });
 
+  test('loads open-order cursor pages and removes cancel-requested orders', () async {
+    final api = _SpotRefreshApiClient();
+    final spotSymbol = fallbackInstruments()
+        .firstWhere((instrument) => instrument.mode == ProductMode.spot)
+        .symbol;
+    api.openOrderPages.addAll([
+      OpenOrdersPage(
+        orders: [_openOrder(11, spotSymbol), _openOrder(10, spotSymbol)],
+        nextCursor: 'cursor-10',
+        hasMore: true,
+        sort: 'orderId.desc',
+        limit: 100,
+      ),
+      OpenOrdersPage(
+        orders: [_openOrder(10, spotSymbol), _openOrder(9, spotSymbol)],
+        nextCursor: null,
+        hasMore: false,
+        sort: 'orderId.desc',
+        limit: 100,
+      ),
+    ]);
+    final state = AppState(apiClient: api)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 1,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      )
+      ..mode = ProductMode.spot
+      ..selectedSymbol = spotSymbol;
+
+    await state.refreshPrivateData();
+    await state.loadMoreOpenOrders();
+
+    expect(api.openOrderCursors, [null, 'cursor-10']);
+    expect(state.openOrders.map((order) => order.orderId), [11, 10, 9]);
+    expect(state.openOrdersHasMore, isFalse);
+    expect(state.openOrdersNextCursor, isNull);
+
+    state.handleRealtimeMessage({
+      'op': 'event',
+      'channel': 'orders',
+      'productLine': 'SPOT',
+      'data': _openOrderJson(10, spotSymbol, status: 'CANCEL_REQUESTED'),
+    });
+
+    expect(state.openOrders.map((order) => order.orderId), [11, 9]);
+  });
+
   test('parses wallet portfolio and order records', () {
     final portfolio = WalletPortfolio.fromJson({
       'generatedAt': '2026-07-03T00:00:00Z',
@@ -722,6 +775,8 @@ class _SpotRefreshApiClient extends ApiClient {
 
   String? productBalanceProductLine;
   String? openOrdersProductLine;
+  final List<OpenOrdersPage> openOrderPages = [];
+  final List<String?> openOrderCursors = [];
   int derivativeCalls = 0;
 
   @override
@@ -735,13 +790,23 @@ class _SpotRefreshApiClient extends ApiClient {
   }
 
   @override
-  Future<List<OrderModel>> openOrders(
+  Future<OpenOrdersPage> openOrders(
     int userId, {
     String? symbol,
     String? productLine,
+    String? cursor,
+    int limit = 100,
   }) async {
     openOrdersProductLine = productLine;
-    return const [];
+    openOrderCursors.add(cursor);
+    if (openOrderPages.isNotEmpty) return openOrderPages.removeAt(0);
+    return OpenOrdersPage(
+      orders: const [],
+      nextCursor: null,
+      hasMore: false,
+      sort: 'orderId.desc',
+      limit: limit,
+    );
   }
 
   @override
@@ -820,6 +885,33 @@ class _SpotRefreshApiClient extends ApiClient {
   }) async {
     return const [];
   }
+}
+
+OrderModel _openOrder(int orderId, String symbol) {
+  return OrderModel.fromJson(_openOrderJson(orderId, symbol));
+}
+
+Map<String, dynamic> _openOrderJson(
+  int orderId,
+  String symbol, {
+  String status = 'ACCEPTED',
+}) {
+  return {
+    'orderId': orderId,
+    'symbol': symbol,
+    'side': 'BUY',
+    'orderType': 'LIMIT',
+    'timeInForce': 'GTC',
+    'priceTicks': 100,
+    'quantitySteps': 10,
+    'executedQuantitySteps': 0,
+    'remainingQuantitySteps': 10,
+    'marginMode': 'CROSS',
+    'positionSide': 'NET',
+    'status': status,
+    'reduceOnly': false,
+    'postOnly': false,
+  };
 }
 
 class _PrivateRealtimeApiClient extends _SpotRefreshApiClient {

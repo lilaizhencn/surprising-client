@@ -37,6 +37,9 @@ class AppState extends ChangeNotifier {
   List<ProductBalance> balances = const [];
   List<Position> positions = const [];
   List<OrderModel> openOrders = const [];
+  String? openOrdersNextCursor;
+  bool openOrdersHasMore = false;
+  bool loadingMoreOpenOrders = false;
   List<AlgoOrderModel> openAlgoOrders = const [];
   List<TriggerOrderModel> openTriggerOrders = const [];
   String positionMode = 'ONE_WAY';
@@ -57,6 +60,7 @@ class AppState extends ChangeNotifier {
   Timer? _privateReconnectTimer;
   int _publicReconnectAttempts = 0;
   int _privateReconnectAttempts = 0;
+  int _openOrdersRequestVersion = 0;
   final Map<int, int> _triggerOrderEventVersions = {};
 
   bool get isLoggedIn => session != null;
@@ -170,6 +174,7 @@ class AppState extends ChangeNotifier {
   Future<void> refreshPrivateData() async {
     final id = userId;
     if (offline || id == null) return;
+    final openOrdersRequestVersion = ++_openOrdersRequestVersion;
     loadingPrivate = true;
     notifyListeners();
     try {
@@ -229,7 +234,13 @@ class AppState extends ChangeNotifier {
         );
         return instrument.mode == mode;
       }).toList();
-      openOrders = results[2] as List<OrderModel>;
+      final openOrdersPage = results[2] as OpenOrdersPage;
+      if (openOrdersRequestVersion == _openOrdersRequestVersion) {
+        openOrders = openOrdersPage.orders;
+        openOrdersNextCursor = openOrdersPage.nextCursor;
+        openOrdersHasMore = openOrdersPage.hasMore;
+        loadingMoreOpenOrders = false;
+      }
       openAlgoOrders = results[3] as List<AlgoOrderModel>;
       openTriggerOrders = results[4] as List<TriggerOrderModel>;
       positionMode = results[5] as String;
@@ -244,6 +255,50 @@ class AppState extends ChangeNotifier {
     } finally {
       loadingPrivate = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> loadMoreOpenOrders() async {
+    final id = userId;
+    final cursor = openOrdersNextCursor;
+    if (offline ||
+        id == null ||
+        cursor == null ||
+        cursor.isEmpty ||
+        !openOrdersHasMore ||
+        loadingMoreOpenOrders) {
+      return;
+    }
+    final openOrdersRequestVersion = ++_openOrdersRequestVersion;
+    final symbol = selectedSymbol;
+    final productLine = mode.productLine;
+    loadingMoreOpenOrders = true;
+    notifyListeners();
+    try {
+      final nextPage = await api.openOrders(
+        id,
+        symbol: symbol,
+        productLine: productLine,
+        cursor: cursor,
+      );
+      if (openOrdersRequestVersion != _openOrdersRequestVersion) return;
+      final orderIds = openOrders.map((item) => item.orderId).toSet();
+      openOrders = [
+        ...openOrders,
+        ...nextPage.orders.where((item) => orderIds.add(item.orderId)),
+      ];
+      openOrdersNextCursor = nextPage.nextCursor;
+      openOrdersHasMore = nextPage.hasMore;
+      lastError = null;
+    } catch (error) {
+      if (openOrdersRequestVersion == _openOrdersRequestVersion) {
+        lastError = '加载更多委托失败：$error';
+      }
+    } finally {
+      if (openOrdersRequestVersion == _openOrdersRequestVersion) {
+        loadingMoreOpenOrders = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -290,9 +345,13 @@ class AppState extends ChangeNotifier {
     _privateReconnectTimer = null;
     await privateRealtime.close();
     session = null;
+    _openOrdersRequestVersion++;
     balances = const [];
     positions = const [];
     openOrders = const [];
+    openOrdersNextCursor = null;
+    openOrdersHasMore = false;
+    loadingMoreOpenOrders = false;
     openAlgoOrders = const [];
     openTriggerOrders = const [];
     _triggerOrderEventVersions.clear();
@@ -1002,16 +1061,12 @@ class AppState extends ChangeNotifier {
     final mutable = [...openOrders];
     final index = mutable.indexWhere((item) => item.orderId == order.orderId);
     if (index >= 0) {
-      if (order.remainingQuantitySteps <= 0 ||
-          order.status == 'CANCELED' ||
-          order.status == 'FILLED') {
+      if (!_isOpenOrder(order)) {
         mutable.removeAt(index);
       } else {
         mutable[index] = order;
       }
-    } else if (order.remainingQuantitySteps > 0 &&
-        order.status != 'CANCELED' &&
-        order.status != 'FILLED') {
+    } else if (_isOpenOrder(order)) {
       mutable.insert(0, order);
     }
     openOrders = mutable;
@@ -1064,6 +1119,11 @@ class AppState extends ChangeNotifier {
 
 bool _isOpenTriggerStatus(String status) {
   return status == 'PENDING' || status == 'TRIGGERING';
+}
+
+bool _isOpenOrder(OrderModel order) {
+  return order.remainingQuantitySteps > 0 &&
+      (order.status == 'ACCEPTED' || order.status == 'PARTIALLY_FILLED');
 }
 
 bool _isOpenAlgoStatus(String status) {

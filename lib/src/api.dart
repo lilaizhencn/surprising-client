@@ -159,6 +159,58 @@ class ApiClient {
     return asMap(response);
   }
 
+  Future<List<Map<String, dynamic>>> kycDocuments() async {
+    final response = await _send('GET', '/api/v1/compliance/kyc/documents');
+    return asList(response).map(asMap).toList();
+  }
+
+  Future<Map<String, dynamic>> uploadKycDocument({
+    required String documentType,
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    final base = Uri.parse(config.gatewayBaseUrl);
+    final uri = base.replace(path: '/api/v1/compliance/kyc/documents');
+    final boundary = 'surprising-${DateTime.now().microsecondsSinceEpoch}';
+    final request = await _httpClient
+        .openUrl('POST', uri)
+        .timeout(const Duration(seconds: 6));
+    request.headers.contentType = ContentType(
+      'multipart',
+      'form-data',
+      parameters: {'boundary': boundary},
+    );
+    request.headers.set(
+      'X-Trace-Id',
+      'mobile-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    if (_accessToken != null) {
+      request.headers.set('Authorization', 'Bearer $_accessToken');
+    }
+    final contentType = _kycContentType(fileName);
+    request.write('--$boundary\r\n');
+    request.write(
+      'Content-Disposition: form-data; name="documentType"\r\n\r\n',
+    );
+    request.write(documentType);
+    request.write('\r\n--$boundary\r\n');
+    request.write(
+      'Content-Disposition: form-data; name="file"; filename="${_safeFileName(fileName)}"\r\n',
+    );
+    request.write('Content-Type: $contentType\r\n\r\n');
+    request.add(bytes);
+    request.write('\r\n--$boundary--\r\n');
+    final response = await request.close().timeout(const Duration(seconds: 30));
+    final payload = await utf8.decodeStream(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        response.statusCode,
+        payload.isEmpty ? response.reasonPhrase : payload,
+      );
+    }
+    return asMap(payload.isEmpty ? <String, dynamic>{} : jsonDecode(payload));
+  }
+
   Future<Map<String, dynamic>> submitKyc({
     required String applicantType,
     required String kycLevel,
@@ -166,8 +218,8 @@ class ApiClient {
     required String documentType,
     required String provider,
     required String providerReference,
-    required String submittedDocuments,
     required String faceVerificationStatus,
+    required List<int> documentIds,
   }) {
     return post('/api/v1/compliance/kyc', {
       'applicantType': applicantType,
@@ -177,8 +229,8 @@ class ApiClient {
       'provider': provider,
       if (providerReference.trim().isNotEmpty)
         'providerReference': providerReference.trim(),
-      'submittedDocuments': submittedDocuments,
       'faceVerificationStatus': faceVerificationStatus,
+      'documentIds': documentIds,
     });
   }
 
@@ -1003,6 +1055,20 @@ class ApiClient {
     Map<String, String>? headers,
   }) async {
     return asMap(await _send(method, path, body: body, headers: headers));
+  }
+
+  String _kycContentType(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    return switch (extension) {
+      'pdf' => 'application/pdf',
+      'png' => 'image/png',
+      _ => 'image/jpeg',
+    };
+  }
+
+  String _safeFileName(String fileName) {
+    final value = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    return value.isEmpty ? 'document' : value;
   }
 
   Future<Object?> _send(

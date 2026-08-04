@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:kline_chart/kline_chart.dart';
 
 import 'app_state.dart';
@@ -21,6 +22,11 @@ const _mint = Color(0xFF00C076);
 const _red = Color(0xFFF6465D);
 const _amber = Color(0xFFFCD535);
 const _lime = Color(0xFFB7FF2A);
+
+String _displayFileSize(int bytes) {
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).ceil()} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
 
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({
@@ -2466,13 +2472,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
   final apiLabel = TextEditingController();
   final kycCountry = TextEditingController();
   final kycProviderReference = TextEditingController();
-  final kycDocuments = TextEditingController(
-    text:
-        '[{"type":"ID_CARD","reference":""},{"type":"ADDRESS_PROOF","reference":""}]',
-  );
+  List<Map<String, dynamic>> kycDocumentRecords = const [];
+  PlatformFile? kycFile;
   String kycApplicantType = 'INDIVIDUAL';
   String kycLevel = 'STANDARD';
   String kycDocumentType = 'ID_CARD';
+  String kycUploadType = 'ID_CARD';
   String kycProvider = 'SELF';
   String kycFaceStatus = 'NOT_REQUIRED';
   bool busy = false;
@@ -2493,7 +2498,6 @@ class _SecuritySheetState extends State<SecuritySheet> {
     apiLabel.dispose();
     kycCountry.dispose();
     kycProviderReference.dispose();
-    kycDocuments.dispose();
     super.dispose();
   }
 
@@ -2506,6 +2510,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
         state.api.securityScenes(),
         state.api.apiKeys(),
         state.api.kycStatus(),
+        state.api.kycDocuments(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -2513,6 +2518,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
         scenes = result[1] as List<Map<String, dynamic>>;
         keys = result[2] as List<Map<String, dynamic>>;
         kyc = result[3] as Map<String, dynamic>;
+        kycDocumentRecords = result[4] as List<Map<String, dynamic>>;
         _applyKyc(kyc);
         error = null;
       });
@@ -2534,10 +2540,6 @@ class _SecuritySheetState extends State<SecuritySheet> {
     );
     kycProvider = asString(profile['provider'], fallback: kycProvider);
     kycProviderReference.text = asString(profile['providerReference']);
-    kycDocuments.text = asString(
-      profile['submittedDocuments'],
-      fallback: kycDocuments.text,
-    );
     kycFaceStatus = asString(
       profile['faceVerificationStatus'],
       fallback: kycFaceStatus,
@@ -2549,9 +2551,8 @@ class _SecuritySheetState extends State<SecuritySheet> {
     if (!RegExp(r'^[A-Z]{2}$').hasMatch(country)) {
       throw const FormatException('国家/地区代码必须是 2 位大写字母');
     }
-    final documents = jsonDecode(kycDocuments.text.trim());
-    if (documents is! List) {
-      throw const FormatException('材料引用必须是 JSON 数组');
+    if (kycDocumentRecords.isEmpty) {
+      throw const FormatException('请先上传至少一份 KYC 材料');
     }
     final next = await state.api.submitKyc(
       applicantType: kycApplicantType,
@@ -2560,13 +2561,48 @@ class _SecuritySheetState extends State<SecuritySheet> {
       documentType: kycDocumentType,
       provider: kycProvider,
       providerReference: kycProviderReference.text,
-      submittedDocuments: kycDocuments.text.trim(),
       faceVerificationStatus: kycFaceStatus,
+      documentIds: kycDocumentRecords
+          .map((document) => asInt(document['documentId']))
+          .toList(),
     );
     if (!mounted) return;
     setState(() {
       kyc = next;
       _applyKyc(next);
+    });
+  }
+
+  Future<void> _pickKycDocument() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    if (!mounted || result == null || result.files.isEmpty) return;
+    final picked = result.files.single;
+    final bytes = picked.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw const FormatException('无法读取所选材料');
+    }
+    setState(() => kycFile = picked);
+  }
+
+  Future<void> _uploadKycDocument(AppState state) async {
+    final file = kycFile;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) {
+      throw const FormatException('请先选择 KYC 材料');
+    }
+    final uploaded = await state.api.uploadKycDocument(
+      documentType: kycUploadType,
+      fileName: file.name,
+      bytes: bytes,
+    );
+    if (!mounted) return;
+    setState(() {
+      kycDocumentRecords = [uploaded, ...kycDocumentRecords];
+      kycFile = null;
     });
   }
 
@@ -2592,6 +2628,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     final state = AppScope.of(context);
     final mfaEnabled = mfa['enabled'] == true;
     final enrollmentSecret = asString(enrollment['secret']);
+    final selectedKycFile = kycFile;
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -2712,7 +2749,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
               title: '身份认证 KYC · ${asString(kyc['status'], fallback: '未提交')}',
             ),
             Text(
-              '提币前必须完成认证。材料引用用于连接对象存储或第三方服务，不在交易接口内保存原件。',
+              '提币前必须完成认证。材料会存入对象存储，审核只读取已上传的材料元数据和原件。',
               style: const TextStyle(color: _muted, fontSize: 12),
             ),
             const SizedBox(height: 8),
@@ -2815,11 +2852,73 @@ class _SecuritySheetState extends State<SecuritySheet> {
             ),
             const SizedBox(height: 8),
             AppTextField(controller: kycProviderReference, label: '服务引用（可选）'),
-            AppTextField(controller: kycDocuments, label: '材料引用 JSON'),
-            const Text(
-              '支持 ID_CARD、PASSPORT、ADDRESS_PROOF、BUSINESS_LICENSE；reference 填上传后的文件引用。',
-              style: TextStyle(color: _muted, fontSize: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: SmallDropdown(
+                    value: kycUploadType,
+                    values: const [
+                      'ID_CARD',
+                      'PASSPORT',
+                      'ADDRESS_PROOF',
+                      'BUSINESS_LICENSE',
+                      'FACE_IMAGE',
+                    ],
+                    labelBuilder: (value) => switch (value) {
+                      'PASSPORT' => '上传护照',
+                      'ADDRESS_PROOF' => '上传地址证明',
+                      'BUSINESS_LICENSE' => '上传营业执照',
+                      'FACE_IMAGE' => '上传人脸照片',
+                      _ => '上传身份证',
+                    },
+                    onChanged: (value) =>
+                        setState(() => kycUploadType = value),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: PrimaryAction(
+                    label: selectedKycFile == null
+                        ? '选择材料'
+                        : '上传 ${selectedKycFile.name}',
+                    icon: Icons.upload_file,
+                    onPressed: busy
+                        ? null
+                        : () => _run(
+                              _pickKycDocument,
+                              '已选择材料',
+                            ),
+                  ),
+                ),
+              ],
             ),
+            if (selectedKycFile != null) ...[
+              const SizedBox(height: 6),
+              PrimaryAction(
+                label: '确认上传 ${selectedKycFile.name}',
+                icon: Icons.cloud_upload_outlined,
+                onPressed: busy
+                    ? null
+                    : () => _run(
+                          () => _uploadKycDocument(state),
+                          '材料已上传',
+                        ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            if (kycDocumentRecords.isEmpty)
+              const Text(
+                '尚未上传材料。请至少上传主证件，地址证明按审核要求补充。',
+                style: TextStyle(color: _muted, fontSize: 10),
+              )
+            else
+              ...kycDocumentRecords.map(
+                (document) => InfoLine(
+                  label: asString(document['documentType']),
+                  value:
+                      '${asString(document['originalFilename'])} · ${_displayFileSize(asInt(document['fileSize']))} · ${asString(document['status'], fallback: 'UPLOADED')}',
+                ),
+              ),
             const SizedBox(height: 8),
             Row(
               children: [

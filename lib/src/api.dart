@@ -12,14 +12,19 @@ class ApiClient {
 
   final AppConfig config;
   final HttpClient _httpClient;
+  String? _accessToken;
+
+  void setAccessToken(String? accessToken) {
+    _accessToken = accessToken == null || accessToken.trim().isEmpty
+        ? null
+        : accessToken.trim();
+  }
 
   Future<AuthSession> register({
-    required String username,
     required String password,
     required String email,
   }) async {
     final json = await post('/api/v1/auth/register', {
-      'username': username,
       'password': password,
       'email': email,
     });
@@ -31,10 +36,122 @@ class ApiClient {
     required String password,
   }) async {
     final json = await post('/api/v1/auth/login', {
-      'username': username,
+      'identifier': username,
       'password': password,
     });
     return AuthSession.fromJson(json);
+  }
+
+  Future<bool> verifyEmail(AuthSession session, String code) async {
+    setAccessToken(session.accessToken);
+    final response = await _send(
+      'POST',
+      '/api/v1/auth/verify-email',
+      body: {'email': session.user.email, 'code': code},
+    );
+    return response == true ||
+        (response is Map && response['verified'] == true);
+  }
+
+  Future<Map<String, dynamic>> resendEmailVerification(AuthSession session) {
+    setAccessToken(session.accessToken);
+    return post('/api/v1/auth/resend-email-verification', {});
+  }
+
+  Future<bool> forgotPassword(String identifier) async {
+    final json = await post('/api/v1/auth/forgot-password', {
+      'identifier': identifier,
+    });
+    return json['accepted'] != false;
+  }
+
+  Future<bool> resetPassword({
+    required String identifier,
+    required String code,
+    required String newPassword,
+  }) async {
+    final json = await post('/api/v1/auth/reset-password', {
+      'identifier': identifier,
+      'code': code,
+      'newPassword': newPassword,
+    });
+    return json['accepted'] == true || json.isEmpty;
+  }
+
+  Future<Map<String, dynamic>> mfaStatus() => get('/api/v1/security/mfa');
+
+  Future<Map<String, dynamic>> enrollMfa() =>
+      post('/api/v1/security/mfa/enroll', {});
+
+  Future<Map<String, dynamic>> confirmMfa(String totpCode) {
+    return post('/api/v1/security/mfa/confirm', {'totpCode': totpCode});
+  }
+
+  Future<Map<String, dynamic>> disableMfa(String totpCode) {
+    return post('/api/v1/security/mfa/disable', {'totpCode': totpCode});
+  }
+
+  Future<List<Map<String, dynamic>>> securityScenes() async {
+    final response = await _send('GET', '/api/v1/security/scenes');
+    return asList(response).map(asMap).toList();
+  }
+
+  Future<Map<String, dynamic>> updateSecurityScene(
+    String sceneCode,
+    bool enabled, {
+    String? totpCode,
+  }) {
+    return _sendMap(
+      'PUT',
+      '/api/v1/security/scenes/$sceneCode',
+      body: {
+        'enabled': enabled,
+        if (totpCode != null && totpCode.isNotEmpty) 'totpCode': totpCode,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> issueSecurityChallenge(String sceneCode) {
+    return post('/api/v1/security/verification/challenge', {
+      'sceneCode': sceneCode,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> apiKeys() async {
+    final response = await _send('GET', '/api/v1/security/api-keys');
+    return asList(response).map(asMap).toList();
+  }
+
+  Future<Map<String, dynamic>> createApiKey({
+    required String label,
+    required List<String> permissions,
+    required String emailCode,
+    required String totpCode,
+  }) {
+    return post(
+      '/api/v1/security/api-keys',
+      {'label': label, 'permissions': permissions},
+      headers: {
+        'X-Security-Email-Code': emailCode,
+        'X-Security-TOTP-Code': totpCode,
+      },
+    );
+  }
+
+  Future<void> revokeApiKey({
+    required String apiKey,
+    required String emailCode,
+    required String totpCode,
+  }) async {
+    await _sendMap(
+      'DELETE',
+      '/api/v1/security/api-keys',
+      body: {'apiKey': apiKey},
+      headers: {
+        'X-Security-Email-Code': emailCode,
+        'X-Security-TOTP-Code': totpCode,
+      },
+    );
   }
 
   Future<List<Instrument>> instruments() async {
@@ -812,17 +929,21 @@ class ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, String>? query,
+    Map<String, String>? headers,
     int? userId,
     String? productLine,
     bool unwrapResponseResult = false,
-  }) {
-    return _send(
-      'GET',
-      path,
-      query: query,
-      userId: userId,
-      productLine: productLine,
-      unwrapResponseResult: unwrapResponseResult,
+  }) async {
+    return asMap(
+      await _send(
+        'GET',
+        path,
+        query: query,
+        headers: headers,
+        userId: userId,
+        productLine: productLine,
+        unwrapResponseResult: unwrapResponseResult,
+      ),
     );
   }
 
@@ -831,23 +952,37 @@ class ApiClient {
     Map<String, dynamic> body, {
     int? userId,
     String? productLine,
+    Map<String, String>? headers,
     bool unwrapResponseResult = false,
-  }) {
-    return _send(
-      'POST',
-      path,
-      body: body,
-      userId: userId,
-      productLine: productLine,
-      unwrapResponseResult: unwrapResponseResult,
+  }) async {
+    return asMap(
+      await _send(
+        'POST',
+        path,
+        body: body,
+        headers: headers,
+        userId: userId,
+        productLine: productLine,
+        unwrapResponseResult: unwrapResponseResult,
+      ),
     );
   }
 
-  Future<Map<String, dynamic>> _send(
+  Future<Map<String, dynamic>> _sendMap(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+  }) async {
+    return asMap(await _send(method, path, body: body, headers: headers));
+  }
+
+  Future<Object?> _send(
     String method,
     String path, {
     Map<String, String>? query,
     Map<String, dynamic>? body,
+    Map<String, String>? headers,
     int? userId,
     String? productLine,
     bool unwrapResponseResult = false,
@@ -865,6 +1000,10 @@ class ApiClient {
       'X-Trace-Id',
       'mobile-${DateTime.now().microsecondsSinceEpoch}',
     );
+    if (_accessToken != null) {
+      request.headers.set('Authorization', 'Bearer $_accessToken');
+    }
+    headers?.forEach(request.headers.set);
     if (userId != null) request.headers.set('X-User-Id', '$userId');
     if (productLine != null && productLine.isNotEmpty) {
       request.headers.set('X-Product-Line', productLine);
@@ -882,11 +1021,11 @@ class ApiClient {
     }
     if (payload.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(payload);
-    final json = asMap(decoded);
     if (unwrapResponseResult) {
+      final json = asMap(decoded);
       return _unwrapResponseResult(json);
     }
-    return json;
+    return decoded;
   }
 
   Map<String, dynamic> _unwrapResponseResult(Map<String, dynamic> json) {

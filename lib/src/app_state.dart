@@ -28,6 +28,7 @@ class AppState extends ChangeNotifier {
   final bool offline;
 
   AuthSession? session;
+  AuthSession? pendingVerificationSession;
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
@@ -302,41 +303,142 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> login(String username, String password) async {
-    if (offline) return;
+  Future<AuthSession?> login(String email, String password) async {
+    if (offline) return null;
     loadingPrivate = true;
+    lastError = null;
+    lastNotice = null;
     notifyListeners();
     try {
-      session = await api.login(username: username, password: password);
+      session = await api.login(username: email.trim(), password: password);
+      api.setAccessToken(session!.accessToken);
       lastNotice = '登录成功';
       await _connectPrivateRealtime();
       await refreshPrivateData();
+      return session;
     } catch (error) {
       lastError = '登录失败：$error';
+      return null;
     } finally {
       loadingPrivate = false;
       notifyListeners();
     }
   }
 
-  Future<void> register(String username, String password, String email) async {
-    if (offline) return;
+  Future<AuthSession?> register(String email, String password) async {
+    if (offline) return null;
     loadingPrivate = true;
+    lastError = null;
+    lastNotice = null;
     notifyListeners();
     try {
-      session = await api.register(
-        username: username,
+      final created = await api.register(
         password: password,
-        email: email,
+        email: email.trim(),
       );
+      api.setAccessToken(created.accessToken);
+      if (created.requiresEmailVerification) {
+        pendingVerificationSession = created;
+        lastNotice = '注册成功，请先完成邮箱验证';
+        return created;
+      }
+      session = created;
       lastNotice = '注册成功';
       await _connectPrivateRealtime();
       await refreshPrivateData();
+      return session;
     } catch (error) {
       lastError = '注册失败：$error';
+      return null;
     } finally {
       loadingPrivate = false;
       notifyListeners();
+    }
+  }
+
+  Future<bool> verifyPendingEmail(String code) async {
+    final pending = pendingVerificationSession;
+    if (pending == null) {
+      lastError = '验证会话已失效，请重新注册';
+      notifyListeners();
+      return false;
+    }
+    loadingPrivate = true;
+    lastError = null;
+    lastNotice = null;
+    notifyListeners();
+    try {
+      if (!await api.verifyEmail(pending, code.trim())) {
+        throw StateError('验证码无效或已过期');
+      }
+      session = pending;
+      pendingVerificationSession = null;
+      lastNotice = '邮箱验证成功';
+      await _connectPrivateRealtime();
+      await refreshPrivateData();
+      return true;
+    } catch (error) {
+      lastError = '邮箱验证失败：$error';
+      return false;
+    } finally {
+      loadingPrivate = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> resendPendingEmail() async {
+    final pending = pendingVerificationSession;
+    if (pending == null) {
+      lastError = '验证会话已失效，请重新注册';
+      notifyListeners();
+      return false;
+    }
+    try {
+      await api.resendEmailVerification(pending);
+      lastError = null;
+      lastNotice = '新的验证码已发送';
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = '验证码发送失败：$error';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> requestPasswordReset(String identifier) async {
+    try {
+      await api.forgotPassword(identifier.trim());
+      lastError = null;
+      lastNotice = '如果该邮箱已注册，验证码已发送';
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = '验证码发送失败：$error';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> resetPassword({
+    required String identifier,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      await api.resetPassword(
+        identifier: identifier.trim(),
+        code: code.trim(),
+        newPassword: newPassword,
+      );
+      lastError = null;
+      lastNotice = '密码已更新，请使用新密码登录';
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = '密码更新失败：$error';
+      notifyListeners();
+      return false;
     }
   }
 
@@ -344,8 +446,10 @@ class AppState extends ChangeNotifier {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
     await privateRealtime.close();
+    api.setAccessToken(null);
     session = null;
     _openOrdersRequestVersion++;
+    pendingVerificationSession = null;
     balances = const [];
     positions = const [];
     openOrders = const [];

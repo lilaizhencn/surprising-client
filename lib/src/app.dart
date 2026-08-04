@@ -2362,7 +2362,7 @@ class ProfilePage extends StatelessWidget {
       children: [
         PageHeader(
           title: '我的',
-          subtitle: state.isLoggedIn ? state.session!.user.username : '未登录',
+          subtitle: state.isLoggedIn ? state.session!.user.email : '未登录',
         ),
         Panel(
           child: Row(
@@ -2374,7 +2374,7 @@ class ProfilePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      state.isLoggedIn ? state.session!.user.username : '游客',
+                      state.isLoggedIn ? state.session!.user.email : '游客',
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 18,
@@ -2417,6 +2417,19 @@ class ProfilePage extends StatelessWidget {
             ],
           ),
         ),
+        if (state.isLoggedIn) ...[
+          const SizedBox(height: 12),
+          Panel(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.security, color: _mint),
+              title: const Text('安全中心'),
+              subtitle: const Text('2FA、敏感场景和 API Key'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showSecuritySheet(context),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         const SectionTitle(title: '实时事件'),
         if (state.realtimeLog.isEmpty)
@@ -2432,6 +2445,283 @@ class ProfilePage extends StatelessWidget {
       ],
     );
   }
+}
+
+class SecuritySheet extends StatefulWidget {
+  const SecuritySheet({super.key});
+
+  @override
+  State<SecuritySheet> createState() => _SecuritySheetState();
+}
+
+class _SecuritySheetState extends State<SecuritySheet> {
+  Map<String, dynamic> mfa = const {};
+  Map<String, dynamic> enrollment = const {};
+  List<Map<String, dynamic>> scenes = const [];
+  List<Map<String, dynamic>> keys = const [];
+  final totp = TextEditingController();
+  final emailCode = TextEditingController();
+  final apiTotp = TextEditingController();
+  final apiLabel = TextEditingController();
+  bool busy = false;
+  String? error;
+  String? notice;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    totp.dispose();
+    emailCode.dispose();
+    apiTotp.dispose();
+    apiLabel.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final state = AppScope.of(context);
+    if (!state.isLoggedIn) return;
+    try {
+      final result = await Future.wait([
+        state.api.mfaStatus(),
+        state.api.securityScenes(),
+        state.api.apiKeys(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        mfa = result[0] as Map<String, dynamic>;
+        scenes = result[1] as List<Map<String, dynamic>>;
+        keys = result[2] as List<Map<String, dynamic>>;
+        error = null;
+      });
+    } catch (cause) {
+      if (mounted) setState(() => error = '$cause');
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action, String message) async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+      notice = null;
+    });
+    try {
+      await action();
+      if (mounted) setState(() => notice = message);
+    } catch (cause) {
+      if (mounted) setState(() => error = '$cause');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final mfaEnabled = mfa['enabled'] == true;
+    final enrollmentSecret = asString(enrollment['secret']);
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '安全中心',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            if (notice != null)
+              Text(notice!, style: const TextStyle(color: _mint)),
+            if (error != null)
+              Text(error!, style: const TextStyle(color: _red)),
+            SectionTitle(title: mfaEnabled ? '2FA 已启用' : '绑定 2FA'),
+            if (!mfaEnabled && enrollmentSecret.isEmpty)
+              PrimaryAction(
+                label: '生成绑定信息',
+                icon: Icons.qr_code_2,
+                onPressed: busy
+                    ? null
+                    : () => _run(() async {
+                        final next = await state.api.enrollMfa();
+                        if (mounted) setState(() => enrollment = next);
+                      }, '请在验证器中完成绑定'),
+              ),
+            if (!mfaEnabled && enrollmentSecret.isNotEmpty) ...[
+              InfoLine(label: '密钥', value: enrollmentSecret),
+              InfoLine(
+                label: 'URI',
+                value: asString(enrollment['provisioningUri']),
+              ),
+              AppTextField(controller: totp, label: '验证器验证码'),
+              PrimaryAction(
+                label: '确认绑定',
+                icon: Icons.verified_user,
+                onPressed: busy
+                    ? null
+                    : () => _run(() async {
+                        final next = await state.api.confirmMfa(
+                          totp.text.trim(),
+                        );
+                        if (mounted) {
+                          setState(() {
+                            mfa = next;
+                            enrollment = const {};
+                            totp.clear();
+                          });
+                        }
+                      }, '2FA 已启用'),
+              ),
+            ],
+            if (mfaEnabled) ...[
+              AppTextField(controller: totp, label: '关闭 2FA 的验证码'),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => _run(() async {
+                        final next = await state.api.disableMfa(
+                          totp.text.trim(),
+                        );
+                        if (mounted) {
+                          setState(() {
+                            mfa = next;
+                            totp.clear();
+                          });
+                        }
+                      }, '2FA 已关闭'),
+                child: const Text('关闭 2FA'),
+              ),
+            ],
+            const SectionTitle(title: '敏感场景'),
+            ...scenes.map((scene) {
+              final enabled = scene['enabled'] == true;
+              final code = asString(scene['sceneCode']);
+              return SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(asString(scene['label'], fallback: code)),
+                subtitle: Text(code),
+                value: enabled,
+                onChanged: busy
+                    ? null
+                    : (next) => _run(() async {
+                        final saved = await state.api.updateSecurityScene(
+                          code,
+                          next,
+                          totpCode: totp.text.trim(),
+                        );
+                        if (mounted) {
+                          setState(
+                            () => scenes = scenes
+                                .map(
+                                  (item) => asString(item['sceneCode']) == code
+                                      ? saved
+                                      : item,
+                                )
+                                .toList(),
+                          );
+                        }
+                      }, '安全场景已更新'),
+              );
+            }),
+            const SectionTitle(title: 'API Key'),
+            AppTextField(controller: apiLabel, label: '名称'),
+            AppTextField(controller: emailCode, label: '邮箱验证码'),
+            AppTextField(controller: apiTotp, label: '2FA 验证码'),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => _run(() async {
+                            await state.api.issueSecurityChallenge(
+                              'SECURITY_SETTINGS',
+                            );
+                          }, '验证码已发送'),
+                    child: const Text('发送邮箱验证码'),
+                  ),
+                ),
+                Expanded(
+                  child: PrimaryAction(
+                    label: '创建 API Key',
+                    icon: Icons.key,
+                    onPressed: busy
+                        ? null
+                        : () => _run(() async {
+                            final created = await state.api.createApiKey(
+                              label: apiLabel.text.trim(),
+                              permissions: const ['TRADE'],
+                              emailCode: emailCode.text.trim(),
+                              totpCode: apiTotp.text.trim(),
+                            );
+                            if (mounted) {
+                              setState(() {
+                                keys = [...keys, asMap(created['apiKey'])];
+                                apiLabel.clear();
+                                emailCode.clear();
+                                apiTotp.clear();
+                              });
+                            }
+                          }, 'API Key 已创建，请保存 Secret'),
+                  ),
+                ),
+              ],
+            ),
+            ...keys.map(
+              (apiKey) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(asString(apiKey['label'], fallback: 'API Key')),
+                subtitle: Text(
+                  '${asString(apiKey['apiKey'])} · ${asString(apiKey['permissions'])}',
+                ),
+                trailing: TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => _run(() async {
+                          await state.api.revokeApiKey(
+                            apiKey: asString(apiKey['apiKey']),
+                            emailCode: emailCode.text.trim(),
+                            totpCode: apiTotp.text.trim(),
+                          );
+                          await _load();
+                        }, 'API Key 已撤销'),
+                  child: const Text('撤销'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void showSecuritySheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) =>
+        AppScope(notifier: AppScope.of(context), child: const SecuritySheet()),
+  );
 }
 
 class KlinePanel extends StatefulWidget {
@@ -3744,22 +4034,35 @@ class AuthSheet extends StatefulWidget {
 }
 
 class _AuthSheetState extends State<AuthSheet> {
-  final username = TextEditingController(text: 'demo_user');
-  final password = TextEditingController(text: 'demo_password');
-  final email = TextEditingController(text: 'demo@example.com');
+  final email = TextEditingController();
+  final password = TextEditingController();
+  final code = TextEditingController();
   bool register = false;
+  bool verify = false;
+  bool forgot = false;
+  bool reset = false;
+  bool busy = false;
 
   @override
   void dispose() {
-    username.dispose();
     password.dispose();
     email.dispose();
+    code.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final title = verify
+        ? '验证邮箱'
+        : reset
+        ? '设置新密码'
+        : forgot
+        ? '找回密码'
+        : register
+        ? '注册账户'
+        : '登录账户';
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -3774,7 +4077,7 @@ class _AuthSheetState extends State<AuthSheet> {
           Row(
             children: [
               Text(
-                register ? '注册账户' : '登录账户',
+                title,
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 18,
@@ -3787,30 +4090,121 @@ class _AuthSheetState extends State<AuthSheet> {
               ),
             ],
           ),
-          AppTextField(controller: username, label: '用户名'),
-          const SizedBox(height: 8),
-          AppTextField(controller: password, label: '密码', obscure: true),
-          if (register) ...[
+          if (!verify) ...[AppTextField(controller: email, label: '邮箱')],
+          if (!forgot && !verify) ...[
             const SizedBox(height: 8),
-            AppTextField(controller: email, label: '邮箱'),
+            AppTextField(
+              controller: password,
+              label: reset ? '新密码' : '密码',
+              obscure: true,
+            ),
+          ],
+          if (verify || reset) ...[
+            const SizedBox(height: 8),
+            AppTextField(controller: code, label: '邮箱验证码'),
           ],
           const SizedBox(height: 12),
           PrimaryAction(
-            label: register ? '创建并登录' : '登录',
-            icon: register ? Icons.person_add : Icons.login,
+            label: verify
+                ? '完成邮箱验证'
+                : reset
+                ? '更新密码'
+                : forgot
+                ? '发送验证码'
+                : register
+                ? '创建账户'
+                : '登录',
+            icon: verify
+                ? Icons.mark_email_read
+                : reset
+                ? Icons.password
+                : forgot
+                ? Icons.mark_email_unread
+                : register
+                ? Icons.person_add
+                : Icons.login,
             onPressed: () async {
-              if (register) {
-                await state.register(username.text, password.text, email.text);
+              if (busy) return;
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+              setState(() => busy = true);
+              bool succeeded = false;
+              if (verify) {
+                succeeded = await state.verifyPendingEmail(code.text);
+              } else if (forgot) {
+                succeeded = await state.requestPasswordReset(email.text);
+                if (succeeded) {
+                  setState(() {
+                    forgot = false;
+                    reset = true;
+                  });
+                }
+              } else if (reset) {
+                succeeded = await state.resetPassword(
+                  identifier: email.text,
+                  code: code.text,
+                  newPassword: password.text,
+                );
+                if (succeeded) {
+                  setState(() {
+                    reset = false;
+                    register = false;
+                    code.clear();
+                    password.clear();
+                  });
+                }
+              } else if (register) {
+                final created = await state.register(email.text, password.text);
+                if (created?.requiresEmailVerification == true) {
+                  setState(() => verify = true);
+                } else {
+                  succeeded = created != null;
+                }
               } else {
-                await state.login(username.text, password.text);
+                succeeded =
+                    await state.login(email.text, password.text) != null;
               }
-              if (context.mounted && state.isLoggedIn) Navigator.pop(context);
+              if (!mounted) return;
+              setState(() => busy = false);
+              if (state.lastError != null) {
+                messenger.showSnackBar(
+                  SnackBar(content: Text(state.lastError!)),
+                );
+              }
+              if (succeeded || state.isLoggedIn) {
+                navigator.pop();
+              }
             },
           ),
-          TextButton(
-            onPressed: () => setState(() => register = !register),
-            child: Text(register ? '已有账户，去登录' : '没有账户，去注册'),
-          ),
+          if (verify)
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setState(() => busy = true);
+                      await state.resendPendingEmail();
+                      if (mounted) setState(() => busy = false);
+                    },
+              child: const Text('重新发送验证码'),
+            ),
+          if (!verify && !reset)
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () => setState(() {
+                      forgot = !forgot;
+                      register = false;
+                      password.clear();
+                    }),
+              child: Text(forgot ? '返回登录' : '忘记密码？'),
+            ),
+          if (!verify && !forgot && !reset)
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () => setState(() => register = !register),
+              child: Text(register ? '已有账户，去登录' : '没有账户，去注册'),
+            ),
         ],
       ),
     );
@@ -6932,7 +7326,7 @@ class PrimaryAction extends StatelessWidget {
 
   final String label;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

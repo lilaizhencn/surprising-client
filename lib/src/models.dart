@@ -197,8 +197,11 @@ class AuthUser {
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
       userId: asInt(json['userId']),
-      username: asString(json['username'], fallback: 'user'),
       email: asString(json['email']),
+      username: asString(
+        json['username'],
+        fallback: asString(json['email'], fallback: '账户'),
+      ),
       status: asString(json['status'], fallback: 'ACTIVE'),
     );
   }
@@ -209,17 +212,20 @@ class AuthSession {
     required this.user,
     required this.accessToken,
     required this.refreshToken,
+    this.requiresEmailVerification = false,
   });
 
   final AuthUser user;
   final String accessToken;
   final String refreshToken;
+  final bool requiresEmailVerification;
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     return AuthSession(
       user: AuthUser.fromJson(asMap(json['user'])),
       accessToken: asString(json['accessToken']),
       refreshToken: asString(json['refreshToken']),
+      requiresEmailVerification: json['requiresEmailVerification'] == true,
     );
   }
 }

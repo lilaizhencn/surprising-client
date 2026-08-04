@@ -2459,10 +2459,22 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Map<String, dynamic> enrollment = const {};
   List<Map<String, dynamic>> scenes = const [];
   List<Map<String, dynamic>> keys = const [];
+  Map<String, dynamic> kyc = const {};
   final totp = TextEditingController();
   final emailCode = TextEditingController();
   final apiTotp = TextEditingController();
   final apiLabel = TextEditingController();
+  final kycCountry = TextEditingController();
+  final kycProviderReference = TextEditingController();
+  final kycDocuments = TextEditingController(
+    text:
+        '[{"type":"ID_CARD","reference":""},{"type":"ADDRESS_PROOF","reference":""}]',
+  );
+  String kycApplicantType = 'INDIVIDUAL';
+  String kycLevel = 'STANDARD';
+  String kycDocumentType = 'ID_CARD';
+  String kycProvider = 'SELF';
+  String kycFaceStatus = 'NOT_REQUIRED';
   bool busy = false;
   String? error;
   String? notice;
@@ -2479,6 +2491,9 @@ class _SecuritySheetState extends State<SecuritySheet> {
     emailCode.dispose();
     apiTotp.dispose();
     apiLabel.dispose();
+    kycCountry.dispose();
+    kycProviderReference.dispose();
+    kycDocuments.dispose();
     super.dispose();
   }
 
@@ -2490,17 +2505,69 @@ class _SecuritySheetState extends State<SecuritySheet> {
         state.api.mfaStatus(),
         state.api.securityScenes(),
         state.api.apiKeys(),
+        state.api.kycStatus(),
       ]);
       if (!mounted) return;
       setState(() {
         mfa = result[0] as Map<String, dynamic>;
         scenes = result[1] as List<Map<String, dynamic>>;
         keys = result[2] as List<Map<String, dynamic>>;
+        kyc = result[3] as Map<String, dynamic>;
+        _applyKyc(kyc);
         error = null;
       });
     } catch (cause) {
       if (mounted) setState(() => error = '$cause');
     }
+  }
+
+  void _applyKyc(Map<String, dynamic> profile) {
+    kycApplicantType = asString(
+      profile['applicantType'],
+      fallback: kycApplicantType,
+    );
+    kycLevel = asString(profile['kycLevel'], fallback: kycLevel);
+    kycCountry.text = asString(profile['country']);
+    kycDocumentType = asString(
+      profile['documentType'],
+      fallback: kycDocumentType,
+    );
+    kycProvider = asString(profile['provider'], fallback: kycProvider);
+    kycProviderReference.text = asString(profile['providerReference']);
+    kycDocuments.text = asString(
+      profile['submittedDocuments'],
+      fallback: kycDocuments.text,
+    );
+    kycFaceStatus = asString(
+      profile['faceVerificationStatus'],
+      fallback: kycFaceStatus,
+    );
+  }
+
+  Future<void> _submitKyc(AppState state) async {
+    final country = kycCountry.text.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z]{2}$').hasMatch(country)) {
+      throw const FormatException('国家/地区代码必须是 2 位大写字母');
+    }
+    final documents = jsonDecode(kycDocuments.text.trim());
+    if (documents is! List) {
+      throw const FormatException('材料引用必须是 JSON 数组');
+    }
+    final next = await state.api.submitKyc(
+      applicantType: kycApplicantType,
+      kycLevel: kycLevel,
+      country: country,
+      documentType: kycDocumentType,
+      provider: kycProvider,
+      providerReference: kycProviderReference.text,
+      submittedDocuments: kycDocuments.text.trim(),
+      faceVerificationStatus: kycFaceStatus,
+    );
+    if (!mounted) return;
+    setState(() {
+      kyc = next;
+      _applyKyc(next);
+    });
   }
 
   Future<void> _run(Future<void> Function() action, String message) async {
@@ -2641,6 +2708,152 @@ class _SecuritySheetState extends State<SecuritySheet> {
                       }, '安全场景已更新'),
               );
             }),
+            SectionTitle(
+              title: '身份认证 KYC · ${asString(kyc['status'], fallback: '未提交')}',
+            ),
+            Text(
+              '提币前必须完成认证。材料引用用于连接对象存储或第三方服务，不在交易接口内保存原件。',
+              style: const TextStyle(color: _muted, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '申请主体',
+                        style: TextStyle(color: _muted, fontSize: 11),
+                      ),
+                      SmallDropdown(
+                        value: kycApplicantType,
+                        values: const ['INDIVIDUAL', 'BUSINESS'],
+                        labelBuilder: (value) =>
+                            value == 'BUSINESS' ? '企业' : '个人',
+                        onChanged: (value) =>
+                            setState(() => kycApplicantType = value),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '认证等级',
+                        style: TextStyle(color: _muted, fontSize: 11),
+                      ),
+                      SmallDropdown(
+                        value: kycLevel,
+                        values: const ['BASIC', 'STANDARD', 'ENHANCED'],
+                        labelBuilder: (value) => switch (value) {
+                          'BASIC' => '基础',
+                          'ENHANCED' => '增强',
+                          _ => '标准',
+                        },
+                        onChanged: (value) => setState(() => kycLevel = value),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            AppTextField(controller: kycCountry, label: '国家/地区代码，例如 CN'),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '主证件类型',
+                        style: TextStyle(color: _muted, fontSize: 11),
+                      ),
+                      SmallDropdown(
+                        value: kycDocumentType,
+                        values: const [
+                          'ID_CARD',
+                          'PASSPORT',
+                          'BUSINESS_LICENSE',
+                        ],
+                        labelBuilder: (value) => switch (value) {
+                          'PASSPORT' => '护照',
+                          'BUSINESS_LICENSE' => '企业营业执照',
+                          _ => '身份证',
+                        },
+                        onChanged: (value) =>
+                            setState(() => kycDocumentType = value),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '认证服务',
+                        style: TextStyle(color: _muted, fontSize: 11),
+                      ),
+                      SmallDropdown(
+                        value: kycProvider,
+                        values: const ['SELF', 'THIRD_PARTY'],
+                        labelBuilder: (value) =>
+                            value == 'THIRD_PARTY' ? '第三方服务' : '平台审核',
+                        onChanged: (value) =>
+                            setState(() => kycProvider = value),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            AppTextField(controller: kycProviderReference, label: '服务引用（可选）'),
+            AppTextField(controller: kycDocuments, label: '材料引用 JSON'),
+            const Text(
+              '支持 ID_CARD、PASSPORT、ADDRESS_PROOF、BUSINESS_LICENSE；reference 填上传后的文件引用。',
+              style: TextStyle(color: _muted, fontSize: 10),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '人脸状态',
+                        style: TextStyle(color: _muted, fontSize: 11),
+                      ),
+                      SmallDropdown(
+                        value: kycFaceStatus,
+                        values: const ['NOT_REQUIRED', 'PENDING'],
+                        labelBuilder: (value) =>
+                            value == 'PENDING' ? '等待人脸识别' : '暂不启用',
+                        onChanged: (value) =>
+                            setState(() => kycFaceStatus = value),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: PrimaryAction(
+                    label: '提交认证',
+                    icon: Icons.verified_user,
+                    onPressed: busy
+                        ? null
+                        : () => _run(() => _submitKyc(state), 'KYC 已提交，等待审核'),
+                  ),
+                ),
+              ],
+            ),
             const SectionTitle(title: 'API Key'),
             AppTextField(controller: apiLabel, label: '名称'),
             AppTextField(controller: emailCode, label: '邮箱验证码'),

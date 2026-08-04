@@ -154,6 +154,34 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> kycStatus() async {
+    final response = await _send('GET', '/api/v1/compliance/kyc');
+    return asMap(response);
+  }
+
+  Future<Map<String, dynamic>> submitKyc({
+    required String applicantType,
+    required String kycLevel,
+    required String country,
+    required String documentType,
+    required String provider,
+    required String providerReference,
+    required String submittedDocuments,
+    required String faceVerificationStatus,
+  }) {
+    return post('/api/v1/compliance/kyc', {
+      'applicantType': applicantType,
+      'kycLevel': kycLevel,
+      'country': country,
+      'documentType': documentType,
+      'provider': provider,
+      if (providerReference.trim().isNotEmpty)
+        'providerReference': providerReference.trim(),
+      'submittedDocuments': submittedDocuments,
+      'faceVerificationStatus': faceVerificationStatus,
+    });
+  }
+
   Future<List<Instrument>> instruments() async {
     final json = await get('/api/v1/gateway/instrument/list');
     return asList(

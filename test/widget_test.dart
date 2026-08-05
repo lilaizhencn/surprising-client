@@ -1229,6 +1229,8 @@ class _TransferApiClient extends ApiClient {
     required String asset,
     required int amountUnits,
     required String idempotencyKey,
+    String? emailCode,
+    String? totpCode,
   }) async {
     idempotencyKeys.add(idempotencyKey);
     if (failure != null) throw failure!;

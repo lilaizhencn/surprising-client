@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:kline_chart/kline_chart.dart';
 
 import 'app_state.dart';
+import 'api.dart';
 import 'models.dart';
 
 const _ink = Color(0xFFEAECEF);
@@ -1000,6 +1001,8 @@ class WalletPage extends StatefulWidget {
 
 class _WalletPageState extends State<WalletPage> {
   final amountController = TextEditingController(text: '10');
+  final transferEmailCodeController = TextEditingController();
+  final transferTotpCodeController = TextEditingController();
   final withdrawAmountController = TextEditingController(text: '0.1');
   final withdrawAddressController = TextEditingController();
   String source = 'SPOT';
@@ -1011,6 +1014,8 @@ class _WalletPageState extends State<WalletPage> {
   @override
   void dispose() {
     amountController.dispose();
+    transferEmailCodeController.dispose();
+    transferTotpCodeController.dispose();
     withdrawAmountController.dispose();
     withdrawAddressController.dispose();
     super.dispose();
@@ -1458,7 +1463,6 @@ class _WalletPageState extends State<WalletPage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
                           PrimaryAction(
                             label: '确认提现',
                             icon: Icons.call_made,
@@ -1531,6 +1535,31 @@ class _WalletPageState extends State<WalletPage> {
                             ],
                           ),
                           const SizedBox(height: 10),
+                          const Text(
+                            '小额划转无需额外验证；大额划转按 USDT 估值验证，绑定 2FA 后还需动态验证码。',
+                            style: TextStyle(color: _muted, fontSize: 11),
+                          ),
+                          if (state.transferVerificationRequired) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: AppTextField(
+                                    controller: transferEmailCodeController,
+                                    label: '邮箱验证码',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: AppTextField(
+                                    controller: transferTotpCodeController,
+                                    label: '2FA 验证码（未绑定可留空）',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 10),
                           PrimaryAction(
                             label: state.transferSubmitting
                                 ? '提交中…'
@@ -1552,6 +1581,9 @@ class _WalletPageState extends State<WalletPage> {
                                             amountController.text,
                                           ) ??
                                           0,
+                                      emailCode:
+                                          transferEmailCodeController.text,
+                                      totpCode: transferTotpCodeController.text,
                                     ),
                                   ),
                           ),
@@ -2530,6 +2562,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Map<String, dynamic> kyc = const {};
   final totp = TextEditingController();
   final emailCode = TextEditingController();
+  final securityEmailCode = TextEditingController();
   final apiTotp = TextEditingController();
   final apiLabel = TextEditingController();
   bool apiWithdrawEnabled = false;
@@ -2561,6 +2594,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   void dispose() {
     totp.dispose();
     emailCode.dispose();
+    securityEmailCode.dispose();
     apiTotp.dispose();
     apiLabel.dispose();
     kycCountry.dispose();
@@ -2686,6 +2720,40 @@ class _SecuritySheetState extends State<SecuritySheet> {
     });
   }
 
+  Future<void> _updateSecurityScene(
+    AppState state,
+    String code,
+    bool enabled,
+  ) async {
+    try {
+      final saved = await state.api.updateSecurityScene(
+        code,
+        enabled,
+        emailCode: securityEmailCode.text.trim(),
+        totpCode: totp.text.trim(),
+      );
+      if (mounted) {
+        setState(
+          () => scenes = scenes
+              .map((item) => asString(item['sceneCode']) == code ? saved : item)
+              .toList(),
+        );
+        securityEmailCode.clear();
+      }
+    } on ApiException catch (cause) {
+      if (cause.statusCode != 428) rethrow;
+      final challenge = await state.api.issueSecurityChallenge(
+        'SECURITY_SETTINGS',
+      );
+      if (mounted) {
+        setState(
+          () =>
+              notice = '安全设置需要验证，验证码已发送至 ${asString(challenge['destination'])}',
+        );
+      }
+    }
+  }
+
   Future<void> _pickKycDocument() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -2728,7 +2796,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     });
     try {
       await action();
-      if (mounted) setState(() => notice = message);
+      if (mounted && notice == null) setState(() => notice = message);
     } catch (cause) {
       if (mounted) setState(() => error = '$cause');
     } finally {
@@ -2839,25 +2907,16 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 onChanged: busy
                     ? null
                     : (next) => _run(() async {
-                        final saved = await state.api.updateSecurityScene(
-                          code,
-                          next,
-                          totpCode: totp.text.trim(),
-                        );
-                        if (mounted) {
-                          setState(
-                            () => scenes = scenes
-                                .map(
-                                  (item) => asString(item['sceneCode']) == code
-                                      ? saved
-                                      : item,
-                                )
-                                .toList(),
-                          );
-                        }
+                        await _updateSecurityScene(state, code, next);
                       }, '安全场景已更新'),
               );
             }),
+            const SectionTitle(title: '安全设置验证'),
+            const Text(
+              '修改敏感场景前需要邮箱验证码，绑定 2FA 后还需动态验证码。',
+              style: TextStyle(color: _muted, fontSize: 12),
+            ),
+            AppTextField(controller: securityEmailCode, label: '安全设置邮箱验证码'),
             const SectionTitle(title: '修改密码'),
             const Text(
               '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',

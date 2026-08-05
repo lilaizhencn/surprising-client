@@ -65,6 +65,7 @@ class AppState extends ChangeNotifier {
   bool transferSubmitting = false;
   bool transferOutcomeLocked = false;
   bool transferOutcomeTerminalFailure = false;
+  bool transferVerificationRequired = false;
   String? lastError;
   String? lastNotice;
   final List<String> realtimeLog = [];
@@ -894,6 +895,8 @@ class AppState extends ChangeNotifier {
     required String targetAccountType,
     required String asset,
     required double amount,
+    String? emailCode,
+    String? totpCode,
   }) async {
     final id = userId;
     if (id == null) {
@@ -916,6 +919,8 @@ class AppState extends ChangeNotifier {
         asset: asset,
         amountUnits: decimalToUnits(amount),
         idempotencyKey: idempotencyKey,
+        emailCode: emailCode,
+        totpCode: totpCode,
       );
       final status = asString(
         result['status'],
@@ -924,6 +929,7 @@ class AppState extends ChangeNotifier {
       final transferId = asString(result['transferId']).trim();
       if (status == 'COMPLETED') {
         _transferIdempotencyKey = null;
+        transferVerificationRequired = false;
         lastNotice = '划转已完成${transferId.isEmpty ? '' : '，流水号 $transferId'}';
         await refreshPrivateData();
       } else {
@@ -934,14 +940,24 @@ class AppState extends ChangeNotifier {
             : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
       }
     } catch (error) {
-      transferOutcomeLocked = true;
-      transferOutcomeTerminalFailure = false;
-      lastError =
-          error is ApiException &&
-              error.statusCode >= 400 &&
-              error.statusCode < 500
-          ? '划转未完成，请查看资金记录后再决定下一步'
-          : '划转结果未知，请勿重复提交，请查看资金记录';
+      if (error is ApiException && error.statusCode == 428) {
+        transferVerificationRequired = true;
+        try {
+          final challenge = await api.issueSecurityChallenge('LARGE_TRANSFER');
+          lastNotice = '大额划转需要验证，验证码已发送至 ${asString(challenge['destination'])}';
+        } catch (_) {
+          lastError = '验证码发送失败，请稍后重试';
+        }
+      } else {
+        transferOutcomeLocked = true;
+        transferOutcomeTerminalFailure = false;
+        lastError =
+            error is ApiException &&
+                error.statusCode >= 400 &&
+                error.statusCode < 500
+            ? '划转未完成，请查看资金记录后再决定下一步'
+            : '划转结果未知，请勿重复提交，请查看资金记录';
+      }
     } finally {
       transferSubmitting = false;
     }
@@ -953,6 +969,7 @@ class AppState extends ChangeNotifier {
     _transferIdempotencyKey = null;
     transferOutcomeLocked = false;
     transferOutcomeTerminalFailure = false;
+    transferVerificationRequired = false;
     lastError = null;
     notifyListeners();
   }

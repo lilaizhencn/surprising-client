@@ -120,6 +120,7 @@ class ApiClient {
   Future<Map<String, dynamic>> updateSecurityScene(
     String sceneCode,
     bool enabled, {
+    String? emailCode,
     String? totpCode,
   }) {
     return _sendMap(
@@ -127,6 +128,7 @@ class ApiClient {
       '/api/v1/security/scenes/$sceneCode',
       body: {
         'enabled': enabled,
+        if (emailCode != null && emailCode.isNotEmpty) 'emailCode': emailCode,
         if (totpCode != null && totpCode.isNotEmpty) 'totpCode': totpCode,
       },
     );
@@ -859,6 +861,8 @@ class ApiClient {
     required String asset,
     required int amountUnits,
     required String idempotencyKey,
+    String? emailCode,
+    String? totpCode,
   }) {
     return _transferWithStableKey(
       userId: userId,
@@ -867,6 +871,8 @@ class ApiClient {
       asset: asset,
       amountUnits: amountUnits,
       idempotencyKey: idempotencyKey,
+      emailCode: emailCode,
+      totpCode: totpCode,
     );
   }
 
@@ -877,6 +883,8 @@ class ApiClient {
     required String asset,
     required int amountUnits,
     required String idempotencyKey,
+    String? emailCode,
+    String? totpCode,
   }) async {
     final body = {
       'userId': userId,
@@ -892,11 +900,18 @@ class ApiClient {
         '/api/v1/gateway/account/transfers',
         body,
         userId: userId,
-        headers: {'Idempotency-Key': idempotencyKey},
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+          if (emailCode != null && emailCode.trim().isNotEmpty)
+            'X-Security-Email-Code': emailCode.trim(),
+          if (totpCode != null && totpCode.trim().isNotEmpty)
+            'X-Security-TOTP-Code': totpCode.trim(),
+        },
       );
     } on ApiException catch (error) {
       final payload = asMap(_decodeJson(error.message));
-      if (asString(payload['status']).trim().isNotEmpty) return payload;
+      final status = payload['status'];
+      if (status is String && status.trim().isNotEmpty) return payload;
       rethrow;
     }
   }

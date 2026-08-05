@@ -255,6 +255,50 @@ void main() {
     expect(restored.refreshTokenExpired, isFalse);
   });
 
+  test('reconnects private realtime after access token rotation', () async {
+    final privateRealtime = _RecordingRealtimeClient();
+    final state =
+        AppState(
+            apiClient: _PrivateRealtimeApiClient(),
+            privateRealtimeClient: privateRealtime,
+            sessionStore: _InMemorySessionStore(),
+          )
+          ..session = const AuthSession(
+            user: AuthUser(
+              userId: 1001,
+              username: 'demo_user',
+              email: 'demo@example.com',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'old-access',
+            refreshToken: 'old-refresh',
+          );
+
+    await state.api.onSessionRefreshed!(
+      const AuthSession(
+        user: AuthUser(
+          userId: 1001,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+      ),
+    );
+
+    expect(privateRealtime.closeCount, 1);
+    expect(privateRealtime.connectCount, 1);
+    expect(
+      privateRealtime.subscriptions.any(
+        (item) =>
+            item.channel == 'executionReports' &&
+            item.productLine == 'LINEAR_PERPETUAL',
+      ),
+      isTrue,
+    );
+  });
+
   test(
     'reconnects realtime subscriptions when opening another product page',
     () async {

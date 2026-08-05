@@ -204,13 +204,20 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistRefreshedSession(AuthSession next) async {
+    _privateReconnectTimer?.cancel();
+    _privateReconnectTimer = null;
     session = next;
     api.setSession(next);
     await sessionStore.saveSession(next);
+    await privateRealtime.close();
+    await _connectPrivateRealtime();
     notifyListeners();
   }
 
   Future<void> _clearExpiredSession() async {
+    _privateReconnectTimer?.cancel();
+    _privateReconnectTimer = null;
+    await privateRealtime.close();
     await sessionStore.clear();
     session = null;
     pendingBiometricSession = null;

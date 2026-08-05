@@ -2616,6 +2616,25 @@ class _SecuritySheetState extends State<SecuritySheet> {
     if (kycDocumentRecords.isEmpty) {
       throw const FormatException('请先上传至少一份 KYC 材料');
     }
+    final types = kycDocumentRecords
+        .map((document) => asString(document['documentType']))
+        .toSet();
+    if (!types.contains('ID_CARD') && !types.contains('PASSPORT')) {
+      throw const FormatException('请上传身份证或护照');
+    }
+    if (kycApplicantType == 'BUSINESS' && !types.contains('BUSINESS_LICENSE')) {
+      throw const FormatException('企业认证还需要上传营业执照');
+    }
+    if ((kycLevel == 'STANDARD' || kycLevel == 'ENHANCED') &&
+        !types.contains('ADDRESS_PROOF')) {
+      throw const FormatException('标准及以上认证还需要上传地址证明');
+    }
+    if (kycLevel == 'ENHANCED' && kycFaceStatus != 'PENDING') {
+      throw const FormatException('增强认证需要启用人脸识别');
+    }
+    if (kycFaceStatus == 'PENDING' && !types.contains('FACE_IMAGE')) {
+      throw const FormatException('启用人脸识别时还需要上传人脸材料');
+    }
     final next = await state.api.submitKyc(
       applicantType: kycApplicantType,
       kycLevel: kycLevel,
@@ -2963,7 +2982,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
             const SizedBox(height: 8),
             if (kycDocumentRecords.isEmpty)
               const Text(
-                '尚未上传材料。请至少上传主证件，地址证明按审核要求补充。',
+                '尚未上传材料。请至少上传主证件；标准及以上认证请同时上传地址证明。',
                 style: TextStyle(color: _muted, fontSize: 10),
               )
             else

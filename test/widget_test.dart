@@ -172,6 +172,12 @@ void main() {
     expect(find.text('等待结果确认'), findsOneWidget);
     expect(
       tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '等待结果确认'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
           .widgetList<DropdownButton<String>>(
             find.byType(DropdownButton<String>),
           )

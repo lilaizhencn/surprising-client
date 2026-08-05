@@ -111,7 +111,7 @@ class AppState extends ChangeNotifier {
       if (bestBid != null) return instrument.priceFromTicks(bestBid.priceTicks);
       if (bestAsk != null) return instrument.priceFromTicks(bestAsk.priceTicks);
     }
-    return fallbackPriceFor(instrument);
+    return offline ? fallbackPriceFor(instrument) : null;
   }
 
   Future<void> bootstrap() async {
@@ -279,14 +279,17 @@ class AppState extends ChangeNotifier {
         api.candles(symbol, period, productLine: productLine),
       ]);
       final loadedBook = results[0] as OrderBook;
-      orderBook = loadedBook.bids.isEmpty && loadedBook.asks.isEmpty
-          ? fallbackOrderBook(selectedInstrument)
-          : loadedBook;
+      orderBook = loadedBook;
       final loadedCandles = results[1] as List<Candle>;
-      candles = loadedCandles.isEmpty ? fallbackCandles() : loadedCandles;
+      candles = loadedCandles;
       if (candles.isNotEmpty) latestPrices[symbol] = candles.last.close;
       lastError = null;
     } catch (error) {
+      if (!offline) {
+        orderBook = OrderBook.empty(selectedSymbol);
+        candles = const [];
+        latestPrices.remove(selectedSymbol);
+      }
       if (silent) {
         _recordRealtimeIssue('加载行情失败：$error');
       } else {
@@ -603,7 +606,10 @@ class AppState extends ChangeNotifier {
         !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
       selectedSymbol = candidates.first.symbol;
     }
-    orderBook = fallbackOrderBook(selectedInstrument);
+    orderBook = offline
+        ? fallbackOrderBook(selectedInstrument)
+        : OrderBook.empty(selectedSymbol);
+    candles = offline ? fallbackCandles() : const [];
     notifyListeners();
     await refreshPublicData(silent: true);
     await refreshPrivateData();
@@ -612,7 +618,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> selectSymbol(String symbol) async {
     selectedSymbol = symbol;
-    orderBook = fallbackOrderBook(selectedInstrument);
+    orderBook = offline
+        ? fallbackOrderBook(selectedInstrument)
+        : OrderBook.empty(selectedSymbol);
+    candles = offline ? fallbackCandles() : const [];
     notifyListeners();
     await refreshPublicData(silent: true);
     await refreshPrivateData();

@@ -343,17 +343,13 @@ class ApiClient {
   }
 
   Future<String> positionMode(int userId, {String? productLine}) async {
-    try {
-      final json = await get(
-        '/api/v1/gateway/account/position-mode',
-        query: {'userId': '$userId'},
-        userId: userId,
-        productLine: productLine,
-      );
-      return asString(json['positionMode'], fallback: 'ONE_WAY');
-    } catch (_) {
-      return 'ONE_WAY';
-    }
+    final json = await get(
+      '/api/v1/gateway/account/position-mode',
+      query: {'userId': '$userId'},
+      userId: userId,
+      productLine: productLine,
+    );
+    return asString(json['positionMode'], fallback: 'ONE_WAY');
   }
 
   Future<String> updatePositionMode(

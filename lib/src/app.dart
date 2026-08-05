@@ -1023,7 +1023,8 @@ class _WalletPageState extends State<WalletPage> {
       0,
       (sum, item) => sum + item.equity,
     );
-    final displayPortfolio = state.walletPortfolio.assets.isEmpty
+    final displayPortfolio =
+        state.walletPortfolio.assets.isEmpty && state.offline
         ? fallbackWalletPortfolio()
         : state.walletPortfolio;
     final walletTotalCny = walletPortfolioCny(displayPortfolio);

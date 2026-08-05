@@ -1,10 +1,172 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'models.dart';
 import 'session_store.dart';
+
+class WithdrawalAssetRule {
+  const WithdrawalAssetRule({
+    required this.chain,
+    required this.symbol,
+    required this.network,
+    required this.family,
+    required this.withdrawalEnabled,
+    this.decimals,
+    this.configuredMinimum,
+    this.fee,
+  });
+
+  final String chain;
+  final String symbol;
+  final String network;
+  final String family;
+  final bool withdrawalEnabled;
+  final int? decimals;
+  final String? configuredMinimum;
+  final String? fee;
+
+  String? get minimumAmount {
+    final configured = configuredMinimum?.trim();
+    if (configured != null && configured.isNotEmpty) return configured;
+    final precision = decimals;
+    if (precision == null || precision < 0) return null;
+    if (precision == 0) return '1';
+    return '0.${'0' * (precision - 1)}1';
+  }
+
+  String? receivedAmount(String amount) {
+    final configuredFee = fee?.trim();
+    if (configuredFee == null || configuredFee.isEmpty) return null;
+    return _subtractDecimal(amount, configuredFee);
+  }
+}
+
+class WithdrawalConfirmation {
+  const WithdrawalConfirmation({
+    required this.chain,
+    required this.network,
+    required this.symbol,
+    required this.toAddress,
+    required this.amount,
+    required this.status,
+    required this.reference,
+    this.fee,
+    this.receivedAmount,
+  });
+
+  final String chain;
+  final String network;
+  final String symbol;
+  final String toAddress;
+  final String amount;
+  final String status;
+  final String reference;
+  final String? fee;
+  final String? receivedAmount;
+}
+
+String? _nonEmpty(String? value) {
+  final normalized = value?.trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
+}
+
+int? _nullableInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(asString(value));
+}
+
+String? _firstDecimal(Map<String, dynamic> values, List<String> keys) {
+  for (final key in keys) {
+    final value = values[key];
+    if (value == null) continue;
+    final normalized = asString(value).trim();
+    if (RegExp(r'^\d+(?:\.\d+)?$').hasMatch(normalized)) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+String? _validateWithdrawalAddress(String value, String family) {
+  final address = value.trim();
+  if (address.isEmpty) return '请输入提币地址';
+  if (address.length < 10 ||
+      address.length > 256 ||
+      RegExp(r'\s').hasMatch(address)) {
+    return '提币地址格式不正确';
+  }
+  final normalizedFamily = family.trim().toUpperCase();
+  if ((normalizedFamily.contains('EVM') ||
+          normalizedFamily == 'ETH' ||
+          normalizedFamily == 'BSC') &&
+      !RegExp(r'^0x[0-9a-fA-F]{40}$').hasMatch(address)) {
+    return '请输入有效的 EVM 地址';
+  }
+  if (normalizedFamily.contains('BITCOIN') || normalizedFamily == 'BTC') {
+    final bech32 = RegExp(
+      r'^(?:bc1|tb1|bcrt1)[023456789acdefghjklmnpqrstuvwxyz]{11,87}$',
+    );
+    final base58 = RegExp(r'^[123mn][1-9A-HJ-NP-Za-km-z]{25,61}$');
+    if (!bech32.hasMatch(address.toLowerCase()) && !base58.hasMatch(address)) {
+      return '请输入有效的 Bitcoin 地址';
+    }
+  }
+  if (normalizedFamily.contains('TRON') &&
+      !RegExp(r'^T[1-9A-HJ-NP-Za-km-z]{33}$').hasMatch(address)) {
+    return '请输入有效的 Tron 地址';
+  }
+  if (normalizedFamily.contains('SOLANA') &&
+      !RegExp(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$').hasMatch(address)) {
+    return '请输入有效的 Solana 地址';
+  }
+  return null;
+}
+
+class _DecimalParts {
+  const _DecimalParts(this.units, this.scale);
+
+  final BigInt units;
+  final int scale;
+}
+
+_DecimalParts _decimalParts(String value) {
+  final pieces = value.trim().split('.');
+  final fraction = pieces.length == 2 ? pieces[1] : '';
+  final digits = '${pieces[0]}$fraction';
+  return _DecimalParts(BigInt.parse(digits), fraction.length);
+}
+
+int _compareDecimals(String left, String right) {
+  final leftParts = _decimalParts(left);
+  final rightParts = _decimalParts(right);
+  final scale = math.max(leftParts.scale, rightParts.scale);
+  final leftUnits =
+      leftParts.units * BigInt.from(10).pow(scale - leftParts.scale);
+  final rightUnits =
+      rightParts.units * BigInt.from(10).pow(scale - rightParts.scale);
+  return leftUnits.compareTo(rightUnits);
+}
+
+String _subtractDecimal(String left, String right) {
+  final leftParts = _decimalParts(left);
+  final rightParts = _decimalParts(right);
+  final scale = math.max(leftParts.scale, rightParts.scale);
+  final units =
+      leftParts.units * BigInt.from(10).pow(scale - leftParts.scale) -
+      rightParts.units * BigInt.from(10).pow(scale - rightParts.scale);
+  final negative = units.isNegative;
+  final digits = units.abs().toString().padLeft(scale + 1, '0');
+  if (scale == 0) return '${negative ? '-' : ''}$digits';
+  final integer = digits.substring(0, digits.length - scale);
+  final fraction = digits
+      .substring(digits.length - scale)
+      .replaceFirst(RegExp(r'0+$'), '');
+  return '${negative ? '-' : ''}$integer${fraction.isEmpty ? '' : '.$fraction'}';
+}
 
 class AppState extends ChangeNotifier {
   AppState({
@@ -41,6 +203,7 @@ class AppState extends ChangeNotifier {
   AuthSession? pendingBiometricSession;
   bool biometricLoginAvailable = false;
   bool biometricLoginEnabled = false;
+  bool biometricLoginUpdating = false;
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
@@ -77,6 +240,15 @@ class AppState extends ChangeNotifier {
   bool transferOutcomeLocked = false;
   bool transferOutcomeTerminalFailure = false;
   bool transferVerificationRequired = false;
+  bool withdrawalSubmitting = false;
+  bool withdrawalOutcomeLocked = false;
+  bool withdrawalOutcomeUnknown = false;
+  bool withdrawalVerificationRequired = false;
+  bool withdrawalTotpRequired = false;
+  bool withdrawalRulesLoading = false;
+  bool withdrawalRulesReady = false;
+  List<WithdrawalAssetRule> withdrawalRules = const [];
+  WithdrawalConfirmation? withdrawalConfirmation;
   String? lastError;
   String? lastNotice;
   final List<String> realtimeLog = [];
@@ -89,6 +261,9 @@ class AppState extends ChangeNotifier {
   int _openOrdersRequestVersion = 0;
   final Map<int, int> _triggerOrderEventVersions = {};
   String? _transferIdempotencyKey;
+  String? _withdrawalIdempotencyKey;
+  String? _withdrawalIntentFingerprint;
+  int? _withdrawalIntentUserId;
 
   bool get isLoggedIn => session != null;
 
@@ -212,10 +387,16 @@ class AppState extends ChangeNotifier {
       valuationCurrency = ValuationCurrency.fromCode(
         values['valuationCurrency'] ?? 'USDT',
       );
+      _withdrawalIdempotencyKey = _nonEmpty(values['withdrawalKey']);
+      _withdrawalIntentFingerprint = _nonEmpty(values['withdrawalFingerprint']);
+      _withdrawalIntentUserId = int.tryParse(values['withdrawalUserId'] ?? '');
+      withdrawalOutcomeLocked = values['withdrawalLocked'] == 'true';
+      withdrawalOutcomeUnknown = values['withdrawalUnknown'] == 'true';
     } catch (_) {
       clientTheme = ClientTheme.dark;
       language = ClientLanguage.zhHans;
       valuationCurrency = ValuationCurrency.usdt;
+      _clearWithdrawalIntent();
     }
   }
 
@@ -223,16 +404,48 @@ class AppState extends ChangeNotifier {
     unawaited(_writeSettings());
   }
 
-  Future<void> _writeSettings() async {
+  Future<bool> _writeSettings() async {
     try {
-      await settingsStore.write({
+      final values = <String, String>{
         'theme': clientTheme.code,
         'language': language.code,
         'valuationCurrency': valuationCurrency.code,
-      });
+      };
+      final withdrawalKey = _withdrawalIdempotencyKey;
+      if (withdrawalKey != null) values['withdrawalKey'] = withdrawalKey;
+      final withdrawalFingerprint = _withdrawalIntentFingerprint;
+      if (withdrawalFingerprint != null) {
+        values['withdrawalFingerprint'] = withdrawalFingerprint;
+      }
+      final withdrawalUserId = _withdrawalIntentUserId;
+      if (withdrawalUserId != null) {
+        values['withdrawalUserId'] = '$withdrawalUserId';
+      }
+      if (withdrawalOutcomeLocked) values['withdrawalLocked'] = 'true';
+      if (withdrawalOutcomeUnknown) values['withdrawalUnknown'] = 'true';
+      await settingsStore.write(values);
+      return true;
     } catch (_) {
-      // Display preferences are best effort and must not affect trading.
+      return false;
     }
+  }
+
+  Future<void> _matchWithdrawalIntentOwner(int activeUserId) async {
+    final intentUserId = _withdrawalIntentUserId;
+    if (intentUserId == null || intentUserId == activeUserId) return;
+    _clearWithdrawalIntent();
+    await _writeSettings();
+  }
+
+  void _clearWithdrawalIntent({bool clearConfirmation = true}) {
+    _withdrawalIdempotencyKey = null;
+    _withdrawalIntentFingerprint = null;
+    _withdrawalIntentUserId = null;
+    withdrawalOutcomeLocked = false;
+    withdrawalOutcomeUnknown = false;
+    withdrawalVerificationRequired = false;
+    withdrawalTotpRequired = false;
+    if (clearConfirmation) withdrawalConfirmation = null;
   }
 
   void selectTheme(ClientTheme next) {
@@ -251,6 +464,7 @@ class AppState extends ChangeNotifier {
     biometricLoginAvailable = await sessionStore.canUseBiometrics();
     final stored = await sessionStore.readSession();
     if (stored == null) return;
+    await _matchWithdrawalIntentOwner(stored.user.userId);
     biometricLoginEnabled = await sessionStore.biometricEnabled();
     if (biometricLoginEnabled) {
       pendingBiometricSession = stored;
@@ -286,6 +500,7 @@ class AppState extends ChangeNotifier {
     AuthSession next, {
     required bool persist,
   }) async {
+    await _matchWithdrawalIntentOwner(next.user.userId);
     session = next;
     pendingBiometricSession = null;
     api.setSession(next);
@@ -317,7 +532,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> enableBiometricLogin() async {
-    if (session == null) return false;
+    if (session == null || biometricLoginUpdating) return false;
+    biometricLoginUpdating = true;
+    notifyListeners();
     try {
       await sessionStore.enableBiometric();
       biometricLoginAvailable = true;
@@ -330,6 +547,40 @@ class AppState extends ChangeNotifier {
       lastError = '启用生物识别失败：$error';
       notifyListeners();
       return false;
+    } finally {
+      biometricLoginUpdating = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> disableBiometricLogin() async {
+    final active = session;
+    if (active == null || !biometricLoginEnabled || biometricLoginUpdating) {
+      return false;
+    }
+    biometricLoginUpdating = true;
+    notifyListeners();
+    try {
+      await sessionStore.clear();
+      await sessionStore.saveSession(active);
+      biometricLoginEnabled = false;
+      pendingBiometricSession = null;
+      lastError = null;
+      lastNotice = '已关闭生物识别登录';
+      notifyListeners();
+      return true;
+    } catch (error) {
+      try {
+        biometricLoginEnabled = await sessionStore.biometricEnabled();
+      } catch (_) {
+        // Keep the last known state if secure storage cannot be read.
+      }
+      lastError = '关闭生物识别失败：$error';
+      notifyListeners();
+      return false;
+    } finally {
+      biometricLoginUpdating = false;
+      notifyListeners();
     }
   }
 
@@ -723,6 +974,8 @@ class AppState extends ChangeNotifier {
     accountRisk = null;
     positionRisks = const [];
     liquidationOrders = const [];
+    _clearWithdrawalIntent();
+    await _writeSettings();
     notifyListeners();
   }
 
@@ -1112,6 +1365,13 @@ class AppState extends ChangeNotifier {
       ]);
       walletPortfolio = results[0] as WalletPortfolio;
       walletOrders = results[1] as List<WalletOrderRecord>;
+      try {
+        withdrawalRules = _withdrawalRulesFrom(await api.walletChains(id));
+        withdrawalRulesReady = true;
+      } catch (_) {
+        withdrawalRules = const [];
+        withdrawalRulesReady = false;
+      }
       await refreshWalletAssetPrices();
       lastError = null;
     } catch (error) {
@@ -1198,32 +1458,348 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshWithdrawalRules() async {
+    final id = userId;
+    if (offline || id == null || withdrawalRulesLoading) return;
+    withdrawalRulesLoading = true;
+    notifyListeners();
+    try {
+      withdrawalRules = _withdrawalRulesFrom(await api.walletChains(id));
+      withdrawalRulesReady = true;
+      lastError = null;
+    } catch (error) {
+      withdrawalRules = const [];
+      withdrawalRulesReady = false;
+      lastError = '加载提币规则失败：$error';
+    } finally {
+      withdrawalRulesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  WithdrawalAssetRule? withdrawalRuleFor(String chain, String symbol) {
+    final normalizedChain = chain.trim().toUpperCase();
+    final normalizedSymbol = symbol.trim().toUpperCase();
+    for (final rule in withdrawalRules) {
+      if (rule.chain.toUpperCase() == normalizedChain &&
+          rule.symbol.toUpperCase() == normalizedSymbol) {
+        return rule;
+      }
+    }
+    return null;
+  }
+
+  String? validateWithdrawal({
+    required String chain,
+    required String symbol,
+    required String toAddress,
+    required String amount,
+  }) {
+    if (session == null) return '请先登录再提币';
+    if (!withdrawalRulesReady) return '提币规则暂不可用，请刷新后重试';
+    final normalizedChain = chain.trim().toUpperCase();
+    final normalizedSymbol = symbol.trim().toUpperCase();
+    if (normalizedChain.isEmpty || normalizedSymbol.isEmpty) {
+      return '请选择提币资产和网络';
+    }
+    final rule = withdrawalRuleFor(normalizedChain, normalizedSymbol);
+    if (rule != null && !rule.withdrawalEnabled) return '当前网络暂不支持提币';
+    final addressError = _validateWithdrawalAddress(
+      toAddress,
+      rule?.family ?? normalizedChain,
+    );
+    if (addressError != null) return addressError;
+
+    final rawAmount = amount.trim();
+    final match = RegExp(r'^(?:0|[1-9]\d*)(?:\.(\d+))?$').firstMatch(rawAmount);
+    if (match == null) return '请输入有效的提币数量';
+    if (_compareDecimals(rawAmount, '0') <= 0) {
+      return '提币数量必须大于 0';
+    }
+    final fractionDigits = match.group(1)?.length ?? 0;
+    final precision = rule?.decimals;
+    if (precision != null && fractionDigits > precision) {
+      return '$normalizedSymbol 最多支持 $precision 位小数';
+    }
+    if (precision == null && fractionDigits > 18) {
+      return '提币数量最多支持 18 位小数';
+    }
+    final minimum = rule?.minimumAmount;
+    if (minimum != null && _compareDecimals(rawAmount, minimum) < 0) {
+      return '最低提币数量为 $minimum $normalizedSymbol';
+    }
+    final available = _withdrawalAvailableBalance(
+      normalizedChain,
+      normalizedSymbol,
+    );
+    if (available != null &&
+        (!available.isFinite ||
+            _compareDecimals(rawAmount, available.toString()) > 0)) {
+      return '提币数量超过可用余额';
+    }
+    final received = rule?.receivedAmount(rawAmount);
+    if (received != null && _compareDecimals(received, '0') <= 0) {
+      return '提币数量必须大于手续费';
+    }
+    return null;
+  }
+
   Future<void> withdrawWallet({
     required String chain,
     required String symbol,
     required String toAddress,
     required String amount,
+    String? emailCode,
+    String? totpCode,
   }) async {
     final id = userId;
     if (id == null) {
-      lastError = '请先登录再提现';
+      lastError = '请先登录再提币';
       notifyListeners();
       return;
     }
+    if (withdrawalSubmitting || withdrawalOutcomeLocked) return;
+    final validation = validateWithdrawal(
+      chain: chain,
+      symbol: symbol,
+      toAddress: toAddress,
+      amount: amount,
+    );
+    if (validation != null) {
+      lastError = validation;
+      notifyListeners();
+      return;
+    }
+    final normalizedChain = chain.trim().toUpperCase();
+    final normalizedSymbol = symbol.trim().toUpperCase();
+    final normalizedAddress = toAddress.trim();
+    final normalizedAmount = amount.trim();
+    final fingerprint = [
+      normalizedChain,
+      normalizedSymbol,
+      normalizedAddress,
+      normalizedAmount,
+    ].join('|');
+    if (_withdrawalIntentUserId != id ||
+        (_withdrawalIntentFingerprint != null &&
+            _withdrawalIntentFingerprint != fingerprint)) {
+      _clearWithdrawalIntent();
+    }
+    _withdrawalIntentUserId = id;
+    _withdrawalIntentFingerprint = fingerprint;
+    final idempotencyKey = _withdrawalIdempotencyKey ??=
+        _newWithdrawalIdempotencyKey(id);
+    if (!await _writeSettings()) {
+      _clearWithdrawalIntent();
+      lastError = '无法安全保存提币幂等凭证，请检查安全存储后重试';
+      notifyListeners();
+      return;
+    }
+    withdrawalSubmitting = true;
+    lastError = null;
+    lastNotice = null;
+    notifyListeners();
     try {
       final result = await api.walletWithdraw(
         id,
-        chain: chain,
-        symbol: symbol,
-        toAddress: toAddress,
-        amount: amount,
+        chain: normalizedChain,
+        symbol: normalizedSymbol,
+        toAddress: normalizedAddress,
+        amount: normalizedAmount,
+        idempotencyKey: idempotencyKey,
+        emailCode: emailCode,
+        totpCode: totpCode,
       );
-      lastNotice = '提现已提交 ${asString(result['orderNo'])}';
+      final status = asString(
+        result['status'],
+        fallback: 'PENDING',
+      ).toUpperCase();
+      final reference = asString(
+        result['withdrawalId'] ?? result['id'] ?? result['orderNo'],
+      ).trim();
+      final rule = withdrawalRuleFor(normalizedChain, normalizedSymbol);
+      final fee =
+          _firstDecimal(result, const ['fee', 'withdrawalFee', 'networkFee']) ??
+          rule?.fee;
+      final received =
+          _firstDecimal(result, const [
+            'receivedAmount',
+            'netAmount',
+            'creditedAmount',
+          ]) ??
+          rule?.receivedAmount(normalizedAmount);
+      withdrawalConfirmation = WithdrawalConfirmation(
+        chain: normalizedChain,
+        network: rule?.network ?? '',
+        symbol: normalizedSymbol,
+        toAddress: normalizedAddress,
+        amount: normalizedAmount,
+        status: status,
+        reference: reference,
+        fee: fee,
+        receivedAmount: received,
+      );
+      withdrawalOutcomeLocked = true;
+      withdrawalOutcomeUnknown = false;
+      withdrawalVerificationRequired = false;
+      withdrawalTotpRequired = false;
+      await _writeSettings();
+      lastNotice = '提币请求已受理${reference.isEmpty ? '' : '，编号 $reference'}';
       await refreshWallet();
     } catch (error) {
-      lastError = '提现失败：$error';
+      if (error is ApiException && error.statusCode == 428) {
+        if (error.message.toLowerCase().contains('kyc')) {
+          _clearWithdrawalIntent();
+          await _writeSettings();
+          lastError = '提币前需要先完成有效的实名认证';
+        } else {
+          withdrawalVerificationRequired = true;
+          await requestWithdrawalChallenge();
+        }
+      } else if (_withdrawalResultIsUnknown(error)) {
+        withdrawalOutcomeLocked = true;
+        withdrawalOutcomeUnknown = true;
+        await _writeSettings();
+        lastError = '提币结果未知，请勿重复提交；请先核对提币记录';
+      } else {
+        _clearWithdrawalIntent();
+        await _writeSettings();
+        lastError = '提币未受理：$error';
+      }
+    } finally {
+      withdrawalSubmitting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> requestWithdrawalChallenge() async {
+    if (session == null) return;
+    try {
+      final responses = await Future.wait([
+        api.issueSecurityChallenge('WITHDRAWAL'),
+        api.mfaStatus(),
+      ]);
+      final challenge = responses[0];
+      final mfa = responses[1];
+      final totp = asMap(mfa['totp']);
+      withdrawalTotpRequired =
+          mfa['enabled'] == true ||
+          totp['bound'] == true ||
+          totp['enabled'] == true;
+      lastError = null;
+      final destination = asString(challenge['destination']).trim();
+      lastNotice = destination.isEmpty ? '邮箱验证码已发送' : '邮箱验证码已发送至 $destination';
+    } catch (error) {
+      lastError = '发送提币验证码失败：$error';
     }
     notifyListeners();
+  }
+
+  Future<void> resetWithdrawalIntent() async {
+    if (withdrawalSubmitting || withdrawalOutcomeUnknown) return;
+    _clearWithdrawalIntent();
+    lastError = null;
+    lastNotice = null;
+    await _writeSettings();
+    notifyListeners();
+  }
+
+  double? _withdrawalAvailableBalance(String chain, String symbol) {
+    for (final asset in walletPortfolio.assets) {
+      if (asset.symbol.toUpperCase() != symbol) continue;
+      for (final item in asset.chains) {
+        if (item.chain.toUpperCase() == chain) return item.availableBalance;
+      }
+      return asset.availableBalance;
+    }
+    return null;
+  }
+
+  List<WithdrawalAssetRule> _withdrawalRulesFrom(
+    List<Map<String, dynamic>> chains,
+  ) {
+    final rules = <String, WithdrawalAssetRule>{};
+    for (final chain in chains) {
+      final chainCode = asString(chain['chain']).trim().toUpperCase();
+      if (chainCode.isEmpty) continue;
+      final network = asString(chain['network']).trim();
+      final family = asString(chain['family']).trim();
+      final enabled =
+          chain['withdrawalEnabled'] == true ||
+          chain['withdrawEnabled'] == true;
+      final tokens = asList(chain['tokens']).map(asMap).toList();
+      for (final token in tokens) {
+        final symbol = asString(token['symbol']).trim().toUpperCase();
+        if (symbol.isEmpty) continue;
+        rules['$chainCode/$symbol'] = WithdrawalAssetRule(
+          chain: chainCode,
+          symbol: symbol,
+          network: network,
+          family: family,
+          withdrawalEnabled: enabled && token['platformEnabled'] != false,
+          decimals: _nullableInt(token['decimals']),
+          configuredMinimum: _firstDecimal(token, const [
+            'minWithdraw',
+            'minimumWithdrawal',
+            'minimumWithdrawalAmount',
+          ]),
+          fee: _firstDecimal(token, const [
+            'withdrawalFee',
+            'withdrawFee',
+            'networkFee',
+          ]),
+        );
+      }
+      final assetSymbols = <String>{
+        ...asList(chain['assetSymbols'])
+            .map(asString)
+            .map((value) => value.trim().toUpperCase())
+            .where((value) => value.isNotEmpty),
+        asString(chain['nativeSymbol']).trim().toUpperCase(),
+      };
+      for (final symbol in assetSymbols.where((value) => value.isNotEmpty)) {
+        rules.putIfAbsent(
+          '$chainCode/$symbol',
+          () => WithdrawalAssetRule(
+            chain: chainCode,
+            symbol: symbol,
+            network: network,
+            family: family,
+            withdrawalEnabled: enabled,
+            decimals: _nullableInt(
+              symbol == asString(chain['nativeSymbol']).trim().toUpperCase()
+                  ? chain['nativeDecimals'] ?? chain['decimals']
+                  : null,
+            ),
+            configuredMinimum: _firstDecimal(chain, const [
+              'minWithdraw',
+              'minimumWithdrawal',
+              'minimumWithdrawalAmount',
+            ]),
+            fee: _firstDecimal(chain, const [
+              'withdrawalFee',
+              'withdrawFee',
+              'networkFee',
+            ]),
+          ),
+        );
+      }
+    }
+    return rules.values.toList(growable: false);
+  }
+
+  bool _withdrawalResultIsUnknown(Object error) {
+    if (error is! ApiException) return true;
+    return error.statusCode == 408 || error.statusCode >= 500;
+  }
+
+  String _newWithdrawalIdempotencyKey(int id) {
+    final random = math.Random.secure();
+    final entropy = List<int>.generate(16, (_) => random.nextInt(256));
+    final encoded = entropy
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return 'app-withdraw-$id-$encoded';
   }
 
   Future<void> _connectPublicRealtime() async {

@@ -119,6 +119,82 @@ void main() {
     expect(state.lastError, contains('结果未知'));
   });
 
+  test('fails closed when withdrawal rules are unavailable', () {
+    final state = AppState(offline: true)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 103,
+          username: 'withdrawal-user',
+          email: 'withdrawal@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      );
+
+    expect(
+      state.validateWithdrawal(
+        chain: 'TRON',
+        symbol: 'USDT',
+        toAddress: 'TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        amount: '1',
+      ),
+      contains('规则暂不可用'),
+    );
+  });
+
+  test('submits withdrawal once with a stable idempotency key', () async {
+    final api = _WithdrawalApiClient(const {
+      'status': 'SUBMITTED',
+      'id': 'w-1',
+    });
+    final state =
+        AppState(
+            offline: true,
+            apiClient: api,
+            settingsStore: _InMemorySettingsStore(),
+          )
+          ..session = const AuthSession(
+            user: AuthUser(
+              userId: 104,
+              username: 'withdrawal-user',
+              email: 'withdrawal@example.com',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'access',
+            refreshToken: 'refresh',
+          )
+          ..withdrawalRulesReady = true
+          ..withdrawalRules = const [
+            WithdrawalAssetRule(
+              chain: 'TRON',
+              symbol: 'USDT',
+              network: 'TRC20',
+              family: 'TRON',
+              withdrawalEnabled: true,
+              decimals: 6,
+              configuredMinimum: '1',
+            ),
+          ];
+
+    await state.withdrawWallet(
+      chain: 'TRON',
+      symbol: 'USDT',
+      toAddress: 'TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+      amount: '1.000001',
+    );
+    await state.withdrawWallet(
+      chain: 'TRON',
+      symbol: 'USDT',
+      toAddress: 'TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+      amount: '1.000001',
+    );
+
+    expect(api.idempotencyKeys, hasLength(1));
+    expect(state.withdrawalOutcomeLocked, isTrue);
+    expect(state.withdrawalConfirmation?.reference, 'w-1');
+  });
+
   testWidgets('locks transfer fields and action after a pending result', (
     tester,
   ) async {
@@ -1243,6 +1319,28 @@ class _TransferApiClient extends ApiClient {
   }
 }
 
+class _WithdrawalApiClient extends ApiClient {
+  _WithdrawalApiClient(this.response) : super(const AppConfig());
+
+  final Map<String, dynamic> response;
+  final List<String> idempotencyKeys = [];
+
+  @override
+  Future<Map<String, dynamic>> walletWithdraw(
+    int userId, {
+    required String chain,
+    required String symbol,
+    required String toAddress,
+    required String amount,
+    required String idempotencyKey,
+    String? emailCode,
+    String? totpCode,
+  }) async {
+    idempotencyKeys.add(idempotencyKey);
+    return response;
+  }
+}
+
 class _SpotRefreshApiClient extends ApiClient {
   _SpotRefreshApiClient() : super(const AppConfig());
 
@@ -1433,6 +1531,16 @@ class _InMemorySessionStore implements SessionStore {
 
   @override
   Future<void> enableBiometric() async => biometric = true;
+}
+
+class _InMemorySettingsStore implements ClientSettingsStore {
+  Map<String, String> values = {};
+
+  @override
+  Future<Map<String, String>> read() async => Map.of(values);
+
+  @override
+  Future<void> write(Map<String, String> next) async => values = Map.of(next);
 }
 
 class _RealtimeSwitchApiClient extends ApiClient {

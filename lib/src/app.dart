@@ -1045,8 +1045,6 @@ class _WalletPageState extends State<WalletPage> {
   final amountController = TextEditingController(text: '10');
   final transferEmailCodeController = TextEditingController();
   final transferTotpCodeController = TextEditingController();
-  final withdrawAmountController = TextEditingController(text: '0.1');
-  final withdrawAddressController = TextEditingController();
   String source = 'SPOT';
   String target = 'USDT_PERPETUAL';
   String asset = 'USDT';
@@ -1058,8 +1056,6 @@ class _WalletPageState extends State<WalletPage> {
     amountController.dispose();
     transferEmailCodeController.dispose();
     transferTotpCodeController.dispose();
-    withdrawAmountController.dispose();
-    withdrawAddressController.dispose();
     super.dispose();
   }
 
@@ -1088,7 +1084,6 @@ class _WalletPageState extends State<WalletPage> {
     final selectedChain = chains.contains(walletChain)
         ? walletChain
         : chains.first;
-    final chainAsset = _walletChainAsset(state, selectedSymbol, selectedChain);
     final deposit = state.walletDepositAddress;
     final depositMatches =
         deposit != null &&
@@ -1212,9 +1207,7 @@ class _WalletPageState extends State<WalletPage> {
                 WalletAction(
                   icon: Icons.file_upload_outlined,
                   label: '提币',
-                  onTap: state.isLoggedIn
-                      ? state.refreshWallet
-                      : () => showAuthSheet(context),
+                  onTap: () => _openWithdrawalFlow(context, state),
                 ),
                 WalletAction(
                   icon: Icons.swap_horiz,
@@ -1476,74 +1469,17 @@ class _WalletPageState extends State<WalletPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle(title: '提现'),
-                          InfoLine(
-                            label: '$selectedChain · $selectedSymbol 可用',
-                            value: chainAsset == null
-                                ? '--'
-                                : money(chainAsset.availableBalance, digits: 8),
+                          const SectionTitle(title: '提币'),
+                          const Text(
+                            '通过独立安全表单核对网络、地址、数量和验证信息。',
+                            style: TextStyle(color: _muted, fontSize: 11),
                           ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: withdrawAddressController,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: _ink,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: '到账地址',
-                              labelStyle: const TextStyle(color: _muted),
-                              isDense: true,
-                              filled: true,
-                              fillColor: _panelSoft,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(6),
-                                borderSide: const BorderSide(color: _line),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(6),
-                                borderSide: const BorderSide(color: _pink),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: AppTextField(
-                                  controller: withdrawAmountController,
-                                  label: '数量',
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: 92,
-                                child: Center(
-                                  child: Text(
-                                    selectedSymbol,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                          const SizedBox(height: 10),
                           PrimaryAction(
-                            label: '确认提现',
+                            label: '打开提币表单',
                             icon: Icons.call_made,
-                            onPressed: () => unawaited(
-                              state.withdrawWallet(
-                                chain: selectedChain,
-                                symbol: selectedSymbol,
-                                toAddress: withdrawAddressController.text,
-                                amount: withdrawAmountController.text,
-                              ),
-                            ),
+                            onPressed: () =>
+                                _openWithdrawalFlow(context, state),
                           ),
                         ],
                       ),
@@ -1742,6 +1678,20 @@ class _WalletPageState extends State<WalletPage> {
     ).push(MaterialPageRoute<void>(builder: (_) => const RechargeCoinPage()));
   }
 
+  void _openWithdrawalFlow(BuildContext context, AppState state) {
+    if (!state.isLoggedIn) {
+      showAuthSheet(context);
+      return;
+    }
+    unawaited(() async {
+      await state.refreshWithdrawalRules();
+      if (!context.mounted) return;
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const WithdrawalPage()));
+    }());
+  }
+
   List<String> _walletSymbols(AppState state) {
     final values =
         state.walletPortfolio.assets
@@ -1767,20 +1717,496 @@ class _WalletPageState extends State<WalletPage> {
     chains.sort();
     return chains.isEmpty ? const ['ETH', 'TRON', 'BTC'] : chains;
   }
+}
 
-  WalletChainAsset? _walletChainAsset(
+class WithdrawalPage extends StatefulWidget {
+  const WithdrawalPage({super.key});
+
+  @override
+  State<WithdrawalPage> createState() => _WithdrawalPageState();
+}
+
+class _WithdrawalPageState extends State<WithdrawalPage> {
+  final addressController = TextEditingController();
+  final amountController = TextEditingController();
+  final emailCodeController = TextEditingController();
+  final totpCodeController = TextEditingController();
+  String? selectedSymbol;
+  String? selectedChain;
+  String? localError;
+
+  @override
+  void dispose() {
+    addressController.dispose();
+    amountController.dispose();
+    emailCodeController.dispose();
+    totpCodeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    if (!state.withdrawalRulesReady) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+            children: [
+              const RechargeHeader(title: '提币'),
+              const SizedBox(height: 40),
+              const EmptyState(text: '提币规则暂不可用，请刷新后重试'),
+              const SizedBox(height: 16),
+              PrimaryAction(
+                label: state.withdrawalRulesLoading ? '刷新中…' : '刷新提币规则',
+                icon: Icons.refresh,
+                onPressed: state.withdrawalRulesLoading
+                    ? null
+                    : () => unawaited(state.refreshWithdrawalRules()),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final assets = state.walletPortfolio.assets
+        .where((item) => item.symbol.trim().isNotEmpty)
+        .toList();
+    if (assets.isEmpty) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+            children: [
+              const RechargeHeader(title: '提币'),
+              const SizedBox(height: 40),
+              const EmptyState(text: '暂无可提币资产，请先刷新资金账户'),
+              const SizedBox(height: 16),
+              PrimaryAction(
+                label: state.loadingPrivate ? '刷新中…' : '刷新资产',
+                icon: Icons.refresh,
+                onPressed: state.loadingPrivate
+                    ? null
+                    : () => unawaited(state.refreshWallet()),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final symbolValues = assets.map((item) => item.symbol).toList();
+    final symbol = symbolValues.contains(selectedSymbol)
+        ? selectedSymbol!
+        : symbolValues.first;
+    final asset = assets.firstWhere((item) => item.symbol == symbol);
+    final chainAssets = asset.chains.where((item) {
+      final rule = state.withdrawalRuleFor(item.chain, symbol);
+      return rule != null && rule.withdrawalEnabled;
+    }).toList();
+    final chainValues = chainAssets.map((item) => item.chain).toList();
+    final chain = chainValues.contains(selectedChain)
+        ? selectedChain!
+        : chainValues.isEmpty
+        ? ''
+        : chainValues.first;
+    final chainAsset = chainAssets.cast<WalletChainAsset?>().firstWhere(
+      (item) => item?.chain == chain,
+      orElse: () => null,
+    );
+    final rule = state.withdrawalRuleFor(chain, symbol);
+    final locked = state.withdrawalSubmitting || state.withdrawalOutcomeLocked;
+    final minimum = rule?.minimumAmount;
+    final previewReceived = rule?.receivedAmount(amountController.text.trim());
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+          children: [
+            RechargeHeader(
+              title: '提币',
+              trailing: IconButton(
+                tooltip: '刷新提币规则',
+                onPressed: state.withdrawalRulesLoading
+                    ? null
+                    : () => unawaited(state.refreshWithdrawalRules()),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  side: BorderSide.none,
+                ),
+                icon: state.withdrawalRulesLoading
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 26),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SectionTitle(title: '资产与网络'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SmallDropdown(
+                          value: symbol,
+                          values: symbolValues,
+                          enabled: !locked,
+                          onChanged: (next) => setState(() {
+                            selectedSymbol = next;
+                            selectedChain = null;
+                            localError = null;
+                          }),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: chainValues.isEmpty
+                            ? const Text(
+                                '无可用网络',
+                                style: TextStyle(color: _muted),
+                              )
+                            : SmallDropdown(
+                                value: chain,
+                                values: chainValues,
+                                enabled: !locked,
+                                labelBuilder: (value) {
+                                  final selected = chainAssets.firstWhere(
+                                    (item) => item.chain == value,
+                                  );
+                                  return selected.network.isEmpty
+                                      ? value
+                                      : '$value · ${selected.network}';
+                                },
+                                onChanged: (next) => setState(() {
+                                  selectedChain = next;
+                                  localError = null;
+                                }),
+                              ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  InfoLine(
+                    label: '可用余额',
+                    value: chainAsset == null
+                        ? '--'
+                        : '${_plainAssetAmount(chainAsset.availableBalance)} $symbol',
+                  ),
+                  if (minimum != null)
+                    InfoLine(
+                      label: rule?.configuredMinimum == null
+                          ? '最小单位'
+                          : '最低提币数量',
+                      value: '$minimum $symbol',
+                    ),
+                  if (rule?.decimals != null)
+                    InfoLine(label: '数量精度', value: '${rule!.decimals} 位小数'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SectionTitle(title: '接收信息'),
+                  TextField(
+                    controller: addressController,
+                    enabled: !locked,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    keyboardType: TextInputType.text,
+                    onChanged: (_) => setState(() => localError = null),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: '提币地址',
+                      hintText: '请粘贴并逐字核对接收地址',
+                      isDense: true,
+                      filled: true,
+                      fillColor: _panelSoft,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: _line),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: _pink),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppTextField(
+                          controller: amountController,
+                          label: '提币数量',
+                          enabled: !locked,
+                          onChanged: (_) => setState(() => localError = null),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: locked || chainAsset == null
+                            ? null
+                            : () => setState(() {
+                                amountController.text = _plainAssetAmount(
+                                  chainAsset.availableBalance,
+                                );
+                                localError = null;
+                              }),
+                        child: const Text('全部'),
+                      ),
+                    ],
+                  ),
+                  if (rule?.fee != null)
+                    InfoLine(label: '手续费', value: '${rule!.fee} $symbol'),
+                  if (previewReceived != null &&
+                      !previewReceived.startsWith('-'))
+                    InfoLine(label: '预计到账', value: '$previewReceived $symbol'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '客户端校验用于提前发现输入问题，最终以钱包和风控服务校验为准。网络选错或地址错误可能导致资产无法找回。',
+                    style: TextStyle(color: _muted, fontSize: 11, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
+            if (state.withdrawalVerificationRequired) ...[
+              const SizedBox(height: 12),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SectionTitle(title: '安全验证'),
+                    AppTextField(
+                      controller: emailCodeController,
+                      label: '邮箱验证码',
+                      enabled: !locked,
+                    ),
+                    if (state.withdrawalTotpRequired) ...[
+                      const SizedBox(height: 8),
+                      AppTextField(
+                        controller: totpCodeController,
+                        label: '验证器动态码',
+                        enabled: !locked,
+                      ),
+                    ],
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: state.withdrawalSubmitting
+                            ? null
+                            : () =>
+                                  unawaited(state.requestWithdrawalChallenge()),
+                        child: const Text('重新发送邮箱验证码'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (localError != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                localError!,
+                key: const ValueKey('withdrawal-local-error'),
+                style: const TextStyle(color: _red, fontSize: 12),
+              ),
+            ],
+            if (state.withdrawalConfirmation != null) ...[
+              const SizedBox(height: 12),
+              WithdrawalConfirmationPanel(
+                confirmation: state.withdrawalConfirmation!,
+              ),
+            ],
+            const SizedBox(height: 14),
+            PrimaryAction(
+              label: state.withdrawalSubmitting
+                  ? '提交中…'
+                  : state.withdrawalOutcomeUnknown
+                  ? '结果待核对'
+                  : state.withdrawalOutcomeLocked
+                  ? '提币已受理'
+                  : '核对并确认提币',
+              icon: Icons.verified_user_outlined,
+              onPressed: locked || chain.isEmpty
+                  ? null
+                  : () =>
+                        unawaited(_reviewAndSubmit(state, symbol, chain, rule)),
+            ),
+            if (state.withdrawalOutcomeUnknown) ...[
+              const SizedBox(height: 10),
+              const Text(
+                '本次请求可能已到达钱包服务。为避免重复扣款，当前提币意图已锁定，请先核对提币记录。',
+                style: TextStyle(color: _amber, fontSize: 11, height: 1.45),
+              ),
+            ] else if (state.withdrawalOutcomeLocked) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => unawaited(_startAnotherWithdrawal(state)),
+                  child: const Text('发起另一笔提币'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reviewAndSubmit(
     AppState state,
     String symbol,
     String chain,
-  ) {
-    for (final asset in state.walletPortfolio.assets) {
-      if (asset.symbol != symbol) continue;
-      for (final item in asset.chains) {
-        if (item.chain == chain) return item;
-      }
+    WithdrawalAssetRule? rule,
+  ) async {
+    final error = state.validateWithdrawal(
+      chain: chain,
+      symbol: symbol,
+      toAddress: addressController.text,
+      amount: amountController.text,
+    );
+    if (error != null) {
+      setState(() => localError = error);
+      return;
     }
-    return null;
+    if (state.withdrawalVerificationRequired &&
+        emailCodeController.text.trim().length != 6) {
+      setState(() => localError = '请输入 6 位邮箱验证码');
+      return;
+    }
+    if (state.withdrawalTotpRequired &&
+        totpCodeController.text.trim().length != 6) {
+      setState(() => localError = '请输入 6 位验证器动态码');
+      return;
+    }
+    final amount = amountController.text.trim();
+    final fee = rule?.fee;
+    final received = rule?.receivedAmount(amount);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认提币信息'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InfoLine(
+              label: '网络',
+              value: rule?.network.isNotEmpty == true
+                  ? '$chain · ${rule!.network}'
+                  : chain,
+            ),
+            InfoLine(label: '地址', value: addressController.text.trim()),
+            InfoLine(label: '数量', value: '$amount $symbol'),
+            if (fee != null) InfoLine(label: '手续费', value: '$fee $symbol'),
+            if (received != null)
+              InfoLine(label: '预计到账', value: '$received $symbol'),
+            const SizedBox(height: 10),
+            const Text(
+              '请确认网络与接收地址完全一致。提交后不可撤销。',
+              style: TextStyle(color: _muted, fontSize: 11),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回修改'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认提交'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await state.withdrawWallet(
+      chain: chain,
+      symbol: symbol,
+      toAddress: addressController.text,
+      amount: amount,
+      emailCode: emailCodeController.text,
+      totpCode: totpCodeController.text,
+    );
   }
+
+  Future<void> _startAnotherWithdrawal(AppState state) async {
+    await state.resetWithdrawalIntent();
+    if (!mounted) return;
+    setState(() {
+      addressController.clear();
+      amountController.clear();
+      emailCodeController.clear();
+      totpCodeController.clear();
+      localError = null;
+    });
+  }
+}
+
+class WithdrawalConfirmationPanel extends StatelessWidget {
+  const WithdrawalConfirmationPanel({required this.confirmation, super.key});
+
+  final WithdrawalConfirmation confirmation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionTitle(title: '提币确认摘要'),
+          InfoLine(
+            label: '网络',
+            value: confirmation.network.isEmpty
+                ? confirmation.chain
+                : '${confirmation.chain} · ${confirmation.network}',
+          ),
+          InfoLine(label: '地址', value: confirmation.toAddress),
+          InfoLine(
+            label: '数量',
+            value: '${confirmation.amount} ${confirmation.symbol}',
+          ),
+          if (confirmation.fee != null)
+            InfoLine(
+              label: '手续费',
+              value: '${confirmation.fee} ${confirmation.symbol}',
+            ),
+          if (confirmation.receivedAmount != null)
+            InfoLine(
+              label: '到账数量',
+              value: '${confirmation.receivedAmount} ${confirmation.symbol}',
+            ),
+          InfoLine(label: '状态', value: confirmation.status),
+          if (confirmation.reference.isNotEmpty)
+            InfoLine(label: '提币编号', value: confirmation.reference),
+        ],
+      ),
+    );
+  }
+}
+
+String _plainAssetAmount(double value) {
+  final fixed = value.toStringAsFixed(18);
+  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }
 
 class RechargeCoinPage extends StatefulWidget {
@@ -2612,13 +3038,16 @@ class ProfilePage extends StatelessWidget {
         if (state.isLoggedIn) ...[
           const SizedBox(height: 12),
           Panel(
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.security, color: _mint),
-              title: const Text('安全中心'),
-              subtitle: const Text('2FA、敏感场景和 API Key'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => showSecuritySheet(context),
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.security, color: _mint),
+                title: const Text('安全中心'),
+                subtitle: const Text('2FA、敏感场景和 API Key'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showSecuritySheet(context),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -2637,12 +3066,21 @@ class ProfilePage extends StatelessWidget {
                     : '设备未检测到可用的生物识别能力',
               ),
               trailing: state.biometricLoginEnabled
-                  ? const Icon(Icons.verified, color: _mint)
+                  ? OutlinedButton(
+                      onPressed: state.biometricLoginUpdating
+                          ? null
+                          : () => unawaited(
+                              _confirmDisableBiometric(context, state),
+                            ),
+                      child: Text(state.biometricLoginUpdating ? '处理中…' : '关闭'),
+                    )
                   : FilledButton.tonal(
-                      onPressed: state.biometricLoginAvailable
+                      onPressed:
+                          state.biometricLoginAvailable &&
+                              !state.biometricLoginUpdating
                           ? () => unawaited(state.enableBiometricLogin())
                           : null,
-                      child: const Text('启用'),
+                      child: Text(state.biometricLoginUpdating ? '处理中…' : '启用'),
                     ),
             ),
           ),
@@ -2661,6 +3099,30 @@ class ProfilePage extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _confirmDisableBiometric(
+    BuildContext context,
+    AppState state,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('关闭生物识别登录？'),
+        content: const Text('关闭后，下次打开 App 将直接使用已保存的登录会话，不再要求面容或指纹解锁。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认关闭'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await state.disableBiometricLogin();
   }
 }
 

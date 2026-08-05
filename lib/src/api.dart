@@ -943,6 +943,15 @@ class ApiClient {
     );
   }
 
+  Future<List<Map<String, dynamic>>> walletChains(int userId) async {
+    final response = await _send(
+      'GET',
+      '/api/v1/wallet/chains',
+      userId: userId,
+    );
+    return asList(response).map(asMap).toList();
+  }
+
   Future<WalletPortfolio> walletPortfolio(
     int userId, {
     bool hideZero = false,
@@ -999,18 +1008,27 @@ class ApiClient {
     required String symbol,
     required String toAddress,
     required String amount,
+    required String idempotencyKey,
+    String? emailCode,
+    String? totpCode,
   }) {
     return post(
-      '/api/v1/gateway/wallet/app/withdraw',
+      '/api/v1/wallet/withdrawals',
       {
         'chain': chain,
-        'symbol': symbol,
+        'assetSymbol': symbol,
         'toAddress': toAddress,
         'amount': amount,
-        'confirmed': true,
+        'externalReference': 'mobile-withdrawal:$idempotencyKey',
       },
       userId: userId,
-      unwrapResponseResult: true,
+      headers: {
+        'Idempotency-Key': idempotencyKey,
+        if (emailCode != null && emailCode.trim().isNotEmpty)
+          'X-Security-Email-Code': emailCode.trim(),
+        if (totpCode != null && totpCode.trim().isNotEmpty)
+          'X-Security-TOTP-Code': totpCode.trim(),
+      },
     );
   }
 

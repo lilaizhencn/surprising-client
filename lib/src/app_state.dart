@@ -13,11 +13,13 @@ class AppState extends ChangeNotifier {
     RealtimeClient? publicRealtimeClient,
     RealtimeClient? privateRealtimeClient,
     SessionStore? sessionStore,
+    ClientSettingsStore? settingsStore,
     this.offline = false,
   }) : api = apiClient ?? ApiClient(config),
        publicRealtime = publicRealtimeClient ?? RealtimeClient(config),
        privateRealtime = privateRealtimeClient ?? RealtimeClient(config),
        sessionStore = sessionStore ?? SecureSessionStore() {
+    this.settingsStore = settingsStore ?? SecureClientSettingsStore();
     api.onSessionRefreshed = _persistRefreshedSession;
     api.onSessionExpired = _clearExpiredSession;
     instruments = fallbackInstruments();
@@ -31,6 +33,7 @@ class AppState extends ChangeNotifier {
   final RealtimeClient publicRealtime;
   final RealtimeClient privateRealtime;
   final SessionStore sessionStore;
+  late final ClientSettingsStore settingsStore;
   final bool offline;
 
   AuthSession? session;
@@ -60,6 +63,14 @@ class AppState extends ChangeNotifier {
   WalletDepositAddress? walletDepositAddress;
   AccountRisk? accountRisk;
   final Map<String, double> latestPrices = {};
+  final Map<String, double> walletAssetPricesUsdt = {};
+  ValuationCurrency valuationCurrency = ValuationCurrency.usdt;
+  final Map<ValuationCurrency, double> valuationRates = {
+    ValuationCurrency.usdt: 1,
+  };
+  ClientTheme clientTheme = ClientTheme.dark;
+  ClientLanguage language = ClientLanguage.zhHans;
+  bool valuationLoading = false;
   bool loadingPublic = false;
   bool loadingPrivate = false;
   bool transferSubmitting = false;
@@ -115,12 +126,119 @@ class AppState extends ChangeNotifier {
     return offline ? fallbackPriceFor(instrument) : null;
   }
 
+  double? get valuationRate => valuationRates[valuationCurrency];
+
+  double? walletPortfolioUsdt(WalletPortfolio portfolio) {
+    var total = 0.0;
+    for (final asset in portfolio.assets) {
+      if (asset.totalBalance == 0) continue;
+      final price = walletAssetPricesUsdt[asset.symbol.toUpperCase()];
+      if (price == null || !price.isFinite || price <= 0) return null;
+      total += asset.totalBalance * price;
+    }
+    return total;
+  }
+
+  double? productBalancesUsdt() {
+    var total = 0.0;
+    for (final balance in balances) {
+      if (balance.equity == 0) continue;
+      final asset = balance.asset.toUpperCase();
+      final price = asset == 'USDT' ? 1.0 : walletAssetPricesUsdt[asset];
+      if (price == null || !price.isFinite || price <= 0) return null;
+      total += balance.equity * price;
+    }
+    return total;
+  }
+
+  double? valuationAmount(double? usdtAmount) {
+    final rate = valuationRate;
+    if (usdtAmount == null || rate == null || !rate.isFinite || rate <= 0) {
+      return null;
+    }
+    return usdtAmount * rate;
+  }
+
+  Future<void> selectValuationCurrency(ValuationCurrency next) async {
+    valuationCurrency = next;
+    _persistSettings();
+    await refreshValuation(silent: true);
+    notifyListeners();
+  }
+
+  Future<void> refreshValuation({bool silent = false}) async {
+    if (offline) return;
+    valuationLoading = true;
+    notifyListeners();
+    try {
+      final results = await Future.wait([
+        api.exchangeRateConversion(
+          fromCurrency: 'USDT',
+          toCurrency: ValuationCurrency.usd.code,
+        ),
+        api.exchangeRateConversion(
+          fromCurrency: 'USDT',
+          toCurrency: ValuationCurrency.cny.code,
+        ),
+      ]);
+      valuationRates
+        ..[ValuationCurrency.usdt] = 1
+        ..[ValuationCurrency.usd] = results[0]
+        ..[ValuationCurrency.cny] = results[1];
+      lastError = null;
+    } catch (error) {
+      if (!silent) lastError = '加载估值汇率失败：$error';
+    } finally {
+      valuationLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> bootstrap() async {
     if (offline) return;
+    await _restoreSettings();
     await _restoreSession();
     await refreshInstruments(silent: true);
+    await refreshValuation(silent: true);
     await refreshPublicData(silent: true);
     await _connectPublicRealtime();
+  }
+
+  Future<void> _restoreSettings() async {
+    try {
+      final values = await settingsStore.read();
+      clientTheme = ClientTheme.fromCode(values['theme'] ?? 'dark');
+      language = ClientLanguage.fromCode(values['language'] ?? 'zh');
+      valuationCurrency = ValuationCurrency.fromCode(
+        values['valuationCurrency'] ?? 'USDT',
+      );
+    } catch (_) {
+      clientTheme = ClientTheme.dark;
+      language = ClientLanguage.zhHans;
+      valuationCurrency = ValuationCurrency.usdt;
+    }
+  }
+
+  void _persistSettings() {
+    unawaited(
+      settingsStore.write({
+        'theme': clientTheme.code,
+        'language': language.code,
+        'valuationCurrency': valuationCurrency.code,
+      }),
+    );
+  }
+
+  void selectTheme(ClientTheme next) {
+    clientTheme = next;
+    _persistSettings();
+    notifyListeners();
+  }
+
+  void selectLanguage(ClientLanguage next) {
+    language = next;
+    _persistSettings();
+    notifyListeners();
   }
 
   Future<void> _restoreSession() async {
@@ -380,6 +498,7 @@ class AppState extends ChangeNotifier {
       liquidationOrders = results[8] as List<LiquidationOrder>;
       walletPortfolio = results[9] as WalletPortfolio;
       walletOrders = results[10] as List<WalletOrderRecord>;
+      await refreshWalletAssetPrices();
       lastError = null;
     } catch (error) {
       lastError = '加载账户失败：$error';
@@ -593,6 +712,7 @@ class AppState extends ChangeNotifier {
     positionMode = 'ONE_WAY';
     walletPortfolio = WalletPortfolio.empty();
     walletOrders = const [];
+    walletAssetPricesUsdt.clear();
     walletDepositAddress = null;
     accountRisk = null;
     positionRisks = const [];
@@ -986,12 +1106,63 @@ class AppState extends ChangeNotifier {
       ]);
       walletPortfolio = results[0] as WalletPortfolio;
       walletOrders = results[1] as List<WalletOrderRecord>;
+      await refreshWalletAssetPrices();
       lastError = null;
     } catch (error) {
       lastError = '加载钱包失败：$error';
     } finally {
       loadingPrivate = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> refreshWalletAssetPrices() async {
+    if (offline) return;
+    final assets = walletPortfolio.assets
+        .where((asset) => asset.totalBalance != 0)
+        .map((asset) => asset.symbol.toUpperCase())
+        .toSet();
+    if (assets.isEmpty) {
+      walletAssetPricesUsdt.clear();
+      return;
+    }
+    final prices = await Future.wait(
+      assets.map((asset) => _loadWalletAssetPrice(asset)),
+    );
+    walletAssetPricesUsdt
+      ..clear()
+      ..addEntries(prices.whereType<MapEntry<String, double>>());
+  }
+
+  Future<MapEntry<String, double>?> _loadWalletAssetPrice(String asset) async {
+    if (asset == 'USDT') return const MapEntry<String, double>('USDT', 1);
+    Instrument? spotInstrument;
+    for (final instrument in instruments) {
+      if (instrument.mode == ProductMode.spot &&
+          instrument.baseAsset.toUpperCase() == asset &&
+          instrument.quoteAsset.toUpperCase() == 'USDT' &&
+          instrument.status == 'TRADING') {
+        spotInstrument = instrument;
+        break;
+      }
+    }
+    if (spotInstrument == null) return null;
+    final cached = latestPrices[spotInstrument.symbol];
+    if (cached != null && cached.isFinite && cached > 0) {
+      return MapEntry(asset, cached);
+    }
+    try {
+      final loaded = await api.candles(
+        spotInstrument.symbol,
+        '1m',
+        productLine: ProductMode.spot.productLine,
+      );
+      if (loaded.isEmpty || loaded.last.close <= 0) return null;
+      final price = loaded.last.close;
+      latestPrices[spotInstrument.symbol] = price;
+      return MapEntry(asset, price);
+    } catch (_) {
+      return null;
     }
   }
 

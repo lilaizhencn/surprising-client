@@ -29,6 +29,10 @@ String _displayFileSize(int bytes) {
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
+String clientText(ClientLanguage language, String zh, String en) {
+  return language == ClientLanguage.en ? en : zh;
+}
+
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({
     required AppState super.notifier,
@@ -74,113 +78,135 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
   Widget build(BuildContext context) {
     return AppScope(
       notifier: state,
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Surprising',
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          useMaterial3: true,
-          scaffoldBackgroundColor: _paper,
-          colorScheme: const ColorScheme.dark(
-            primary: _pink,
-            secondary: _violet,
-            tertiary: _mint,
-            surface: _panel,
-            surfaceContainerHighest: _panelSoft,
-            error: _red,
-          ),
-          canvasColor: _paper,
-          dividerColor: _line,
-          textTheme: const TextTheme(
-            titleLarge: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: _ink,
-            ),
-            titleMedium: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _ink,
-            ),
-            bodyMedium: TextStyle(fontSize: 12, color: _ink),
-            labelMedium: TextStyle(fontSize: 11, color: _muted),
-          ),
-          snackBarTheme: const SnackBarThemeData(
-            backgroundColor: _panel,
-            contentTextStyle: TextStyle(color: _ink, fontSize: 13),
-          ),
-          bottomSheetTheme: const BottomSheetThemeData(
-            backgroundColor: _panel,
-            surfaceTintColor: Colors.transparent,
-            dragHandleColor: _line,
-          ),
-          navigationBarTheme: NavigationBarThemeData(
-            backgroundColor: _panel,
-            indicatorColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            labelTextStyle: WidgetStateProperty.resolveWith(
-              (states) => TextStyle(
-                color: states.contains(WidgetState.selected) ? _ink : _muted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+      child: AnimatedBuilder(
+        animation: state,
+        builder: (context, _) {
+          final isLight = state.clientTheme == ClientTheme.light;
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Surprising',
+            locale: Locale(state.language.code),
+            theme: ThemeData(
+              brightness: isLight ? Brightness.light : Brightness.dark,
+              useMaterial3: true,
+              scaffoldBackgroundColor: isLight
+                  ? const Color(0xFFF6F8FA)
+                  : _paper,
+              colorScheme: isLight
+                  ? ColorScheme.light(
+                      primary: _pink,
+                      secondary: _violet,
+                      tertiary: _mint,
+                      surface: Colors.white,
+                      surfaceContainerHighest: const Color(0xFFEFF1F3),
+                      error: _red,
+                    )
+                  : const ColorScheme.dark(
+                      primary: _pink,
+                      secondary: _violet,
+                      tertiary: _mint,
+                      surface: _panel,
+                      surfaceContainerHighest: _panelSoft,
+                      error: _red,
+                    ),
+              canvasColor: isLight ? const Color(0xFFF6F8FA) : _paper,
+              dividerColor: isLight ? const Color(0xFFD9DEE5) : _line,
+              textTheme: const TextTheme(
+                titleLarge: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: _ink,
+                ),
+                titleMedium: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _ink,
+                ),
+                bodyMedium: TextStyle(fontSize: 12, color: _ink),
+                labelMedium: TextStyle(fontSize: 11, color: _muted),
               ),
-            ),
-            iconTheme: WidgetStateProperty.resolveWith(
-              (states) => IconThemeData(
-                color: states.contains(WidgetState.selected) ? _amber : _muted,
+              snackBarTheme: const SnackBarThemeData(
+                backgroundColor: _panel,
+                contentTextStyle: TextStyle(color: _ink, fontSize: 13),
               ),
-            ),
-          ),
-          chipTheme: ChipThemeData(
-            backgroundColor: _panelSoft,
-            selectedColor: _pink.withValues(alpha: .20),
-            side: const BorderSide(color: _line),
-            labelStyle: const TextStyle(
-              color: _ink,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-            secondaryLabelStyle: const TextStyle(
-              color: _ink,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          iconButtonTheme: IconButtonThemeData(
-            style: IconButton.styleFrom(
-              backgroundColor: _panelSoft,
-              foregroundColor: _ink,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+              bottomSheetTheme: BottomSheetThemeData(
+                backgroundColor: isLight ? Colors.white : _panel,
+                surfaceTintColor: Colors.transparent,
+                dragHandleColor: _line,
+              ),
+              navigationBarTheme: NavigationBarThemeData(
+                backgroundColor: _panel,
+                indicatorColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                labelTextStyle: WidgetStateProperty.resolveWith(
+                  (states) => TextStyle(
+                    color: states.contains(WidgetState.selected)
+                        ? _ink
+                        : _muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                iconTheme: WidgetStateProperty.resolveWith(
+                  (states) => IconThemeData(
+                    color: states.contains(WidgetState.selected)
+                        ? _amber
+                        : _muted,
+                  ),
+                ),
+              ),
+              chipTheme: ChipThemeData(
+                backgroundColor: _panelSoft,
+                selectedColor: _pink.withValues(alpha: .20),
                 side: const BorderSide(color: _line),
+                labelStyle: const TextStyle(
+                  color: _ink,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+                secondaryLabelStyle: const TextStyle(
+                  color: _ink,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              iconButtonTheme: IconButtonThemeData(
+                style: IconButton.styleFrom(
+                  backgroundColor: _panelSoft,
+                  foregroundColor: _ink,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: _line),
+                  ),
+                ),
+              ),
+              filledButtonTheme: FilledButtonThemeData(
+                style: FilledButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: _panelSoft,
+                  disabledForegroundColor: _muted,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              outlinedButtonTheme: OutlinedButtonThemeData(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _ink,
+                  side: const BorderSide(color: _line),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
               ),
             ),
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              backgroundColor: _pink,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: _panelSoft,
-              disabledForegroundColor: _muted,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-          outlinedButtonTheme: OutlinedButtonThemeData(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _ink,
-              side: const BorderSide(color: _line),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ),
-        home: const ClientShell(),
+            home: const ClientShell(),
+          );
+        },
       ),
     );
   }
@@ -262,19 +288,35 @@ class ExchangeBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final language = AppScope.of(context).language;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    const exchangeItems = [
-      _ExchangeNavItem(Icons.grid_view_outlined, Icons.grid_view, '首页'),
-      _ExchangeNavItem(Icons.show_chart, Icons.show_chart, '行情'),
-      _ExchangeNavItem(Icons.sync_alt, Icons.sync_alt, '交易'),
-      _ExchangeNavItem(Icons.receipt_long_outlined, Icons.receipt_long, '合约'),
+    final exchangeItems = [
+      _ExchangeNavItem(
+        Icons.grid_view_outlined,
+        Icons.grid_view,
+        clientText(language, '首页', 'Home'),
+      ),
+      _ExchangeNavItem(
+        Icons.show_chart,
+        Icons.show_chart,
+        clientText(language, '行情', 'Markets'),
+      ),
+      _ExchangeNavItem(
+        Icons.sync_alt,
+        Icons.sync_alt,
+        clientText(language, '交易', 'Trade'),
+      ),
+      _ExchangeNavItem(
+        Icons.receipt_long_outlined,
+        Icons.receipt_long,
+        clientText(language, '合约', 'Contracts'),
+      ),
       _ExchangeNavItem(
         Icons.account_balance_wallet_outlined,
         Icons.account_balance_wallet,
-        '资产',
+        clientText(language, '资产', 'Assets'),
       ),
     ];
-    const items = exchangeItems;
     return Container(
       height: 56 + bottomInset,
       padding: EdgeInsets.only(bottom: bottomInset),
@@ -284,12 +326,12 @@ class ExchangeBottomNav extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (var i = 0; i < items.length; i++)
+          for (var i = 0; i < exchangeItems.length; i++)
             Expanded(
               child: InkWell(
                 onTap: () => onSelected(i),
                 child: _ExchangeNavButton(
-                  item: items[i],
+                  item: exchangeItems[i],
                   selected: selectedIndex == i,
                 ),
               ),
@@ -1024,18 +1066,20 @@ class _WalletPageState extends State<WalletPage> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final tradingTotal = state.balances.fold<double>(
-      0,
-      (sum, item) => sum + item.equity,
-    );
     final displayPortfolio =
         state.walletPortfolio.assets.isEmpty && state.offline
         ? fallbackWalletPortfolio()
         : state.walletPortfolio;
-    final walletTotalCny = walletPortfolioCny(displayPortfolio);
-    final tradingTotalCny = tradingTotal * 7.18;
-    final totalCny = walletTotalCny + tradingTotalCny;
-    final pnlCny = totalCny == 0 ? 0.0 : -totalCny * 0.0185;
+    final walletTotalUsdt = state.offline
+        ? null
+        : state.walletPortfolioUsdt(displayPortfolio);
+    final tradingTotalUsdt = state.offline ? null : state.productBalancesUsdt();
+    final totalUsdt = walletTotalUsdt != null && tradingTotalUsdt != null
+        ? walletTotalUsdt + tradingTotalUsdt
+        : null;
+    final totalValue = state.valuationAmount(totalUsdt);
+    final walletTotal = state.valuationAmount(walletTotalUsdt);
+    final tradingTotalValue = state.valuationAmount(tradingTotalUsdt);
     final symbols = _walletSymbols(state);
     final selectedSymbol = symbols.contains(walletSymbol)
         ? walletSymbol
@@ -1051,7 +1095,7 @@ class _WalletPageState extends State<WalletPage> {
         deposit.symbol == selectedSymbol &&
         deposit.chain == selectedChain;
     return Material(
-      color: Colors.black,
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: RefreshIndicator(
         onRefresh: state.refreshPrivateData,
         child: ListView(
@@ -1095,7 +1139,7 @@ class _WalletPageState extends State<WalletPage> {
               children: [
                 Expanded(
                   child: Text(
-                    money(totalCny, digits: 2),
+                    totalValue == null ? '—' : money(totalValue, digits: 2),
                     style: const TextStyle(
                       fontSize: 30,
                       height: 1,
@@ -1104,20 +1148,34 @@ class _WalletPageState extends State<WalletPage> {
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 5),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
                   child: Text(
-                    'CNY',
-                    style: TextStyle(
+                    state.valuationCurrency.code,
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: _ink,
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.only(left: 3, bottom: 8),
-                  child: Icon(Icons.arrow_drop_down, color: _muted),
+                Padding(
+                  padding: const EdgeInsets.only(left: 3, bottom: 8),
+                  child: PopupMenuButton<ValuationCurrency>(
+                    tooltip: '估值货币',
+                    initialValue: state.valuationCurrency,
+                    onSelected: (next) =>
+                        unawaited(state.selectValuationCurrency(next)),
+                    itemBuilder: (context) => ValuationCurrency.values
+                        .map(
+                          (currency) => PopupMenuItem(
+                            value: currency,
+                            child: Text(currency.code),
+                          ),
+                        )
+                        .toList(),
+                    icon: const Icon(Icons.arrow_drop_down, color: _muted),
+                  ),
                 ),
               ],
             ),
@@ -1126,11 +1184,11 @@ class _WalletPageState extends State<WalletPage> {
               children: [
                 Expanded(
                   child: Text(
-                    '今日收益 ${pnlCny >= 0 ? '+' : ''}${money(pnlCny, digits: 2)} (${totalCny == 0 ? '0.00' : '-1.85'}%)',
+                    '今日收益 —（等待真实账务收益数据）',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: pnlCny >= 0 ? _mint : _red,
+                    style: const TextStyle(
+                      color: _muted,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1257,12 +1315,18 @@ class _WalletPageState extends State<WalletPage> {
                   AssetPortfolioCard(
                     icon: Icons.savings_outlined,
                     title: '资金账户',
-                    amount: '¥${money(walletTotalCny, digits: 2)}',
+                    amount: formatValuation(
+                      walletTotal,
+                      state.valuationCurrency,
+                    ),
                   ),
                   AssetPortfolioCard(
                     icon: Icons.swap_vert,
                     title: '交易账户',
-                    amount: '¥${money(tradingTotalCny, digits: 2)}',
+                    amount: formatValuation(
+                      tradingTotalValue,
+                      state.valuationCurrency,
+                    ),
                   ),
                   const AssetPortfolioCard(
                     icon: Icons.link,
@@ -1294,7 +1358,13 @@ class _WalletPageState extends State<WalletPage> {
             const SizedBox(height: 8),
             if (displayPortfolio.assets.isNotEmpty)
               ...displayPortfolio.assets.map(
-                (walletAsset) => WalletTokenRow(asset: walletAsset),
+                (walletAsset) => WalletTokenRow(
+                  asset: walletAsset,
+                  priceUsdt: state
+                      .walletAssetPricesUsdt[walletAsset.symbol.toUpperCase()],
+                  currency: state.valuationCurrency,
+                  valuationRate: state.valuationRate,
+                ),
               ),
             if (!state.isLoggedIn)
               PrimaryAction(
@@ -1737,7 +1807,7 @@ class _RechargeCoinPageState extends State<RechargeCoinPage> {
       state,
     ).where((symbol) => query.isEmpty || symbol.contains(query)).toList();
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
@@ -1808,7 +1878,7 @@ class RechargeNetworkPage extends StatelessWidget {
     final state = AppScope.of(context);
     final chains = rechargeChains(state, symbol);
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
@@ -1941,7 +2011,7 @@ class _RechargeAddressPageState extends State<RechargeAddressPage> {
         address.chain == widget.chain;
     final addressText = matches ? address.address : '地址生成中...';
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
@@ -2488,6 +2558,53 @@ class ProfilePage extends StatelessWidget {
                 value: state.config.localWebSocketUserFallback
                     ? 'userId query'
                     : 'JWT token',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Panel(
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('主题'),
+                subtitle: const Text('切换交易终端的明暗外观'),
+                trailing: DropdownButton<ClientTheme>(
+                  value: state.clientTheme,
+                  underline: const SizedBox.shrink(),
+                  items: ClientTheme.values
+                      .map(
+                        (theme) => DropdownMenuItem(
+                          value: theme,
+                          child: Text(theme.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (next) {
+                    if (next != null) state.selectTheme(next);
+                  },
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('语言 / Language'),
+                subtitle: const Text('应用界面语言'),
+                trailing: DropdownButton<ClientLanguage>(
+                  value: state.language,
+                  underline: const SizedBox.shrink(),
+                  items: ClientLanguage.values
+                      .map(
+                        (language) => DropdownMenuItem(
+                          value: language,
+                          child: Text(language.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (next) {
+                    if (next != null) state.selectLanguage(next);
+                  },
+                ),
               ),
             ],
           ),
@@ -5270,7 +5387,7 @@ class MarketTickerRow extends StatelessWidget {
                   Text(
                     latestPrice == null
                         ? '--'
-                        : '¥${money(latestPrice * 7.18, digits: 2)}',
+                        : '${instrument.quoteAsset} ${money(latestPrice, digits: 2)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: _muted, fontSize: 11),
@@ -5831,45 +5948,30 @@ class _AssetSparklinePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-double walletPortfolioCny(WalletPortfolio portfolio) {
-  return portfolio.assets.fold<double>(
-    0,
-    (sum, asset) => sum + walletAssetCny(asset),
-  );
-}
-
-double walletAssetCny(WalletAssetSummary asset) {
-  return asset.totalBalance * walletAssetCnyPrice(asset.symbol);
-}
-
-double walletAssetCnyPrice(String symbol) {
-  return switch (symbol.toUpperCase()) {
-    'SPEX' => 7.18,
-    'BTC' => 417887.8,
-    'ETH' => 11814.59,
-    'SOL' => 540.8,
-    'USDT' || 'USDC' || 'USDG' => 7.18,
-    'XAUT' || 'XAU' => 28202.46,
-    _ => 7.18,
-  };
-}
-
-String walletGainLabel(WalletAssetSummary asset, double value) {
-  return switch (asset.symbol.toUpperCase()) {
-    'SPEX' => '+¥39,491.57 (+122.31%)',
-    'BTC' => '+¥1,968.86 (+31.75%)',
-    _ => '+¥${money(value * .315, digits: 2)} (+31.50%)',
-  };
+String formatValuation(double? value, ValuationCurrency currency) {
+  if (value == null || !value.isFinite) return '—';
+  return '${currency.symbol}${money(value, digits: 2)}';
 }
 
 class WalletTokenRow extends StatelessWidget {
-  const WalletTokenRow({required this.asset, super.key});
+  const WalletTokenRow({
+    required this.asset,
+    required this.priceUsdt,
+    required this.currency,
+    required this.valuationRate,
+    super.key,
+  });
 
   final WalletAssetSummary asset;
+  final double? priceUsdt;
+  final ValuationCurrency currency;
+  final double? valuationRate;
 
   @override
   Widget build(BuildContext context) {
-    final value = walletAssetCny(asset);
+    final value = priceUsdt == null || valuationRate == null
+        ? null
+        : asset.totalBalance * priceUsdt! * valuationRate!;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
@@ -5893,25 +5995,6 @@ class WalletTokenRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _mint.withValues(alpha: .14),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Text(
-                        '年化可达 5%',
-                        style: TextStyle(
-                          color: _mint,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -5926,7 +6009,7 @@ class WalletTokenRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '¥${money(value, digits: 2)}',
+                formatValuation(value, currency),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -5934,9 +6017,9 @@ class WalletTokenRow extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                walletGainLabel(asset, value),
+                value == null ? '暂无实时估值' : '现货账户余额',
                 style: const TextStyle(
-                  color: _mint,
+                  color: _muted,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),

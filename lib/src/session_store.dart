@@ -21,6 +21,39 @@ abstract interface class SessionStore {
   Future<void> enableBiometric();
 }
 
+abstract interface class ClientSettingsStore {
+  Future<Map<String, String>> read();
+
+  Future<void> write(Map<String, String> values);
+}
+
+class SecureClientSettingsStore implements ClientSettingsStore {
+  SecureClientSettingsStore({FlutterSecureStorage? storage})
+    : _storage = storage ?? const FlutterSecureStorage();
+
+  static const _key = 'surprising.client.settings.v1';
+
+  final FlutterSecureStorage _storage;
+
+  @override
+  Future<Map<String, String>> read() async {
+    final raw = await _storage.read(key: _key);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const {};
+      return decoded.map((key, value) => MapEntry('$key', '$value'));
+    } on FormatException {
+      return const {};
+    }
+  }
+
+  @override
+  Future<void> write(Map<String, String> values) async {
+    await _storage.write(key: _key, value: jsonEncode(values));
+  }
+}
+
 class SecureSessionStore implements SessionStore {
   SecureSessionStore({
     FlutterSecureStorage? storage,

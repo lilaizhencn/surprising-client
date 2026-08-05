@@ -316,6 +316,25 @@ class ApiClient {
     ).map((item) => Candle.fromJson(asMap(item))).toList();
   }
 
+  Future<double> exchangeRateConversion({
+    required String fromCurrency,
+    required String toCurrency,
+  }) async {
+    final json = await get(
+      '/api/v1/gateway/price-fx/convert',
+      query: {
+        'amount': '1',
+        'fromCurrency': fromCurrency,
+        'toCurrency': toCurrency,
+      },
+    );
+    final convertedAmount = asDouble(json['convertedAmount']);
+    if (!convertedAmount.isFinite || convertedAmount <= 0) {
+      throw const FormatException('估值汇率不可用');
+    }
+    return convertedAmount;
+  }
+
   Future<List<ProductBalance>> productBalances(
     int userId, {
     String? accountType,

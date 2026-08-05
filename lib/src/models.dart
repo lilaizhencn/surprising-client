@@ -53,6 +53,59 @@ enum ProductMode {
   }
 }
 
+enum ValuationCurrency {
+  usdt('USDT', ''),
+  usd('USD', '\$'),
+  cny('CNY', '¥');
+
+  const ValuationCurrency(this.code, this.symbol);
+
+  final String code;
+  final String symbol;
+
+  static ValuationCurrency fromCode(String value) {
+    final normalized = value.trim().toUpperCase();
+    return ValuationCurrency.values.firstWhere(
+      (currency) => currency.code == normalized,
+      orElse: () => ValuationCurrency.usdt,
+    );
+  }
+}
+
+enum ClientTheme {
+  dark('深色', 'dark'),
+  light('浅色', 'light');
+
+  const ClientTheme(this.label, this.code);
+
+  final String label;
+  final String code;
+
+  static ClientTheme fromCode(String value) {
+    return ClientTheme.values.firstWhere(
+      (theme) => theme.code == value.trim().toLowerCase(),
+      orElse: () => ClientTheme.dark,
+    );
+  }
+}
+
+enum ClientLanguage {
+  zhHans('简体中文', 'zh'),
+  en('English', 'en');
+
+  const ClientLanguage(this.label, this.code);
+
+  final String label;
+  final String code;
+
+  static ClientLanguage fromCode(String value) {
+    return ClientLanguage.values.firstWhere(
+      (language) => language.code == value.trim().toLowerCase(),
+      orElse: () => ClientLanguage.zhHans,
+    );
+  }
+}
+
 const productAccountTypes = [
   'SPOT',
   'USDT_PERPETUAL',

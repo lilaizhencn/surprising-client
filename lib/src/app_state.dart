@@ -1011,7 +1011,7 @@ class AppState extends ChangeNotifier {
           _recordRealtimeIssue('账户 WebSocket：$error');
           notifyListeners();
         },
-        onDone: _schedulePrivateReconnect,
+        onDone: () => _schedulePrivateReconnect(connectGeneration),
       );
       if (connectGeneration != _privateRealtimeGeneration ||
           current.accessToken != session?.accessToken) {
@@ -1020,9 +1020,13 @@ class AppState extends ChangeNotifier {
       _privateReconnectAttempts = 0;
       _subscribePrivateSelected();
     } catch (error) {
+      if (connectGeneration != _privateRealtimeGeneration ||
+          current.accessToken != session?.accessToken) {
+        return;
+      }
       _recordRealtimeIssue('账户实时连接失败：$error');
       notifyListeners();
-      _schedulePrivateReconnect();
+      _schedulePrivateReconnect(connectGeneration);
     }
   }
 
@@ -1044,15 +1048,23 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  void _schedulePrivateReconnect() {
+  void _schedulePrivateReconnect([int? expectedGeneration]) {
+    if (expectedGeneration != null &&
+        expectedGeneration != _privateRealtimeGeneration) {
+      return;
+    }
     if (offline || !isLoggedIn || (_privateReconnectTimer?.isActive ?? false)) {
       return;
     }
+    final reconnectGeneration = _privateRealtimeGeneration;
     _privateReconnectAttempts++;
     _privateReconnectTimer = Timer(
       _reconnectDelay(_privateReconnectAttempts),
       () async {
         _privateReconnectTimer = null;
+        if (reconnectGeneration != _privateRealtimeGeneration || !isLoggedIn) {
+          return;
+        }
         await _connectPrivateRealtime();
         await refreshPrivateData();
       },

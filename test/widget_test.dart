@@ -302,20 +302,82 @@ void main() {
     );
   });
 
+  test('ignores a stale private realtime failure', () async {
+    final privateRealtime = _FailingFirstRealtimeClient();
+    final state =
+        AppState(
+            apiClient: _PrivateRealtimeApiClient(),
+            privateRealtimeClient: privateRealtime,
+            sessionStore: _InMemorySessionStore(),
+          )
+          ..session = const AuthSession(
+            user: AuthUser(
+              userId: 1001,
+              username: 'demo_user',
+              email: 'demo@example.com',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'old-access',
+            refreshToken: 'old-refresh',
+          );
+
+    final firstRefresh = state.api.onSessionRefreshed!(
+      const AuthSession(
+        user: AuthUser(
+          userId: 1001,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'first-access',
+        refreshToken: 'first-refresh',
+      ),
+    );
+    await privateRealtime.firstConnectStarted.future;
+
+    final secondRefresh = state.api.onSessionRefreshed!(
+      const AuthSession(
+        user: AuthUser(
+          userId: 1001,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'second-access',
+        refreshToken: 'second-refresh',
+      ),
+    );
+    await privateRealtime.secondConnectStarted.future;
+    privateRealtime.releaseFirstConnect.complete();
+
+    await Future.wait([firstRefresh, secondRefresh]);
+    expect(
+      state.realtimeLog
+          .where((message) => message.startsWith('账户实时连接失败'))
+          .isEmpty,
+      isTrue,
+    );
+    expect(privateRealtime.connectCount, 2);
+    state.dispose();
+  });
+
   test('ignores a stale realtime connection completion', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final firstUpgrade = Completer<void>();
+    final firstRequest = Completer<void>();
+    final secondRequest = Completer<void>();
+    final releaseFirstUpgrade = Completer<void>();
     final secondSubscription = Completer<void>();
     var connectionCount = 0;
     server.listen((request) async {
       final connectionNumber = ++connectionCount;
       if (connectionNumber == 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 80));
+        firstRequest.complete();
+        await releaseFirstUpgrade.future;
+      } else {
+        secondRequest.complete();
       }
       final socket = await WebSocketTransformer.upgrade(request);
-      if (connectionNumber == 1) {
-        firstUpgrade.complete();
-      } else {
+      if (connectionNumber != 1) {
         socket.listen((message) {
           if (message is String && message.contains('executionReports')) {
             secondSubscription.complete();
@@ -333,13 +395,15 @@ void main() {
       onEvent: (_) {},
       onError: (_) {},
     );
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await firstRequest.future;
     final connectTwo = client.connect(
       userId: 1001,
       accessToken: 'new-access',
       onEvent: (_) {},
       onError: (_) {},
     );
+    await secondRequest.future;
+    releaseFirstUpgrade.complete();
 
     await Future.wait([
       connectOne,
@@ -348,7 +412,6 @@ void main() {
     client.subscribe('executionReports', productLine: 'LINEAR_PERPETUAL');
     await secondSubscription.future.timeout(const Duration(seconds: 2));
     expect(connectionCount, 2);
-    expect(firstUpgrade.isCompleted, isTrue);
 
     await client.close();
     await server.close(force: true);
@@ -1152,6 +1215,29 @@ class _RecordingRealtimeClient extends RealtimeClient {
   Future<void> close() async {
     closeCount++;
     subscriptions.clear();
+  }
+}
+
+class _FailingFirstRealtimeClient extends _RecordingRealtimeClient {
+  final firstConnectStarted = Completer<void>();
+  final secondConnectStarted = Completer<void>();
+  final releaseFirstConnect = Completer<void>();
+
+  @override
+  Future<void> connect({
+    int? userId,
+    String? accessToken,
+    required void Function(Map<String, dynamic>) onEvent,
+    required void Function(Object error) onError,
+    void Function()? onDone,
+  }) async {
+    connectCount++;
+    if (connectCount == 1) {
+      firstConnectStarted.complete();
+      await releaseFirstConnect.future;
+      throw StateError('stale connection');
+    }
+    secondConnectStarted.complete();
   }
 }
 

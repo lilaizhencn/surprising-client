@@ -2531,6 +2531,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   final emailCode = TextEditingController();
   final apiTotp = TextEditingController();
   final apiLabel = TextEditingController();
+  bool apiWithdrawEnabled = false;
   final kycCountry = TextEditingController();
   final kycProviderReference = TextEditingController();
   List<Map<String, dynamic>> kycDocumentRecords = const [];
@@ -3009,6 +3010,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
             ),
             const SectionTitle(title: 'API Key'),
             AppTextField(controller: apiLabel, label: '名称'),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('允许提币'),
+              subtitle: const Text('仅在确有自动化提币需求时开启，并妥善保管 Secret'),
+              value: apiWithdrawEnabled,
+              onChanged: busy
+                  ? null
+                  : (enabled) => setState(() => apiWithdrawEnabled = enabled),
+            ),
             AppTextField(controller: emailCode, label: '邮箱验证码'),
             AppTextField(controller: apiTotp, label: '2FA 验证码'),
             Row(
@@ -3034,7 +3044,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
                         : () => _run(() async {
                             final created = await state.api.createApiKey(
                               label: apiLabel.text.trim(),
-                              permissions: const ['TRADE'],
+                              permissions: [
+                                'TRADE',
+                                if (apiWithdrawEnabled) 'WITHDRAW',
+                              ],
                               emailCode: emailCode.text.trim(),
                               totpCode: apiTotp.text.trim(),
                             );
@@ -3044,6 +3057,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                                 apiLabel.clear();
                                 emailCode.clear();
                                 apiTotp.clear();
+                                apiWithdrawEnabled = false;
                               });
                             }
                           }, 'API Key 已创建，请保存 Secret'),

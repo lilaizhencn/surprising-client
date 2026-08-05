@@ -846,16 +846,47 @@ class ApiClient {
     required String targetAccountType,
     required String asset,
     required int amountUnits,
+    required String idempotencyKey,
   }) {
-    return post('/api/v1/gateway/account/transfers', {
+    return _transferWithStableKey(
+      userId: userId,
+      sourceAccountType: sourceAccountType,
+      targetAccountType: targetAccountType,
+      asset: asset,
+      amountUnits: amountUnits,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  Future<Map<String, dynamic>> _transferWithStableKey({
+    required int userId,
+    required String sourceAccountType,
+    required String targetAccountType,
+    required String asset,
+    required int amountUnits,
+    required String idempotencyKey,
+  }) async {
+    final body = {
       'userId': userId,
       'sourceAccountType': sourceAccountType,
       'targetAccountType': targetAccountType,
       'asset': asset,
       'amountUnits': amountUnits,
-      'referenceId': 'app-transfer-${DateTime.now().microsecondsSinceEpoch}',
+      'referenceId': idempotencyKey,
       'reason': 'mobile client transfer',
-    }, userId: userId);
+    };
+    try {
+      return await post(
+        '/api/v1/gateway/account/transfers',
+        body,
+        userId: userId,
+        headers: {'Idempotency-Key': idempotencyKey},
+      );
+    } on ApiException catch (error) {
+      final payload = asMap(_decodeJson(error.message));
+      if (asString(payload['status']).trim().isNotEmpty) return payload;
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> walletAssets(int userId) {
@@ -1231,6 +1262,14 @@ class ApiClient {
     if (data is List) return {'items': data};
     if (data == null) return <String, dynamic>{};
     return asMap(data);
+  }
+}
+
+Object? _decodeJson(String value) {
+  try {
+    return jsonDecode(value);
+  } on FormatException {
+    return null;
   }
 }
 

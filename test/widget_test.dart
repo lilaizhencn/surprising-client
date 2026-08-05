@@ -10,6 +10,39 @@ import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
 
 void main() {
+  test('reuses a transfer idempotency key after an uncertain result', () async {
+    final api = _TransferApiClient(const {'status': 'PENDING'});
+    final state = AppState(offline: true, apiClient: api)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 99,
+          username: 'transfer-user',
+          email: 'transfer@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      );
+
+    await state.transfer(
+      sourceAccountType: 'SPOT',
+      targetAccountType: 'USDT_PERPETUAL',
+      asset: 'USDT',
+      amount: 1,
+    );
+    await state.transfer(
+      sourceAccountType: 'SPOT',
+      targetAccountType: 'USDT_PERPETUAL',
+      asset: 'USDT',
+      amount: 2,
+    );
+
+    expect(api.idempotencyKeys, hasLength(2));
+    expect(api.idempotencyKeys[0], api.idempotencyKeys[1]);
+    expect(state.lastNotice, isNull);
+    expect(state.lastError, contains('处理中'));
+  });
+
   testWidgets('renders the mobile client shell without network', (
     tester,
   ) async {
@@ -1028,6 +1061,26 @@ void main() {
 
     expect(state.accountRisk, isNull);
   });
+}
+
+class _TransferApiClient extends ApiClient {
+  _TransferApiClient(this.response) : super(const AppConfig());
+
+  final Map<String, dynamic> response;
+  final List<String> idempotencyKeys = [];
+
+  @override
+  Future<Map<String, dynamic>> transfer({
+    required int userId,
+    required String sourceAccountType,
+    required String targetAccountType,
+    required String asset,
+    required int amountUnits,
+    required String idempotencyKey,
+  }) async {
+    idempotencyKeys.add(idempotencyKey);
+    return response;
+  }
 }
 
 class _SpotRefreshApiClient extends ApiClient {

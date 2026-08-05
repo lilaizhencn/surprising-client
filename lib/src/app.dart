@@ -1527,17 +1527,22 @@ class _WalletPageState extends State<WalletPage> {
                           ),
                           const SizedBox(height: 10),
                           PrimaryAction(
-                            label: '确认划转',
+                            label: state.transferSubmitting ? '提交中…' : '确认划转',
                             icon: Icons.swap_horiz,
-                            onPressed: () => unawaited(
-                              state.transfer(
-                                sourceAccountType: source,
-                                targetAccountType: target,
-                                asset: asset,
-                                amount:
-                                    double.tryParse(amountController.text) ?? 0,
-                              ),
-                            ),
+                            onPressed: state.transferSubmitting
+                                ? null
+                                : () => unawaited(
+                                    state.transfer(
+                                      sourceAccountType: source,
+                                      targetAccountType: target,
+                                      asset: asset,
+                                      amount:
+                                          double.tryParse(
+                                            amountController.text,
+                                          ) ??
+                                          0,
+                                    ),
+                                  ),
                           ),
                         ],
                       ),

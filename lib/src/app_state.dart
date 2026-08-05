@@ -62,6 +62,7 @@ class AppState extends ChangeNotifier {
   final Map<String, double> latestPrices = {};
   bool loadingPublic = false;
   bool loadingPrivate = false;
+  bool transferSubmitting = false;
   String? lastError;
   String? lastNotice;
   final List<String> realtimeLog = [];
@@ -73,6 +74,7 @@ class AppState extends ChangeNotifier {
   int _privateReconnectAttempts = 0;
   int _openOrdersRequestVersion = 0;
   final Map<int, int> _triggerOrderEventVersions = {};
+  String? _transferIdempotencyKey;
 
   bool get isLoggedIn => session != null;
 
@@ -888,18 +890,48 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (transferSubmitting) return;
+    final idempotencyKey = _transferIdempotencyKey ??=
+        'app-transfer-$id-${DateTime.now().microsecondsSinceEpoch}';
+    transferSubmitting = true;
+    lastError = null;
+    lastNotice = null;
+    notifyListeners();
     try {
-      await api.transfer(
+      final result = await api.transfer(
         userId: id,
         sourceAccountType: sourceAccountType,
         targetAccountType: targetAccountType,
         asset: asset,
         amountUnits: decimalToUnits(amount),
+        idempotencyKey: idempotencyKey,
       );
-      lastNotice = '划转已完成';
-      await refreshPrivateData();
+      final status = asString(
+        result['status'],
+        fallback: 'UNKNOWN',
+      ).toUpperCase();
+      final transferId = asString(result['transferId']).trim();
+      if (status == 'COMPLETED') {
+        _transferIdempotencyKey = null;
+        lastNotice = '划转已完成${transferId.isEmpty ? '' : '，流水号 $transferId'}';
+        await refreshPrivateData();
+      } else {
+        lastError = status == 'FAILED'
+            ? '划转未完成${transferId.isEmpty ? '' : '，流水号 $transferId'}，请查看资金记录'
+            : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
+        if (status == 'FAILED') _transferIdempotencyKey = null;
+      }
     } catch (error) {
-      lastError = '划转失败：$error';
+      final uncertain =
+          error is ApiException &&
+          (error.statusCode == 408 ||
+              error.statusCode == 409 ||
+              error.statusCode == 429 ||
+              error.statusCode >= 500);
+      lastError = uncertain ? '划转结果未知，请勿重复提交，请查看资金记录' : '划转失败：$error';
+      if (!uncertain) _transferIdempotencyKey = null;
+    } finally {
+      transferSubmitting = false;
     }
     notifyListeners();
   }

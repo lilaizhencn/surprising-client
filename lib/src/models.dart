@@ -164,15 +164,15 @@ class AppConfig {
   const AppConfig({
     this.gatewayBaseUrl = const String.fromEnvironment(
       'SURPRISING_GATEWAY_URL',
-      defaultValue: 'http://127.0.0.1:9094',
+      defaultValue: '',
     ),
     this.websocketUrl = const String.fromEnvironment(
       'SURPRISING_WEBSOCKET_URL',
-      defaultValue: 'ws://127.0.0.1:9093/ws/v1',
+      defaultValue: '',
     ),
     this.localWebSocketUserFallback = const bool.fromEnvironment(
       'SURPRISING_WS_QUERY_USER_ID',
-      defaultValue: true,
+      defaultValue: false,
     ),
   });
 

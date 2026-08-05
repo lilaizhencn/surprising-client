@@ -446,6 +446,7 @@ void main() {
     final privateRealtime = _RecordingRealtimeClient();
     final state =
         AppState(
+            config: const AppConfig(websocketUrl: 'ws://test'),
             apiClient: _PrivateRealtimeApiClient(),
             privateRealtimeClient: privateRealtime,
             sessionStore: _InMemorySessionStore(),
@@ -493,6 +494,7 @@ void main() {
       final privateRealtime = _RecordingRealtimeClient();
       final state =
           AppState(
+              config: const AppConfig(websocketUrl: 'ws://test'),
               apiClient: _PrivateRealtimeApiClient(),
               privateRealtimeClient: privateRealtime,
               sessionStore: _InMemorySessionStore(),
@@ -555,6 +557,7 @@ void main() {
     final privateRealtime = _FailingFirstRealtimeClient();
     final state =
         AppState(
+            config: const AppConfig(websocketUrl: 'ws://test'),
             apiClient: _PrivateRealtimeApiClient(),
             privateRealtimeClient: privateRealtime,
             sessionStore: _InMemorySessionStore(),
@@ -679,6 +682,7 @@ void main() {
       final publicRealtime = _RecordingRealtimeClient();
       final privateRealtime = _RecordingRealtimeClient();
       final state = AppState(
+        config: const AppConfig(websocketUrl: 'ws://test'),
         apiClient: _RealtimeSwitchApiClient(),
         publicRealtimeClient: publicRealtime,
         privateRealtimeClient: privateRealtime,
@@ -712,6 +716,7 @@ void main() {
     () async {
       final privateRealtime = _RecordingRealtimeClient();
       final state = AppState(
+        config: const AppConfig(websocketUrl: 'ws://test'),
         apiClient: _PrivateRealtimeApiClient(),
         privateRealtimeClient: privateRealtime,
         sessionStore: _InMemorySessionStore(),

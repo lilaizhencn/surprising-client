@@ -1050,6 +1050,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _connectPublicRealtime() async {
+    if (config.websocketUrl.trim().isEmpty) return;
     try {
       await publicRealtime.connect(
         onEvent: handleRealtimeMessage,
@@ -1069,6 +1070,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _connectPrivateRealtime() async {
+    if (config.websocketUrl.trim().isEmpty) return;
     final connectGeneration = ++_privateRealtimeGeneration;
     final current = session;
     if (current == null) return;

@@ -138,6 +138,22 @@ class ApiClient {
     });
   }
 
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    String? emailCode,
+    String? totpCode,
+  }) async {
+    await post('/api/v1/security/password', {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+      if (emailCode != null && emailCode.trim().isNotEmpty)
+        'emailCode': emailCode.trim(),
+      if (totpCode != null && totpCode.trim().isNotEmpty)
+        'totpCode': totpCode.trim(),
+    });
+  }
+
   Future<List<Map<String, dynamic>>> apiKeys() async {
     final response = await _send('GET', '/api/v1/security/api-keys');
     return asList(response).map(asMap).toList();

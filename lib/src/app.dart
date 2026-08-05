@@ -2534,6 +2534,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
   bool apiWithdrawEnabled = false;
   final kycCountry = TextEditingController();
   final kycProviderReference = TextEditingController();
+  final currentPassword = TextEditingController();
+  final newPassword = TextEditingController();
+  final changePasswordEmailCode = TextEditingController();
+  final changePasswordTotpCode = TextEditingController();
   List<Map<String, dynamic>> kycDocumentRecords = const [];
   PlatformFile? kycFile;
   String kycApplicantType = 'INDIVIDUAL';
@@ -2560,6 +2564,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
     apiLabel.dispose();
     kycCountry.dispose();
     kycProviderReference.dispose();
+    currentPassword.dispose();
+    newPassword.dispose();
+    changePasswordEmailCode.dispose();
+    changePasswordTotpCode.dispose();
     super.dispose();
   }
 
@@ -2655,6 +2663,25 @@ class _SecuritySheetState extends State<SecuritySheet> {
     setState(() {
       kyc = next;
       _applyKyc(next);
+    });
+  }
+
+  Future<void> _changePassword(AppState state) async {
+    if (currentPassword.text.isEmpty || newPassword.text.length < 8) {
+      throw const FormatException('请输入当前密码和至少 8 位新密码');
+    }
+    await state.api.changePassword(
+      currentPassword: currentPassword.text,
+      newPassword: newPassword.text,
+      emailCode: changePasswordEmailCode.text,
+      totpCode: changePasswordTotpCode.text,
+    );
+    if (!mounted) return;
+    setState(() {
+      currentPassword.clear();
+      newPassword.clear();
+      changePasswordEmailCode.clear();
+      changePasswordTotpCode.clear();
     });
   }
 
@@ -2830,6 +2857,70 @@ class _SecuritySheetState extends State<SecuritySheet> {
                       }, '安全场景已更新'),
               );
             }),
+            const SectionTitle(title: '修改密码'),
+            const Text(
+              '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
+              style: TextStyle(color: _muted, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            AppTextField(
+              controller: currentPassword,
+              label: '当前密码',
+              obscure: true,
+            ),
+            AppTextField(
+              controller: newPassword,
+              label: '新密码（至少 8 位）',
+              obscure: true,
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: AppTextField(
+                    controller: changePasswordEmailCode,
+                    label: '邮箱验证码',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: AppTextField(
+                    controller: changePasswordTotpCode,
+                    label: '2FA 验证码',
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: busy
+                        ? null
+                        : () => _run(
+                            () => state.api.issueSecurityChallenge(
+                              'CHANGE_PASSWORD',
+                            ),
+                            '验证码已发送到邮箱',
+                          ),
+                    icon: const Icon(Icons.email_outlined),
+                    label: const Text('发送验证码'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: PrimaryAction(
+                    label: '确认修改',
+                    icon: Icons.password,
+                    onPressed: busy
+                        ? null
+                        : () => _run(
+                            () => _changePassword(state),
+                            '密码已修改，请重新登录其他设备',
+                          ),
+                  ),
+                ),
+              ],
+            ),
             SectionTitle(
               title: '身份认证 KYC · ${asString(kyc['status'], fallback: '未提交')}',
             ),

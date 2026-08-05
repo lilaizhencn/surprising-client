@@ -300,7 +300,72 @@ void main() {
       ),
       isTrue,
     );
+    state.dispose();
   });
+
+  test(
+    'ignores a stale private realtime event after access token rotation',
+    () async {
+      final privateRealtime = _RecordingRealtimeClient();
+      final state =
+          AppState(
+              apiClient: _PrivateRealtimeApiClient(),
+              privateRealtimeClient: privateRealtime,
+              sessionStore: _InMemorySessionStore(),
+            )
+            ..session = const AuthSession(
+              user: AuthUser(
+                userId: 1001,
+                username: 'demo_user',
+                email: 'demo@example.com',
+                status: 'ACTIVE',
+              ),
+              accessToken: 'old-access',
+              refreshToken: 'old-refresh',
+            );
+
+      await state.api.onSessionRefreshed!(
+        const AuthSession(
+          user: AuthUser(
+            userId: 1001,
+            username: 'demo_user',
+            email: 'demo@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'first-access',
+          refreshToken: 'first-refresh',
+        ),
+      );
+      final staleEvent = privateRealtime.events.first;
+
+      await state.api.onSessionRefreshed!(
+        const AuthSession(
+          user: AuthUser(
+            userId: 1001,
+            username: 'demo_user',
+            email: 'demo@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'second-access',
+          refreshToken: 'second-refresh',
+        ),
+      );
+      staleEvent(<String, dynamic>{
+        'op': 'event',
+        'channel': 'orders',
+        'productLine': 'LINEAR_PERPETUAL',
+        'symbol': 'BTC-USDT',
+        'data': <String, dynamic>{
+          'orderId': 999,
+          'symbol': 'BTC-USDT',
+          'status': 'NEW',
+        },
+      });
+
+      expect(state.realtimeLog, isEmpty);
+      state.dispose();
+    },
+  );
 
   test('ignores a stale private realtime failure', () async {
     final privateRealtime = _FailingFirstRealtimeClient();
@@ -1189,6 +1254,7 @@ class _RecordingRealtimeClient extends RealtimeClient {
   int connectCount = 0;
   int closeCount = 0;
   final List<_RecordedSubscription> subscriptions = [];
+  final List<void Function(Map<String, dynamic>)> events = [];
 
   @override
   Future<void> connect({
@@ -1199,6 +1265,7 @@ class _RecordingRealtimeClient extends RealtimeClient {
     void Function()? onDone,
   }) async {
     connectCount++;
+    events.add(onEvent);
   }
 
   @override

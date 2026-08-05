@@ -1006,7 +1006,13 @@ class AppState extends ChangeNotifier {
       await privateRealtime.connect(
         userId: current.user.userId,
         accessToken: current.accessToken,
-        onEvent: handleRealtimeMessage,
+        onEvent: (message) {
+          if (connectGeneration != _privateRealtimeGeneration ||
+              current.accessToken != session?.accessToken) {
+            return;
+          }
+          handleRealtimeMessage(message);
+        },
         onError: (error) {
           if (connectGeneration != _privateRealtimeGeneration ||
               current.accessToken != session?.accessToken) {

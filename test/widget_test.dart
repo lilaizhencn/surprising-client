@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:surprising_client/src/app.dart';
@@ -297,6 +300,58 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('ignores a stale realtime connection completion', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final firstUpgrade = Completer<void>();
+    final secondSubscription = Completer<void>();
+    var connectionCount = 0;
+    server.listen((request) async {
+      final connectionNumber = ++connectionCount;
+      if (connectionNumber == 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+      }
+      final socket = await WebSocketTransformer.upgrade(request);
+      if (connectionNumber == 1) {
+        firstUpgrade.complete();
+      } else {
+        socket.listen((message) {
+          if (message is String && message.contains('executionReports')) {
+            secondSubscription.complete();
+          }
+        });
+      }
+    });
+
+    final client = RealtimeClient(
+      AppConfig(websocketUrl: 'ws://127.0.0.1:${server.port}'),
+    );
+    final connectOne = client.connect(
+      userId: 1001,
+      accessToken: 'old-access',
+      onEvent: (_) {},
+      onError: (_) {},
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final connectTwo = client.connect(
+      userId: 1001,
+      accessToken: 'new-access',
+      onEvent: (_) {},
+      onError: (_) {},
+    );
+
+    await Future.wait([
+      connectOne,
+      connectTwo,
+    ]).timeout(const Duration(seconds: 2));
+    client.subscribe('executionReports', productLine: 'LINEAR_PERPETUAL');
+    await secondSubscription.future.timeout(const Duration(seconds: 2));
+    expect(connectionCount, 2);
+    expect(firstUpgrade.isCompleted, isTrue);
+
+    await client.close();
+    await server.close(force: true);
   });
 
   test(

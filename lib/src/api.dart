@@ -1251,6 +1251,7 @@ class RealtimeClient {
   WebSocket? _socket;
   StreamSubscription<dynamic>? _subscription;
   bool _closing = false;
+  int _connectionGeneration = 0;
 
   Future<void> connect({
     int? userId,
@@ -1259,7 +1260,9 @@ class RealtimeClient {
     required void Function(Object error) onError,
     void Function()? onDone,
   }) async {
-    await close();
+    final generation = ++_connectionGeneration;
+    await _closeCurrent();
+    if (generation != _connectionGeneration) return;
     _closing = false;
     final base = Uri.parse(config.websocketUrl);
     final query = <String, String>{};
@@ -1274,6 +1277,10 @@ class RealtimeClient {
     final socket = await WebSocket.connect(
       uri.toString(),
     ).timeout(const Duration(seconds: 5));
+    if (generation != _connectionGeneration) {
+      await socket.close();
+      return;
+    }
     _socket = socket;
     _subscription = socket.listen(
       (message) {
@@ -1285,6 +1292,7 @@ class RealtimeClient {
       },
       onError: onError,
       onDone: () {
+        if (generation != _connectionGeneration) return;
         _socket = null;
         _subscription = null;
         if (!_closing) onDone?.call();
@@ -1337,6 +1345,11 @@ class RealtimeClient {
   }
 
   Future<void> close() async {
+    _connectionGeneration++;
+    await _closeCurrent();
+  }
+
+  Future<void> _closeCurrent() async {
     _closing = true;
     await _subscription?.cancel();
     _subscription = null;

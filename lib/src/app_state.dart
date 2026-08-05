@@ -63,6 +63,8 @@ class AppState extends ChangeNotifier {
   bool loadingPublic = false;
   bool loadingPrivate = false;
   bool transferSubmitting = false;
+  bool transferOutcomeLocked = false;
+  bool transferOutcomeTerminalFailure = false;
   String? lastError;
   String? lastNotice;
   final List<String> realtimeLog = [];
@@ -890,7 +892,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (transferSubmitting) return;
+    if (transferSubmitting || transferOutcomeLocked) return;
     final idempotencyKey = _transferIdempotencyKey ??=
         'app-transfer-$id-${DateTime.now().microsecondsSinceEpoch}';
     transferSubmitting = true;
@@ -916,10 +918,11 @@ class AppState extends ChangeNotifier {
         lastNotice = '划转已完成${transferId.isEmpty ? '' : '，流水号 $transferId'}';
         await refreshPrivateData();
       } else {
+        transferOutcomeLocked = true;
+        transferOutcomeTerminalFailure = status == 'FAILED';
         lastError = status == 'FAILED'
             ? '划转未完成${transferId.isEmpty ? '' : '，流水号 $transferId'}，请查看资金记录'
             : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
-        if (status == 'FAILED') _transferIdempotencyKey = null;
       }
     } catch (error) {
       final uncertain =
@@ -929,10 +932,24 @@ class AppState extends ChangeNotifier {
               error.statusCode == 429 ||
               error.statusCode >= 500);
       lastError = uncertain ? '划转结果未知，请勿重复提交，请查看资金记录' : '划转失败：$error';
-      if (!uncertain) _transferIdempotencyKey = null;
+      if (uncertain) {
+        transferOutcomeLocked = true;
+        transferOutcomeTerminalFailure = false;
+      } else {
+        _transferIdempotencyKey = null;
+      }
     } finally {
       transferSubmitting = false;
     }
+    notifyListeners();
+  }
+
+  void resetTransferIntent() {
+    if (!transferOutcomeTerminalFailure || transferSubmitting) return;
+    _transferIdempotencyKey = null;
+    transferOutcomeLocked = false;
+    transferOutcomeTerminalFailure = false;
+    lastError = null;
     notifyListeners();
   }
 

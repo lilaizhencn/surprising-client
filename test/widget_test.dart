@@ -37,11 +37,55 @@ void main() {
       amount: 2,
     );
 
-    expect(api.idempotencyKeys, hasLength(2));
-    expect(api.idempotencyKeys[0], api.idempotencyKeys[1]);
+    expect(api.idempotencyKeys, hasLength(1));
+    expect(state.transferOutcomeLocked, isTrue);
+    expect(state.transferOutcomeTerminalFailure, isFalse);
     expect(state.lastNotice, isNull);
     expect(state.lastError, contains('处理中'));
   });
+
+  test(
+    'requires an explicit reset before retrying a failed transfer',
+    () async {
+      final api = _TransferApiClient(const {'status': 'FAILED'});
+      final state = AppState(offline: true, apiClient: api)
+        ..session = const AuthSession(
+          user: AuthUser(
+            userId: 100,
+            username: 'failed-transfer-user',
+            email: 'failed-transfer@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'access',
+          refreshToken: 'refresh',
+        );
+
+      await state.transfer(
+        sourceAccountType: 'SPOT',
+        targetAccountType: 'USDT_PERPETUAL',
+        asset: 'USDT',
+        amount: 1,
+      );
+      await state.transfer(
+        sourceAccountType: 'SPOT',
+        targetAccountType: 'USDT_PERPETUAL',
+        asset: 'USDT',
+        amount: 2,
+      );
+      expect(api.idempotencyKeys, hasLength(1));
+      expect(state.transferOutcomeTerminalFailure, isTrue);
+
+      state.resetTransferIntent();
+      await state.transfer(
+        sourceAccountType: 'SPOT',
+        targetAccountType: 'USDT_PERPETUAL',
+        asset: 'USDT',
+        amount: 2,
+      );
+      expect(api.idempotencyKeys, hasLength(2));
+      expect(api.idempotencyKeys[0], isNot(api.idempotencyKeys[1]));
+    },
+  );
 
   testWidgets('renders the mobile client shell without network', (
     tester,

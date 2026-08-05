@@ -1485,6 +1485,7 @@ class _WalletPageState extends State<WalletPage> {
                                   value: source,
                                   values: productAccountTypes,
                                   labelBuilder: productAccountLabel,
+                                  enabled: !state.transferOutcomeLocked,
                                   onChanged: (value) =>
                                       setState(() => source = value),
                                 ),
@@ -1498,6 +1499,7 @@ class _WalletPageState extends State<WalletPage> {
                                   value: target,
                                   values: productAccountTypes,
                                   labelBuilder: productAccountLabel,
+                                  enabled: !state.transferOutcomeLocked,
                                   onChanged: (value) =>
                                       setState(() => target = value),
                                 ),
@@ -1511,6 +1513,7 @@ class _WalletPageState extends State<WalletPage> {
                                 child: AppTextField(
                                   controller: amountController,
                                   label: '数量',
+                                  enabled: !state.transferOutcomeLocked,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -1519,6 +1522,7 @@ class _WalletPageState extends State<WalletPage> {
                                 child: AppTextField(
                                   initialValue: asset,
                                   label: '资产',
+                                  enabled: !state.transferOutcomeLocked,
                                   onChanged: (value) =>
                                       asset = value.toUpperCase(),
                                 ),
@@ -1527,9 +1531,15 @@ class _WalletPageState extends State<WalletPage> {
                           ),
                           const SizedBox(height: 10),
                           PrimaryAction(
-                            label: state.transferSubmitting ? '提交中…' : '确认划转',
+                            label: state.transferSubmitting
+                                ? '提交中…'
+                                : state.transferOutcomeLocked
+                                ? '等待结果确认'
+                                : '确认划转',
                             icon: Icons.swap_horiz,
-                            onPressed: state.transferSubmitting
+                            onPressed:
+                                state.transferSubmitting ||
+                                    state.transferOutcomeLocked
                                 ? null
                                 : () => unawaited(
                                     state.transfer(
@@ -1544,6 +1554,27 @@ class _WalletPageState extends State<WalletPage> {
                                     ),
                                   ),
                           ),
+                          if (state.transferOutcomeLocked)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                state.transferOutcomeTerminalFailure
+                                    ? '本次划转已失败，可以重新填写后再试。'
+                                    : '划转结果待确认，请勿重复提交。',
+                                style: const TextStyle(
+                                  color: _muted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          if (state.transferOutcomeTerminalFailure)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: state.resetTransferIntent,
+                                child: const Text('重新填写'),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -6215,6 +6246,7 @@ class SmallDropdown extends StatelessWidget {
     required this.values,
     required this.onChanged,
     this.labelBuilder,
+    this.enabled = true,
     super.key,
   });
 
@@ -6222,6 +6254,7 @@ class SmallDropdown extends StatelessWidget {
   final List<String> values;
   final ValueChanged<String> onChanged;
   final String Function(String value)? labelBuilder;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -6255,9 +6288,11 @@ class SmallDropdown extends StatelessWidget {
                 ),
               )
               .toList(),
-          onChanged: (next) {
-            if (next != null) onChanged(next);
-          },
+          onChanged: enabled
+              ? (next) {
+                  if (next != null) onChanged(next);
+                }
+              : null,
         ),
       ),
     );

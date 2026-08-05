@@ -87,6 +87,107 @@ void main() {
     },
   );
 
+  test('locks a transfer after a transport error', () async {
+    final api = _TransferApiClient(const {}, failure: StateError('offline'));
+    final state = AppState(offline: true, apiClient: api)
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 102,
+          username: 'transport-transfer-user',
+          email: 'transport-transfer@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      );
+
+    await state.transfer(
+      sourceAccountType: 'SPOT',
+      targetAccountType: 'USDT_PERPETUAL',
+      asset: 'USDT',
+      amount: 1,
+    );
+    await state.transfer(
+      sourceAccountType: 'SPOT',
+      targetAccountType: 'USDT_PERPETUAL',
+      asset: 'USDT',
+      amount: 2,
+    );
+
+    expect(api.idempotencyKeys, hasLength(1));
+    expect(state.transferOutcomeLocked, isTrue);
+    expect(state.lastError, contains('结果未知'));
+  });
+
+  testWidgets('locks transfer fields and action after a pending result', (
+    tester,
+  ) async {
+    final state =
+        AppState(
+            offline: true,
+            apiClient: _TransferApiClient(const {'status': 'PENDING'}),
+          )
+          ..session = const AuthSession(
+            user: AuthUser(
+              userId: 101,
+              username: 'pending-transfer-user',
+              email: 'pending-transfer@example.com',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'access',
+            refreshToken: 'refresh',
+          );
+
+    await tester.pumpWidget(
+      SurprisingClientApp(state: state, bootstrap: false),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ExchangeBottomNav),
+        matching: find.text('资产'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(WalletPage), findsOneWidget);
+    for (var i = 0; i < 8 && find.text('钱包工具').evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -420));
+      await tester.pump();
+    }
+    await tester.tap(find.text('钱包工具'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 8 && find.text('账户划转').evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -420));
+      await tester.pump();
+    }
+    expect(find.text('账户划转'), findsOneWidget);
+
+    await state.transfer(
+      sourceAccountType: 'SPOT',
+      targetAccountType: 'USDT_PERPETUAL',
+      asset: 'USDT',
+      amount: 1,
+    );
+    await tester.pump();
+
+    expect(find.text('等待结果确认'), findsOneWidget);
+    expect(
+      tester
+          .widgetList<DropdownButton<String>>(
+            find.byType(DropdownButton<String>),
+          )
+          .where((button) => button.onChanged == null)
+          .length,
+      greaterThanOrEqualTo(2),
+    );
+    expect(
+      tester
+          .widgetList<TextFormField>(find.byType(TextFormField))
+          .where((field) => field.enabled == false)
+          .length,
+      greaterThanOrEqualTo(2),
+    );
+  });
+
   testWidgets('renders the mobile client shell without network', (
     tester,
   ) async {
@@ -1108,9 +1209,10 @@ void main() {
 }
 
 class _TransferApiClient extends ApiClient {
-  _TransferApiClient(this.response) : super(const AppConfig());
+  _TransferApiClient(this.response, {this.failure}) : super(const AppConfig());
 
   final Map<String, dynamic> response;
+  final Object? failure;
   final List<String> idempotencyKeys = [];
 
   @override
@@ -1123,6 +1225,7 @@ class _TransferApiClient extends ApiClient {
     required String idempotencyKey,
   }) async {
     idempotencyKeys.add(idempotencyKey);
+    if (failure != null) throw failure!;
     return response;
   }
 }

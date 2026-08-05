@@ -925,19 +925,14 @@ class AppState extends ChangeNotifier {
             : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
       }
     } catch (error) {
-      final uncertain =
+      transferOutcomeLocked = true;
+      transferOutcomeTerminalFailure = false;
+      lastError =
           error is ApiException &&
-          (error.statusCode == 408 ||
-              error.statusCode == 409 ||
-              error.statusCode == 429 ||
-              error.statusCode >= 500);
-      lastError = uncertain ? '划转结果未知，请勿重复提交，请查看资金记录' : '划转失败：$error';
-      if (uncertain) {
-        transferOutcomeLocked = true;
-        transferOutcomeTerminalFailure = false;
-      } else {
-        _transferIdempotencyKey = null;
-      }
+              error.statusCode >= 400 &&
+              error.statusCode < 500
+          ? '划转未完成，请查看资金记录后再决定下一步'
+          : '划转结果未知，请勿重复提交，请查看资金记录';
     } finally {
       transferSubmitting = false;
     }

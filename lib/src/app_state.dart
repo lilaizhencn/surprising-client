@@ -220,13 +220,19 @@ class AppState extends ChangeNotifier {
   }
 
   void _persistSettings() {
-    unawaited(
-      settingsStore.write({
+    unawaited(_writeSettings());
+  }
+
+  Future<void> _writeSettings() async {
+    try {
+      await settingsStore.write({
         'theme': clientTheme.code,
         'language': language.code,
         'valuationCurrency': valuationCurrency.code,
-      }),
-    );
+      });
+    } catch (_) {
+      // Display preferences are best effort and must not affect trading.
+    }
   }
 
   void selectTheme(ClientTheme next) {

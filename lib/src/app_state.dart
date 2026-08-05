@@ -68,6 +68,7 @@ class AppState extends ChangeNotifier {
   Timer? _realtimeNotifyTimer;
   Timer? _publicReconnectTimer;
   Timer? _privateReconnectTimer;
+  int _privateRealtimeGeneration = 0;
   int _publicReconnectAttempts = 0;
   int _privateReconnectAttempts = 0;
   int _openOrdersRequestVersion = 0;
@@ -206,6 +207,7 @@ class AppState extends ChangeNotifier {
   Future<void> _persistRefreshedSession(AuthSession next) async {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
+    _privateRealtimeGeneration++;
     session = next;
     api.setSession(next);
     await sessionStore.saveSession(next);
@@ -217,6 +219,7 @@ class AppState extends ChangeNotifier {
   Future<void> _clearExpiredSession() async {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
+    _privateRealtimeGeneration++;
     await privateRealtime.close();
     await sessionStore.clear();
     session = null;
@@ -561,6 +564,7 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
+    _privateRealtimeGeneration++;
     await privateRealtime.close();
     api.setSession(null);
     await sessionStore.clear();
@@ -995,6 +999,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _connectPrivateRealtime() async {
+    final connectGeneration = ++_privateRealtimeGeneration;
     final current = session;
     if (current == null) return;
     try {
@@ -1008,6 +1013,10 @@ class AppState extends ChangeNotifier {
         },
         onDone: _schedulePrivateReconnect,
       );
+      if (connectGeneration != _privateRealtimeGeneration ||
+          current.accessToken != session?.accessToken) {
+        return;
+      }
       _privateReconnectAttempts = 0;
       _subscribePrivateSelected();
     } catch (error) {
@@ -1060,6 +1069,7 @@ class AppState extends ChangeNotifier {
     if (offline) return;
     await publicRealtime.close();
     await _connectPublicRealtime();
+    _privateRealtimeGeneration++;
     await privateRealtime.close();
     await _connectPrivateRealtime();
   }
@@ -1334,6 +1344,7 @@ class AppState extends ChangeNotifier {
     _realtimeNotifyTimer?.cancel();
     _publicReconnectTimer?.cancel();
     _privateReconnectTimer?.cancel();
+    _privateRealtimeGeneration++;
     unawaited(publicRealtime.close());
     unawaited(privateRealtime.close());
     super.dispose();

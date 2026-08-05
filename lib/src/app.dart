@@ -2435,6 +2435,31 @@ class ProfilePage extends StatelessWidget {
               onTap: () => showSecuritySheet(context),
             ),
           ),
+          const SizedBox(height: 12),
+          Panel(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.fingerprint, color: _amber),
+              title: Text(
+                state.biometricLoginEnabled ? '生物识别登录已启用' : '启用生物识别登录',
+              ),
+              subtitle: Text(
+                state.biometricLoginEnabled
+                    ? '下次打开 App 使用面容或指纹解锁'
+                    : state.biometricLoginAvailable
+                    ? '只保存加密 refresh token，不保存 access token'
+                    : '设备未检测到可用的生物识别能力',
+              ),
+              trailing: state.biometricLoginEnabled
+                  ? const Icon(Icons.verified, color: _mint)
+                  : FilledButton.tonal(
+                      onPressed: state.biometricLoginAvailable
+                          ? () => unawaited(state.enableBiometricLogin())
+                          : null,
+                      child: const Text('启用'),
+                    ),
+            ),
+          ),
         ],
         const SizedBox(height: 12),
         const SectionTitle(title: '实时事件'),
@@ -2871,8 +2896,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                       'FACE_IMAGE' => '上传人脸照片',
                       _ => '上传身份证',
                     },
-                    onChanged: (value) =>
-                        setState(() => kycUploadType = value),
+                    onChanged: (value) => setState(() => kycUploadType = value),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2884,10 +2908,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                     icon: Icons.upload_file,
                     onPressed: busy
                         ? null
-                        : () => _run(
-                              _pickKycDocument,
-                              '已选择材料',
-                            ),
+                        : () => _run(_pickKycDocument, '已选择材料'),
                   ),
                 ),
               ],
@@ -2899,10 +2920,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 icon: Icons.cloud_upload_outlined,
                 onPressed: busy
                     ? null
-                    : () => _run(
-                          () => _uploadKycDocument(state),
-                          '材料已上传',
-                        ),
+                    : () => _run(() => _uploadKycDocument(state), '材料已上传'),
               ),
             ],
             const SizedBox(height: 8),
@@ -4189,9 +4207,7 @@ class PrivateTradingPanel extends StatelessWidget {
                     ? null
                     : state.loadMoreOpenOrders,
                 icon: const Icon(Icons.expand_more),
-                label: Text(
-                  state.loadingMoreOpenOrders ? '加载中...' : '加载更多委托',
-                ),
+                label: Text(state.loadingMoreOpenOrders ? '加载中...' : '加载更多委托'),
               ),
             ),
         ],
@@ -4402,6 +4418,23 @@ class _AuthSheetState extends State<AuthSheet> {
               ),
             ],
           ),
+          if (state.pendingBiometricSession != null) ...[
+            PrimaryAction(
+              label: '使用生物识别登录',
+              icon: Icons.fingerprint,
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setState(() => busy = true);
+                      final succeeded = await state.unlockBiometricSession();
+                      if (!context.mounted) return;
+                      setState(() => busy = false);
+                      if (succeeded) Navigator.of(context).pop();
+                    },
+            ),
+            const SizedBox(height: 8),
+            const Divider(),
+          ],
           if (!verify) ...[AppTextField(controller: email, label: '邮箱')],
           if (!forgot && !verify) ...[
             const SizedBox(height: 8),

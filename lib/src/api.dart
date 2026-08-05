@@ -13,11 +13,32 @@ class ApiClient {
   final AppConfig config;
   final HttpClient _httpClient;
   String? _accessToken;
+  String? _refreshToken;
+  Future<AuthSession?>? _refreshInFlight;
+
+  Future<void> Function(AuthSession session)? onSessionRefreshed;
+  Future<void> Function()? onSessionExpired;
+
+  void setSession(AuthSession? session) {
+    _accessToken = session?.accessToken;
+    _refreshToken = session?.refreshToken;
+  }
 
   void setAccessToken(String? accessToken) {
     _accessToken = accessToken == null || accessToken.trim().isEmpty
         ? null
         : accessToken.trim();
+  }
+
+  Future<AuthSession> refresh(String refreshToken) async {
+    final response = await _sendOnce(
+      'POST',
+      '/api/v1/auth/refresh',
+      body: {'refreshToken': refreshToken},
+    );
+    final session = AuthSession.fromJson(asMap(response));
+    setSession(session);
+    return session;
   }
 
   Future<AuthSession> register({
@@ -1072,6 +1093,77 @@ class ApiClient {
   }
 
   Future<Object?> _send(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = false,
+  }) async {
+    try {
+      return await _sendOnce(
+        method,
+        path,
+        query: query,
+        body: body,
+        headers: headers,
+        userId: userId,
+        productLine: productLine,
+        unwrapResponseResult: unwrapResponseResult,
+      );
+    } on ApiException catch (error) {
+      if (error.statusCode != 401 ||
+          _refreshToken == null ||
+          path == '/api/v1/auth/refresh') {
+        rethrow;
+      }
+      final refreshed = await _refreshAccessToken();
+      if (refreshed == null) rethrow;
+      return _sendOnce(
+        method,
+        path,
+        query: query,
+        body: body,
+        headers: headers,
+        userId: userId,
+        productLine: productLine,
+        unwrapResponseResult: unwrapResponseResult,
+      );
+    }
+  }
+
+  Future<AuthSession?> _refreshAccessToken() async {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    final token = _refreshToken;
+    if (token == null || token.isEmpty) return null;
+    final future = _refreshAccessTokenOnce(token);
+    _refreshInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    }
+  }
+
+  Future<AuthSession?> _refreshAccessTokenOnce(String refreshToken) async {
+    try {
+      final session = await refresh(refreshToken);
+      await onSessionRefreshed?.call(session);
+      return session;
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        setSession(null);
+        await onSessionExpired?.call();
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Object?> _sendOnce(
     String method,
     String path, {
     Map<String, String>? query,

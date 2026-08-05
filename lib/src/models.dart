@@ -194,6 +194,15 @@ class AuthUser {
   final String email;
   final String status;
 
+  Map<String, dynamic> toJson() {
+    return {
+      'userId': userId,
+      'username': username,
+      'email': email,
+      'status': status,
+    };
+  }
+
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
       userId: asInt(json['userId']),
@@ -213,12 +222,36 @@ class AuthSession {
     required this.accessToken,
     required this.refreshToken,
     this.requiresEmailVerification = false,
+    this.accessTokenExpiresAt,
+    this.refreshTokenExpiresAt,
   });
 
   final AuthUser user;
   final String accessToken;
   final String refreshToken;
   final bool requiresEmailVerification;
+  final DateTime? accessTokenExpiresAt;
+  final DateTime? refreshTokenExpiresAt;
+
+  bool get refreshTokenExpired {
+    final expiresAt = refreshTokenExpiresAt;
+    return expiresAt != null && !expiresAt.isAfter(DateTime.now().toUtc());
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user': user.toJson(),
+      'accessToken': accessToken,
+      'refreshToken': refreshToken,
+      'requiresEmailVerification': requiresEmailVerification,
+      if (accessTokenExpiresAt != null)
+        'accessTokenExpiresAt': accessTokenExpiresAt!.toUtc().toIso8601String(),
+      if (refreshTokenExpiresAt != null)
+        'refreshTokenExpiresAt': refreshTokenExpiresAt!
+            .toUtc()
+            .toIso8601String(),
+    };
+  }
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     return AuthSession(
@@ -226,6 +259,8 @@ class AuthSession {
       accessToken: asString(json['accessToken']),
       refreshToken: asString(json['refreshToken']),
       requiresEmailVerification: json['requiresEmailVerification'] == true,
+      accessTokenExpiresAt: asNullableDateTime(json['accessTokenExpiresAt']),
+      refreshTokenExpiresAt: asNullableDateTime(json['refreshTokenExpiresAt']),
     );
   }
 }

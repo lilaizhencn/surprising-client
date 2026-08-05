@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'models.dart';
+import 'session_store.dart';
 
 class AppState extends ChangeNotifier {
   AppState({
@@ -11,10 +12,14 @@ class AppState extends ChangeNotifier {
     ApiClient? apiClient,
     RealtimeClient? publicRealtimeClient,
     RealtimeClient? privateRealtimeClient,
+    SessionStore? sessionStore,
     this.offline = false,
   }) : api = apiClient ?? ApiClient(config),
        publicRealtime = publicRealtimeClient ?? RealtimeClient(config),
-       privateRealtime = privateRealtimeClient ?? RealtimeClient(config) {
+       privateRealtime = privateRealtimeClient ?? RealtimeClient(config),
+       sessionStore = sessionStore ?? SecureSessionStore() {
+    api.onSessionRefreshed = _persistRefreshedSession;
+    api.onSessionExpired = _clearExpiredSession;
     instruments = fallbackInstruments();
     selectedSymbol = instruments.first.symbol;
     orderBook = fallbackOrderBook(instruments.first);
@@ -25,10 +30,14 @@ class AppState extends ChangeNotifier {
   final ApiClient api;
   final RealtimeClient publicRealtime;
   final RealtimeClient privateRealtime;
+  final SessionStore sessionStore;
   final bool offline;
 
   AuthSession? session;
   AuthSession? pendingVerificationSession;
+  AuthSession? pendingBiometricSession;
+  bool biometricLoginAvailable = false;
+  bool biometricLoginEnabled = false;
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
@@ -102,9 +111,112 @@ class AppState extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     if (offline) return;
+    await _restoreSession();
     await refreshInstruments(silent: true);
     await refreshPublicData(silent: true);
     await _connectPublicRealtime();
+  }
+
+  Future<void> _restoreSession() async {
+    biometricLoginAvailable = await sessionStore.canUseBiometrics();
+    final stored = await sessionStore.readSession();
+    if (stored == null) return;
+    biometricLoginEnabled = await sessionStore.biometricEnabled();
+    if (biometricLoginEnabled) {
+      pendingBiometricSession = stored;
+      lastNotice = '请使用生物识别解锁交易账户';
+      notifyListeners();
+      return;
+    }
+    await _refreshStoredSession(stored);
+  }
+
+  Future<void> _refreshStoredSession(AuthSession stored) async {
+    if (stored.refreshTokenExpired) {
+      await sessionStore.clear();
+      return;
+    }
+    try {
+      final refreshed = await api.refresh(stored.refreshToken);
+      await _activateSession(refreshed, persist: true);
+      lastNotice = '已恢复登录状态';
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await sessionStore.clear();
+        lastError = '登录状态已失效，请重新登录';
+      } else {
+        lastNotice = '网络暂不可用，登录状态将在连接恢复后重试';
+      }
+    } catch (_) {
+      lastNotice = '网络暂不可用，登录状态将在连接恢复后重试';
+    }
+  }
+
+  Future<void> _activateSession(
+    AuthSession next, {
+    required bool persist,
+  }) async {
+    session = next;
+    pendingBiometricSession = null;
+    api.setSession(next);
+    if (persist) await sessionStore.saveSession(next);
+    await _connectPrivateRealtime();
+    await refreshPrivateData();
+  }
+
+  Future<bool> unlockBiometricSession() async {
+    final pending = pendingBiometricSession;
+    if (pending == null) return false;
+    try {
+      if (!await sessionStore.authenticateBiometric()) {
+        lastError = '生物识别未通过';
+        notifyListeners();
+        return false;
+      }
+      await _refreshStoredSession(pending);
+      if (session == null) return false;
+      lastError = null;
+      lastNotice = '生物识别解锁成功';
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = '生物识别解锁失败：$error';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> enableBiometricLogin() async {
+    if (session == null) return false;
+    try {
+      await sessionStore.enableBiometric();
+      biometricLoginAvailable = true;
+      biometricLoginEnabled = true;
+      lastError = null;
+      lastNotice = '已启用生物识别登录';
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = '启用生物识别失败：$error';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> _persistRefreshedSession(AuthSession next) async {
+    session = next;
+    api.setSession(next);
+    await sessionStore.saveSession(next);
+    notifyListeners();
+  }
+
+  Future<void> _clearExpiredSession() async {
+    await sessionStore.clear();
+    session = null;
+    pendingBiometricSession = null;
+    biometricLoginEnabled = false;
+    api.setSession(null);
+    notifyListeners();
   }
 
   Future<void> refreshInstruments({bool silent = false}) async {
@@ -310,12 +422,13 @@ class AppState extends ChangeNotifier {
     lastNotice = null;
     notifyListeners();
     try {
-      session = await api.login(username: email.trim(), password: password);
-      api.setAccessToken(session!.accessToken);
+      final authenticated = await api.login(
+        username: email.trim(),
+        password: password,
+      );
+      await _activateSession(authenticated, persist: true);
       lastNotice = '登录成功';
-      await _connectPrivateRealtime();
-      await refreshPrivateData();
-      return session;
+      return authenticated;
     } catch (error) {
       lastError = '登录失败：$error';
       return null;
@@ -336,16 +449,14 @@ class AppState extends ChangeNotifier {
         password: password,
         email: email.trim(),
       );
-      api.setAccessToken(created.accessToken);
+      api.setSession(created);
       if (created.requiresEmailVerification) {
         pendingVerificationSession = created;
         lastNotice = '注册成功，请先完成邮箱验证';
         return created;
       }
-      session = created;
+      await _activateSession(created, persist: true);
       lastNotice = '注册成功';
-      await _connectPrivateRealtime();
-      await refreshPrivateData();
       return session;
     } catch (error) {
       lastError = '注册失败：$error';
@@ -371,11 +482,9 @@ class AppState extends ChangeNotifier {
       if (!await api.verifyEmail(pending, code.trim())) {
         throw StateError('验证码无效或已过期');
       }
-      session = pending;
+      await _activateSession(pending, persist: true);
       pendingVerificationSession = null;
       lastNotice = '邮箱验证成功';
-      await _connectPrivateRealtime();
-      await refreshPrivateData();
       return true;
     } catch (error) {
       lastError = '邮箱验证失败：$error';
@@ -446,10 +555,13 @@ class AppState extends ChangeNotifier {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
     await privateRealtime.close();
-    api.setAccessToken(null);
+    api.setSession(null);
+    await sessionStore.clear();
     session = null;
     _openOrdersRequestVersion++;
     pendingVerificationSession = null;
+    pendingBiometricSession = null;
+    biometricLoginEnabled = false;
     balances = const [];
     positions = const [];
     openOrders = const [];

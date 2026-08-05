@@ -4,6 +4,7 @@ import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/models.dart';
+import 'package:surprising_client/src/session_store.dart';
 
 void main() {
   testWidgets('renders the mobile client shell without network', (
@@ -233,6 +234,27 @@ void main() {
     expect(ProductMode.option.productLine, 'OPTION');
   });
 
+  test('round trips auth token expiry metadata for secure session restore', () {
+    final session = AuthSession(
+      user: const AuthUser(
+        userId: 7,
+        username: 'secure_user',
+        email: 'secure@example.com',
+        status: 'ACTIVE',
+      ),
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      accessTokenExpiresAt: DateTime.parse('2026-08-05T00:30:00Z'),
+      refreshTokenExpiresAt: DateTime.parse('2026-09-04T00:00:00Z'),
+    );
+
+    final restored = AuthSession.fromJson(session.toJson());
+
+    expect(restored.accessTokenExpiresAt, session.accessTokenExpiresAt);
+    expect(restored.refreshTokenExpiresAt, session.refreshTokenExpiresAt);
+    expect(restored.refreshTokenExpired, isFalse);
+  });
+
   test(
     'reconnects realtime subscriptions when opening another product page',
     () async {
@@ -274,6 +296,7 @@ void main() {
       final state = AppState(
         apiClient: _PrivateRealtimeApiClient(),
         privateRealtimeClient: privateRealtime,
+        sessionStore: _InMemorySessionStore(),
       );
 
       await state.login('demo_user', 'password');
@@ -387,58 +410,61 @@ void main() {
     expect(state.liquidationOrders, isEmpty);
   });
 
-  test('loads open-order cursor pages and removes cancel-requested orders', () async {
-    final api = _SpotRefreshApiClient();
-    final spotSymbol = fallbackInstruments()
-        .firstWhere((instrument) => instrument.mode == ProductMode.spot)
-        .symbol;
-    api.openOrderPages.addAll([
-      OpenOrdersPage(
-        orders: [_openOrder(11, spotSymbol), _openOrder(10, spotSymbol)],
-        nextCursor: 'cursor-10',
-        hasMore: true,
-        sort: 'orderId.desc',
-        limit: 100,
-      ),
-      OpenOrdersPage(
-        orders: [_openOrder(10, spotSymbol), _openOrder(9, spotSymbol)],
-        nextCursor: null,
-        hasMore: false,
-        sort: 'orderId.desc',
-        limit: 100,
-      ),
-    ]);
-    final state = AppState(apiClient: api)
-      ..session = const AuthSession(
-        user: AuthUser(
-          userId: 1,
-          username: 'demo_user',
-          email: 'demo@example.com',
-          status: 'ACTIVE',
+  test(
+    'loads open-order cursor pages and removes cancel-requested orders',
+    () async {
+      final api = _SpotRefreshApiClient();
+      final spotSymbol = fallbackInstruments()
+          .firstWhere((instrument) => instrument.mode == ProductMode.spot)
+          .symbol;
+      api.openOrderPages.addAll([
+        OpenOrdersPage(
+          orders: [_openOrder(11, spotSymbol), _openOrder(10, spotSymbol)],
+          nextCursor: 'cursor-10',
+          hasMore: true,
+          sort: 'orderId.desc',
+          limit: 100,
         ),
-        accessToken: 'access',
-        refreshToken: 'refresh',
-      )
-      ..mode = ProductMode.spot
-      ..selectedSymbol = spotSymbol;
+        OpenOrdersPage(
+          orders: [_openOrder(10, spotSymbol), _openOrder(9, spotSymbol)],
+          nextCursor: null,
+          hasMore: false,
+          sort: 'orderId.desc',
+          limit: 100,
+        ),
+      ]);
+      final state = AppState(apiClient: api)
+        ..session = const AuthSession(
+          user: AuthUser(
+            userId: 1,
+            username: 'demo_user',
+            email: 'demo@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'access',
+          refreshToken: 'refresh',
+        )
+        ..mode = ProductMode.spot
+        ..selectedSymbol = spotSymbol;
 
-    await state.refreshPrivateData();
-    await state.loadMoreOpenOrders();
+      await state.refreshPrivateData();
+      await state.loadMoreOpenOrders();
 
-    expect(api.openOrderCursors, [null, 'cursor-10']);
-    expect(state.openOrders.map((order) => order.orderId), [11, 10, 9]);
-    expect(state.openOrdersHasMore, isFalse);
-    expect(state.openOrdersNextCursor, isNull);
+      expect(api.openOrderCursors, [null, 'cursor-10']);
+      expect(state.openOrders.map((order) => order.orderId), [11, 10, 9]);
+      expect(state.openOrdersHasMore, isFalse);
+      expect(state.openOrdersNextCursor, isNull);
 
-    state.handleRealtimeMessage({
-      'op': 'event',
-      'channel': 'orders',
-      'productLine': 'SPOT',
-      'data': _openOrderJson(10, spotSymbol, status: 'CANCEL_REQUESTED'),
-    });
+      state.handleRealtimeMessage({
+        'op': 'event',
+        'channel': 'orders',
+        'productLine': 'SPOT',
+        'data': _openOrderJson(10, spotSymbol, status: 'CANCEL_REQUESTED'),
+      });
 
-    expect(state.openOrders.map((order) => order.orderId), [11, 9]);
-  });
+      expect(state.openOrders.map((order) => order.orderId), [11, 9]);
+    },
+  );
 
   test('parses wallet portfolio and order records', () {
     final portfolio = WalletPortfolio.fromJson({
@@ -931,6 +957,35 @@ class _PrivateRealtimeApiClient extends _SpotRefreshApiClient {
       refreshToken: 'refresh-token',
     );
   }
+}
+
+class _InMemorySessionStore implements SessionStore {
+  AuthSession? session;
+  bool biometric = false;
+
+  @override
+  Future<AuthSession?> readSession() async => session;
+
+  @override
+  Future<void> saveSession(AuthSession value) async => session = value;
+
+  @override
+  Future<void> clear() async {
+    session = null;
+    biometric = false;
+  }
+
+  @override
+  Future<bool> biometricEnabled() async => biometric;
+
+  @override
+  Future<bool> canUseBiometrics() async => biometric;
+
+  @override
+  Future<bool> authenticateBiometric() async => biometric;
+
+  @override
+  Future<void> enableBiometric() async => biometric = true;
 }
 
 class _RealtimeSwitchApiClient extends ApiClient {

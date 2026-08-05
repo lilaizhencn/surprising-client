@@ -1008,6 +1008,10 @@ class AppState extends ChangeNotifier {
         accessToken: current.accessToken,
         onEvent: handleRealtimeMessage,
         onError: (error) {
+          if (connectGeneration != _privateRealtimeGeneration ||
+              current.accessToken != session?.accessToken) {
+            return;
+          }
           _recordRealtimeIssue('账户 WebSocket：$error');
           notifyListeners();
         },

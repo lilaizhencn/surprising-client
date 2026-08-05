@@ -348,12 +348,19 @@ void main() {
       ),
     );
     await privateRealtime.secondConnectStarted.future;
+    privateRealtime.errors.first(StateError('stale event'));
     privateRealtime.releaseFirstConnect.complete();
 
     await Future.wait([firstRefresh, secondRefresh]);
     expect(
       state.realtimeLog
           .where((message) => message.startsWith('账户实时连接失败'))
+          .isEmpty,
+      isTrue,
+    );
+    expect(
+      state.realtimeLog
+          .where((message) => message.startsWith('账户 WebSocket'))
           .isEmpty,
       isTrue,
     );
@@ -1222,6 +1229,7 @@ class _FailingFirstRealtimeClient extends _RecordingRealtimeClient {
   final firstConnectStarted = Completer<void>();
   final secondConnectStarted = Completer<void>();
   final releaseFirstConnect = Completer<void>();
+  final errors = <void Function(Object)>[];
 
   @override
   Future<void> connect({
@@ -1232,6 +1240,7 @@ class _FailingFirstRealtimeClient extends _RecordingRealtimeClient {
     void Function()? onDone,
   }) async {
     connectCount++;
+    errors.add(onError);
     if (connectCount == 1) {
       firstConnectStarted.complete();
       await releaseFirstConnect.future;

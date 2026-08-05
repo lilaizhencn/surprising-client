@@ -2635,6 +2635,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
     if (kycFaceStatus == 'PENDING' && !types.contains('FACE_IMAGE')) {
       throw const FormatException('启用人脸识别时还需要上传人脸材料');
     }
+    if (kycProvider == 'THIRD_PARTY' &&
+        kycProviderReference.text.trim().isEmpty) {
+      throw const FormatException('第三方认证需要填写服务引用');
+    }
     final next = await state.api.submitKyc(
       applicantType: kycApplicantType,
       kycLevel: kycLevel,
@@ -2932,7 +2936,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
               ],
             ),
             const SizedBox(height: 8),
-            AppTextField(controller: kycProviderReference, label: '服务引用（可选）'),
+            AppTextField(
+              controller: kycProviderReference,
+              label: kycProvider == 'THIRD_PARTY' ? '服务引用' : '服务引用（可选）',
+            ),
             Row(
               children: [
                 Expanded(

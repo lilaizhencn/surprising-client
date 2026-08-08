@@ -11,18 +11,18 @@ import 'app_state.dart';
 import 'api.dart';
 import 'models.dart';
 
-const _ink = Color(0xFFEAECEF);
-const _muted = Color(0xFF848E9C);
-const _paper = Color(0xFF0B0E11);
-const _panel = Color(0xFF181A20);
-const _panelSoft = Color(0xFF1E2329);
-const _line = Color(0xFF2B3139);
-const _pink = Color(0xFFFCD535);
-const _violet = Color(0xFFA3E635);
-const _mint = Color(0xFF00C076);
-const _red = Color(0xFFF6465D);
-const _amber = Color(0xFFFCD535);
-const _lime = Color(0xFFB7FF2A);
+const _ink = Color(0xFFEAF3F7);
+const _muted = Color(0xFF91A4B2);
+const _paper = Color(0xFF081017);
+const _panel = Color(0xFF0E1821);
+const _panelSoft = Color(0xFF16232D);
+const _line = Color(0xFF2A3D49);
+const _pink = Color(0xFF4FD7E7);
+const _violet = Color(0xFF168FA4);
+const _mint = Color(0xFF43D3A0);
+const _red = Color(0xFFF07880);
+const _amber = Color(0xFFF1B85C);
+const _lime = Color(0xFFF1B85C);
 
 String _displayFileSize(int bytes) {
   if (bytes < 1024 * 1024) return '${(bytes / 1024).ceil()} KB';
@@ -746,6 +746,33 @@ class HomePage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          if (!state.isLoggedIn)
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '把账户接入你的交易节奏',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '登录后查看真实资产、委托、仓位与个性化行情。',
+                    style: TextStyle(color: _muted, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  PrimaryAction(
+                    label: '登录 / 创建账户',
+                    icon: Icons.arrow_forward,
+                    onPressed: () => showAuthSheet(context),
+                  ),
+                ],
+              ),
+            ),
+          if (!state.isLoggedIn) const SizedBox(height: 14),
           SectionTitle(
             title: '精选交易对',
             action: TextButton(

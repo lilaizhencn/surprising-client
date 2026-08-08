@@ -10,6 +10,18 @@ import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
 
 void main() {
+  test('online state starts without demo market data', () {
+    final state = AppState();
+
+    expect(state.instruments, isEmpty);
+    expect(state.orderBook.bids, isEmpty);
+    expect(state.orderBook.asks, isEmpty);
+    expect(state.candles, isEmpty);
+    expect(state.latestPriceFor(state.selectedInstrument), isNull);
+
+    state.dispose();
+  });
+
   test('reuses a transfer idempotency key after an uncertain result', () async {
     final api = _TransferApiClient(const {'status': 'PENDING'});
     final state = AppState(offline: true, apiClient: api)

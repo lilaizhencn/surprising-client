@@ -184,10 +184,15 @@ class AppState extends ChangeNotifier {
     this.settingsStore = settingsStore ?? SecureClientSettingsStore();
     api.onSessionRefreshed = _persistRefreshedSession;
     api.onSessionExpired = _clearExpiredSession;
-    instruments = fallbackInstruments();
-    selectedSymbol = instruments.first.symbol;
-    orderBook = fallbackOrderBook(instruments.first);
-    candles = fallbackCandles();
+    final initialInstruments = offline
+        ? fallbackInstruments()
+        : const <Instrument>[];
+    instruments = initialInstruments;
+    selectedSymbol = offline ? initialInstruments.first.symbol : '';
+    orderBook = offline
+        ? fallbackOrderBook(initialInstruments.first)
+        : OrderBook.empty(selectedSymbol);
+    candles = offline ? fallbackCandles() : const [];
   }
 
   final AppConfig config;
@@ -982,6 +987,14 @@ class AppState extends ChangeNotifier {
   Future<void> selectMode(ProductMode nextMode) async {
     mode = nextMode;
     final candidates = visibleInstruments;
+    if (candidates.isEmpty && !offline) {
+      final fallbackCandidate = fallbackInstruments().where(
+        (instrument) => instrument.mode == nextMode,
+      );
+      if (fallbackCandidate.isNotEmpty) {
+        selectedSymbol = fallbackCandidate.first.symbol;
+      }
+    }
     if (candidates.isNotEmpty &&
         !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
       selectedSymbol = candidates.first.symbol;
@@ -2124,9 +2137,10 @@ class AppState extends ChangeNotifier {
   }
 
   Instrument _instrumentForSymbol(String symbol) {
-    return instruments.firstWhere(
+    final source = instruments.isNotEmpty ? instruments : fallbackInstruments();
+    return source.firstWhere(
       (instrument) => instrument.symbol == symbol && instrument.mode == mode,
-      orElse: () => instruments.firstWhere(
+      orElse: () => source.firstWhere(
         (instrument) => instrument.symbol == symbol,
         orElse: () => fallbackInstruments().first,
       ),

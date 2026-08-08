@@ -111,21 +111,27 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
                     ),
               canvasColor: isLight ? const Color(0xFFF6F8FA) : _paper,
               dividerColor: isLight ? const Color(0xFFD9DEE5) : _line,
-              textTheme: const TextTheme(
+              textTheme: TextTheme(
                 titleLarge: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: _ink,
+                  color: isLight ? const Color(0xFF14212B) : _ink,
                 ),
                 titleMedium: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: _ink,
+                  color: isLight ? const Color(0xFF14212B) : _ink,
                 ),
-                bodyMedium: TextStyle(fontSize: 12, color: _ink),
-                labelMedium: TextStyle(fontSize: 11, color: _muted),
+                bodyMedium: TextStyle(
+                  fontSize: 12,
+                  color: isLight ? const Color(0xFF253746) : _ink,
+                ),
+                labelMedium: TextStyle(
+                  fontSize: 11,
+                  color: isLight ? const Color(0xFF5F7482) : _muted,
+                ),
               ),
-              snackBarTheme: const SnackBarThemeData(
+              snackBarTheme: SnackBarThemeData(
                 backgroundColor: _panel,
                 contentTextStyle: TextStyle(color: _ink, fontSize: 13),
               ),
@@ -753,10 +759,7 @@ class HomePage extends StatelessWidget {
                 children: [
                   const Text(
                     '把账户接入你的交易节奏',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
                   const Text(
@@ -6533,13 +6536,14 @@ class Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: padding,
       decoration: BoxDecoration(
-        color: _panel,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _line.withValues(alpha: .82)),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: .82)),
       ),
       child: child,
     );
@@ -6553,16 +6557,23 @@ class GradientPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final surface = theme.colorScheme.surface;
+    final surfaceVariant = theme.colorScheme.surfaceContainerHighest;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         gradient: LinearGradient(
-          colors: [_panel, _panelSoft, _violet.withValues(alpha: .22)],
+          colors: [
+            surface,
+            surfaceVariant,
+            theme.colorScheme.secondary.withValues(alpha: .22),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border.all(color: _line),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: child,
     );

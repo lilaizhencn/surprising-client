@@ -361,6 +361,23 @@ class Instrument {
   final String? optionExerciseStyle;
   final String? settlementMethod;
 
+  factory Instrument.empty(ProductMode mode) {
+    return Instrument(
+      symbol: '',
+      instrumentType: 'UNKNOWN',
+      contractType: mode.contractType,
+      baseAsset: '',
+      quoteAsset: '',
+      settleAsset: '',
+      priceTickUnits: 0,
+      quantityStepUnits: 0,
+      pricePrecision: 0,
+      quantityPrecision: 0,
+      maxLeveragePpm: 0,
+      status: 'UNAVAILABLE',
+    );
+  }
+
   ProductMode get mode {
     if (contractType == ProductMode.spot.contractType) return ProductMode.spot;
     if (contractType == ProductMode.inverse.contractType) {

@@ -17,6 +17,7 @@ void main() {
     expect(state.orderBook.bids, isEmpty);
     expect(state.orderBook.asks, isEmpty);
     expect(state.candles, isEmpty);
+    expect(state.selectedInstrument.symbol, isEmpty);
     expect(state.latestPriceFor(state.selectedInstrument), isNull);
 
     state.dispose();
@@ -538,6 +539,7 @@ void main() {
             apiClient: _PrivateRealtimeApiClient(),
             privateRealtimeClient: privateRealtime,
             sessionStore: _InMemorySessionStore(),
+            seedInstruments: fallbackInstruments(),
           )
           ..session = const AuthSession(
             user: AuthUser(
@@ -774,6 +776,7 @@ void main() {
         apiClient: _RealtimeSwitchApiClient(),
         publicRealtimeClient: publicRealtime,
         privateRealtimeClient: privateRealtime,
+        seedInstruments: fallbackInstruments(),
       );
 
       await state.selectMode(ProductMode.option);
@@ -808,6 +811,7 @@ void main() {
         apiClient: _PrivateRealtimeApiClient(),
         privateRealtimeClient: privateRealtime,
         sessionStore: _InMemorySessionStore(),
+        seedInstruments: fallbackInstruments(),
       );
 
       await state.login('demo_user', 'password');

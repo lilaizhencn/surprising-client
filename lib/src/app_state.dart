@@ -177,6 +177,7 @@ class AppState extends ChangeNotifier {
     SessionStore? sessionStore,
     ClientSettingsStore? settingsStore,
     this.offline = false,
+    this.seedInstruments,
   }) : api = apiClient ?? ApiClient(config),
        publicRealtime = publicRealtimeClient ?? RealtimeClient(config),
        privateRealtime = privateRealtimeClient ?? RealtimeClient(config),
@@ -186,9 +187,11 @@ class AppState extends ChangeNotifier {
     api.onSessionExpired = _clearExpiredSession;
     final initialInstruments = offline
         ? fallbackInstruments()
-        : const <Instrument>[];
+        : seedInstruments ?? const <Instrument>[];
     instruments = initialInstruments;
-    selectedSymbol = offline ? initialInstruments.first.symbol : '';
+    selectedSymbol = initialInstruments.isNotEmpty
+        ? initialInstruments.first.symbol
+        : '';
     orderBook = offline
         ? fallbackOrderBook(initialInstruments.first)
         : OrderBook.empty(selectedSymbol);
@@ -202,6 +205,7 @@ class AppState extends ChangeNotifier {
   final SessionStore sessionStore;
   late final ClientSettingsStore settingsStore;
   final bool offline;
+  final List<Instrument>? seedInstruments;
 
   AuthSession? session;
   AuthSession? pendingVerificationSession;
@@ -649,7 +653,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshPublicData({bool silent = false}) async {
-    if (offline) return;
+    if (offline || selectedSymbol.isEmpty) return;
     loadingPublic = true;
     notifyListeners();
     try {
@@ -987,14 +991,6 @@ class AppState extends ChangeNotifier {
   Future<void> selectMode(ProductMode nextMode) async {
     mode = nextMode;
     final candidates = visibleInstruments;
-    if (candidates.isEmpty && !offline) {
-      final fallbackCandidate = fallbackInstruments().where(
-        (instrument) => instrument.mode == nextMode,
-      );
-      if (fallbackCandidate.isNotEmpty) {
-        selectedSymbol = fallbackCandidate.first.symbol;
-      }
-    }
     if (candidates.isNotEmpty &&
         !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
       selectedSymbol = candidates.first.symbol;
@@ -1935,6 +1931,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _subscribePublicSelected() {
+    if (selectedSymbol.isEmpty) return;
     final selectedProductLine = _productLineForSymbol(selectedSymbol);
     final instrumentsBySymbol = <String, Instrument>{
       selectedSymbol: selectedInstrument,
@@ -1962,7 +1959,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _subscribePrivateSelected() {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || selectedSymbol.isEmpty) return;
     final productLine = _productLineForSymbol(selectedSymbol);
     final instrument = _instrumentForSymbol(selectedSymbol);
     privateRealtime.subscribe(
@@ -2137,12 +2134,11 @@ class AppState extends ChangeNotifier {
   }
 
   Instrument _instrumentForSymbol(String symbol) {
-    final source = instruments.isNotEmpty ? instruments : fallbackInstruments();
-    return source.firstWhere(
+    return instruments.firstWhere(
       (instrument) => instrument.symbol == symbol && instrument.mode == mode,
-      orElse: () => source.firstWhere(
+      orElse: () => instruments.firstWhere(
         (instrument) => instrument.symbol == symbol,
-        orElse: () => fallbackInstruments().first,
+        orElse: () => Instrument.empty(mode),
       ),
     );
   }

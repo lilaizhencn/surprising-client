@@ -34,6 +34,15 @@ flutter run \
 
 Local WebSocket uses `userId` query fallback by default because the backend local WebSocket service allows it. For production, set `SURPRISING_WS_QUERY_USER_ID=false` and configure the WebSocket JWT secret to match the gateway issuer/secret.
 
+Production builds use the shared API and WebSocket domain by default:
+
+```text
+REST: https://ex-api.tokdou.com
+WS:   wss://ex-api.tokdou.com/ws/v1
+```
+
+Explicit `--dart-define` values still override these defaults.
+
 ## Verification
 
 ```bash

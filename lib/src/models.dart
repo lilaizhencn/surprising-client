@@ -213,15 +213,18 @@ double? fallbackPriceFor(Instrument instrument) {
   };
 }
 
+const _productionGatewayBaseUrl = 'https://ex-api.tokdou.com';
+const _productionWebsocketUrl = 'wss://ex-api.tokdou.com/ws/v1';
+
 class AppConfig {
   const AppConfig({
     this.gatewayBaseUrl = const String.fromEnvironment(
       'SURPRISING_GATEWAY_URL',
-      defaultValue: '',
+      defaultValue: _productionGatewayBaseUrl,
     ),
     this.websocketUrl = const String.fromEnvironment(
       'SURPRISING_WEBSOCKET_URL',
-      defaultValue: '',
+      defaultValue: _productionWebsocketUrl,
     ),
     this.localWebSocketUserFallback = const bool.fromEnvironment(
       'SURPRISING_WS_QUERY_USER_ID',

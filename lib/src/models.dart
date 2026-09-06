@@ -342,7 +342,7 @@ class Instrument {
     this.optionType,
     this.optionExerciseStyle,
     this.settlementMethod,
-    this.version,
+    this.changeId,
     this.notionalMultiplierUnits,
     this.settleScaleUnits,
   });
@@ -366,7 +366,7 @@ class Instrument {
   final String? optionType;
   final String? optionExerciseStyle;
   final String? settlementMethod;
-  final int? version;
+  final int? changeId;
   final int? notionalMultiplierUnits;
   final int? settleScaleUnits;
 
@@ -451,7 +451,7 @@ class Instrument {
       optionType: nullableString(json['optionType']),
       optionExerciseStyle: nullableString(json['optionExerciseStyle']),
       settlementMethod: nullableString(json['settlementMethod']),
-      version: asNullableInt(json['version']),
+      changeId: asNullableInt(json['changeId']),
       notionalMultiplierUnits: asNullableInt(json['notionalMultiplierUnits']),
       settleScaleUnits: asNullableInt(json['settleScaleUnits']),
     );
@@ -705,7 +705,7 @@ class OpenOrdersPage {
 class TestOrderResult {
   const TestOrderResult({
     required this.accepted,
-    required this.instrumentVersion,
+    required this.instrumentChangeId,
     required this.validationStage,
     required this.estimatedReserveUnits,
     this.rejectReason,
@@ -715,7 +715,7 @@ class TestOrderResult {
 
   final bool accepted;
   final String? rejectReason;
-  final int instrumentVersion;
+  final int instrumentChangeId;
   final String validationStage;
   final String? accountType;
   final String? asset;
@@ -725,7 +725,7 @@ class TestOrderResult {
     return TestOrderResult(
       accepted: asBool(json['accepted']),
       rejectReason: nullableString(json['rejectReason']),
-      instrumentVersion: asInt(json['instrumentVersion']),
+      instrumentChangeId: asInt(json['instrumentChangeId']),
       validationStage: asString(json['validationStage']),
       accountType: nullableString(json['accountType']),
       asset: nullableString(json['asset']),

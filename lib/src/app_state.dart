@@ -2045,7 +2045,7 @@ class AppState extends ChangeNotifier {
           (i) =>
               i.mode == product &&
               i.symbol == p['symbol'] &&
-              i.version == asInt(p['instrumentVersion']),
+              i.changeId == asInt(p['instrumentChangeId']),
         );
         final instrument = matching.isEmpty ? null : matching.first;
         final risk = risks

@@ -203,7 +203,7 @@ void main() {
             Instrument.fromJson({
               'symbol': 'BTC-USDT',
               'contractType': p.contractType,
-              'version': 1,
+              'changeId': 1,
               'notionalMultiplierUnits': 10,
               'priceTickUnits': 1,
             }),
@@ -228,7 +228,7 @@ void main() {
       expect(state.assetsReady, isTrue);
       final position = {
         'symbol': 'BTC-USDT',
-        'instrumentVersion': 1,
+        'instrumentChangeId': 1,
         'signedQuantitySteps': 2,
         'entryPriceTicks': 100,
         'marginAsset': 'USDT',

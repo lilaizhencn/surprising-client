@@ -798,7 +798,7 @@ class MarketsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final instruments = state.visibleInstruments;
+    final instruments = state.spotInstruments;
     return RefreshIndicator(
       onRefresh: state.refreshInstruments,
       child: ListView(
@@ -831,11 +831,6 @@ class MarketsPage extends StatelessWidget {
           const SizedBox(height: 12),
           const MarketPrimaryTabs(selectedIndex: 1),
           const Divider(height: 1, color: _line),
-          ProductPageSelector(
-            value: state.mode,
-            title: '行情产品页',
-            onChanged: (mode) => unawaited(state.selectMode(mode)),
-          ),
           const CategoryStrip(),
           const MarketSortHeader(),
           if (instruments.isEmpty)
@@ -845,7 +840,10 @@ class MarketsPage extends StatelessWidget {
               return MarketTickerRow(
                 instrument: instrument,
                 selected: instrument.symbol == state.selectedSymbol,
-                onTap: () => unawaited(state.selectSymbol(instrument.symbol)),
+                onTap: () => unawaited(() async {
+                  await state.selectMode(ProductMode.spot);
+                  await state.selectSymbol(instrument.symbol);
+                }()),
               );
             }),
           const SizedBox(height: 24),
@@ -1685,10 +1683,13 @@ class _WalletPageState extends State<WalletPage> {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
                 children: [
-                  ...state.balances.map(
-                    (balance) => BalanceRow(balance: balance),
-                  ),
-                  if (state.balances.isEmpty) const EmptyState(text: '暂无资产数据'),
+                  if (!state.assetsReady) const Text('资产同步中 / Syncing assets'),
+                  if (state.assetsReady)
+                    ...state.allProductBalances.map(
+                      (balance) => BalanceRow(balance: balance),
+                    ),
+                  if (state.assetsReady && state.allProductBalances.isEmpty)
+                    const EmptyState(text: '暂无资产数据'),
                 ],
               ),
             ),
@@ -4980,6 +4981,9 @@ class PrivateTradingPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (state.isLoggedIn &&
+            !(state.privateViews[state.mode]?.ready ?? false))
+          const Text('账户同步中 / Syncing account'),
         if (state.isLoggedIn && state.accountRisk != null)
           Panel(
             padding: const EdgeInsets.all(10),

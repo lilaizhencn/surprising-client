@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'models.dart';
+import 'realtime_state.dart';
 import 'session_store.dart';
 
 class WithdrawalAssetRule {
@@ -235,6 +236,21 @@ class AppState extends ChangeNotifier {
   WalletDepositAddress? walletDepositAddress;
   AccountRisk? accountRisk;
   final Map<String, double> latestPrices = {};
+  final Map<String, int> markPrices = {};
+  final Map<String, Map<String, dynamic>> marketMetrics = {};
+  final Map<String, Map<String, dynamic>> _publicVersions = {};
+  final Map<ProductMode, PrivateView> privateViews = {};
+  final Map<ProductMode, List<ProductBalance>> productBalances = {};
+  bool assetsReady = false;
+  bool _privateAuthenticated = false;
+  Timer? _freshnessTimer;
+  int _publicRequestVersion = 0;
+  String _priceKey(ProductMode product, String symbol) =>
+      '${product.productLine}:$symbol';
+  List<ProductBalance> get allProductBalances =>
+      productBalances.values.expand((v) => v).toList();
+  List<Instrument> get spotInstruments =>
+      instruments.where((i) => i.isSpot).toList();
   final Map<String, double> walletAssetPricesUsdt = {};
   ValuationCurrency valuationCurrency = ValuationCurrency.usdt;
   final Map<ValuationCurrency, double> valuationRates = {
@@ -286,17 +302,18 @@ class AppState extends ChangeNotifier {
     final filtered = instruments
         .where((instrument) => instrument.mode == mode)
         .toList();
-    if (filtered.isNotEmpty) return filtered;
-    return instruments;
+    return filtered;
   }
 
   double? latestPriceFor(Instrument instrument) {
-    final direct = latestPrices[instrument.symbol];
+    final direct = latestPrices[_priceKey(instrument.mode, instrument.symbol)];
     if (direct != null && direct > 0) return direct;
-    if (instrument.symbol == selectedSymbol && candles.isNotEmpty) {
+    if (instrument.mode == mode &&
+        instrument.symbol == selectedSymbol &&
+        candles.isNotEmpty) {
       return candles.last.close;
     }
-    if (instrument.symbol == orderBook.symbol) {
+    if (instrument.mode == mode && instrument.symbol == orderBook.symbol) {
       final bestBid = orderBook.bids.isNotEmpty ? orderBook.bids.first : null;
       final bestAsk = orderBook.asks.isNotEmpty ? orderBook.asks.first : null;
       if (bestBid != null && bestAsk != null) {
@@ -325,7 +342,8 @@ class AppState extends ChangeNotifier {
 
   double? productBalancesUsdt() {
     var total = 0.0;
-    for (final balance in balances) {
+    if (!assetsReady) return null;
+    for (final balance in allProductBalances) {
       if (balance.equity == 0) continue;
       final asset = balance.asset.toUpperCase();
       final price = asset == 'USDT' ? 1.0 : walletAssetPricesUsdt[asset];
@@ -612,6 +630,13 @@ class AppState extends ChangeNotifier {
     await privateRealtime.close();
     await sessionStore.clear();
     session = null;
+    privateViews.clear();
+    productBalances.clear();
+    assetsReady = false;
+    balances = const [];
+    positions = const [];
+    openOrders = const [];
+    openTriggerOrders = const [];
     pendingBiometricSession = null;
     biometricLoginEnabled = false;
     api.setSession(null);
@@ -654,26 +679,45 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshPublicData({bool silent = false}) async {
     if (offline || selectedSymbol.isEmpty) return;
+    final requestVersion = ++_publicRequestVersion;
     loadingPublic = true;
     notifyListeners();
     try {
       final symbol = selectedSymbol;
       final productLine = _productLineForSymbol(symbol);
+      final beforeBook = _publicVersions['$productLine:$symbol:depth:'];
+      final beforeCandles =
+          _publicVersions['$productLine:$symbol:candles:$period'];
       final results = await Future.wait([
         api.orderBook(symbol, productLine: productLine),
         api.candles(symbol, period, productLine: productLine),
       ]);
+      if (requestVersion != _publicRequestVersion) return;
       final loadedBook = results[0] as OrderBook;
-      orderBook = loadedBook;
+      if (identical(beforeBook, _publicVersions['$productLine:$symbol:depth:'])) {
+        orderBook = loadedBook;
+      }
       final loadedCandles = results[1] as List<Candle>;
-      candles = loadedCandles;
-      if (candles.isNotEmpty) latestPrices[symbol] = candles.last.close;
+      if (identical(
+        beforeCandles,
+        _publicVersions['$productLine:$symbol:candles:$period'],
+      )) {
+        candles = loadedCandles;
+      } else {
+        candles = {
+          for (final c in [...loadedCandles, ...candles]) c.openTime: c,
+        }.values.toList()..sort((a, b) => a.openTime.compareTo(b.openTime));
+      }
+      if (candles.isNotEmpty) {
+        latestPrices[_priceKey(mode, symbol)] = candles.last.close;
+      }
       lastError = null;
     } catch (error) {
+      if (requestVersion != _publicRequestVersion) return;
       if (!offline) {
         orderBook = OrderBook.empty(selectedSymbol);
         candles = const [];
-        latestPrices.remove(selectedSymbol);
+        latestPrices.remove(_priceKey(mode, selectedSymbol));
       }
       if (silent) {
         _recordRealtimeIssue('加载行情失败：$error');
@@ -681,96 +725,53 @@ class AppState extends ChangeNotifier {
         lastError = '加载行情失败：$error';
       }
     } finally {
-      loadingPublic = false;
-      notifyListeners();
+      if (requestVersion == _publicRequestVersion) {
+        loadingPublic = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> refreshPrivateData() async {
     final id = userId;
     if (offline || id == null) return;
-    final openOrdersRequestVersion = ++_openOrdersRequestVersion;
+    final generation = ++_openOrdersRequestVersion;
+    final selectedMode = mode;
     loadingPrivate = true;
     notifyListeners();
     try {
-      final productLine = mode.productLine;
-      final accountType = mode.accountType;
-      final isDerivativeMode = mode.isDerivative;
       final results = await Future.wait([
-        api.productBalances(
-          id,
-          accountType: accountType,
-          productLine: productLine,
-        ),
-        isDerivativeMode
-            ? api.positions(id, productLine: productLine)
-            : Future<List<Position>>.value(const []),
-        api.openOrders(id, symbol: selectedSymbol, productLine: productLine),
-        isDerivativeMode
+        selectedMode.isDerivative
             ? api.openAlgoOrders(
                 id,
                 symbol: selectedSymbol,
-                productLine: productLine,
+                productLine: selectedMode.productLine,
               )
             : Future<List<AlgoOrderModel>>.value(const []),
-        isDerivativeMode
-            ? api.openTriggerOrders(
-                id,
-                symbol: selectedSymbol,
-                productLine: productLine,
-              )
-            : Future<List<TriggerOrderModel>>.value(const []),
-        isDerivativeMode
-            ? api.positionMode(id, productLine: productLine)
-            : Future<String>.value('ONE_WAY'),
-        isDerivativeMode
-            ? api.accountRisk(
-                id,
-                selectedInstrument.settleAsset,
-                accountType: accountType,
-                productLine: productLine,
-              )
-            : Future<AccountRisk?>.value(null),
-        isDerivativeMode
-            ? api.positionRisks(id, productLine: productLine)
-            : Future<List<PositionRisk>>.value(const []),
-        isDerivativeMode
-            ? api.liquidationOrders(id, productLine: productLine)
-            : Future<List<LiquidationOrder>>.value(const []),
         api.walletPortfolio(id),
         api.walletOrders(id),
+        selectedMode.isDerivative
+            ? api.liquidationOrders(id, productLine: selectedMode.productLine)
+            : Future<List<LiquidationOrder>>.value(const []),
       ]);
-      balances = results[0] as List<ProductBalance>;
-      final allPositions = results[1] as List<Position>;
-      positions = allPositions.where((position) {
-        final instrument = instruments.firstWhere(
-          (item) => item.symbol == position.symbol,
-          orElse: () => selectedInstrument,
-        );
-        return instrument.mode == mode;
-      }).toList();
-      final openOrdersPage = results[2] as OpenOrdersPage;
-      if (openOrdersRequestVersion == _openOrdersRequestVersion) {
-        openOrders = openOrdersPage.orders;
-        openOrdersNextCursor = openOrdersPage.nextCursor;
-        openOrdersHasMore = openOrdersPage.hasMore;
-        loadingMoreOpenOrders = false;
+      if (generation != _openOrdersRequestVersion ||
+          id != userId ||
+          selectedMode != mode) {
+        return;
       }
-      openAlgoOrders = results[3] as List<AlgoOrderModel>;
-      openTriggerOrders = results[4] as List<TriggerOrderModel>;
-      positionMode = results[5] as String;
-      accountRisk = results[6] as AccountRisk?;
-      positionRisks = results[7] as List<PositionRisk>;
-      liquidationOrders = results[8] as List<LiquidationOrder>;
-      walletPortfolio = results[9] as WalletPortfolio;
-      walletOrders = results[10] as List<WalletOrderRecord>;
+      openAlgoOrders = results[0] as List<AlgoOrderModel>;
+      walletPortfolio = results[1] as WalletPortfolio;
+      walletOrders = results[2] as List<WalletOrderRecord>;
+      liquidationOrders = results[3] as List<LiquidationOrder>;
       await refreshWalletAssetPrices();
       lastError = null;
     } catch (error) {
-      lastError = '加载账户失败：$error';
+      if (generation == _openOrdersRequestVersion) lastError = '加载账户失败：$error';
     } finally {
-      loadingPrivate = false;
-      notifyListeners();
+      if (generation == _openOrdersRequestVersion) {
+        loadingPrivate = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -990,6 +991,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> selectMode(ProductMode nextMode) async {
     mode = nextMode;
+    balances = const [];
+    positions = const [];
+    openOrders = const [];
+    openTriggerOrders = const [];
+    positionRisks = const [];
+    _materializePrivate();
     final candidates = visibleInstruments;
     if (candidates.isNotEmpty &&
         !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
@@ -1007,6 +1014,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> selectSymbol(String symbol) async {
     selectedSymbol = symbol;
+    _materializePrivate();
     orderBook = offline
         ? fallbackOrderBook(selectedInstrument)
         : OrderBook.empty(selectedSymbol);
@@ -1422,7 +1430,8 @@ class AppState extends ChangeNotifier {
       }
     }
     if (spotInstrument == null) return null;
-    final cached = latestPrices[spotInstrument.symbol];
+    final cached =
+        latestPrices[_priceKey(ProductMode.spot, spotInstrument.symbol)];
     if (cached != null && cached.isFinite && cached > 0) {
       return MapEntry(asset, cached);
     }
@@ -1434,7 +1443,7 @@ class AppState extends ChangeNotifier {
       );
       if (loaded.isEmpty || loaded.last.close <= 0) return null;
       final price = loaded.last.close;
-      latestPrices[spotInstrument.symbol] = price;
+      latestPrices[_priceKey(ProductMode.spot, spotInstrument.symbol)] = price;
       return MapEntry(asset, price);
     } catch (_) {
       return null;
@@ -1813,6 +1822,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _connectPublicRealtime() async {
     if (config.websocketUrl.trim().isEmpty) return;
+    _publicVersions.clear();
     try {
       await publicRealtime.connect(
         onEvent: handleRealtimeMessage,
@@ -1834,8 +1844,23 @@ class AppState extends ChangeNotifier {
   Future<void> _connectPrivateRealtime() async {
     if (config.websocketUrl.trim().isEmpty) return;
     final connectGeneration = ++_privateRealtimeGeneration;
+    _privateAuthenticated = false;
+    privateViews.clear();
+    productBalances.clear();
+    assetsReady = false;
+    balances = const [];
+    positions = const [];
+    openOrders = const [];
+    openTriggerOrders = const [];
+    positionRisks = const [];
+    accountRisk = null;
+    _freshnessTimer?.cancel();
     final current = session;
     if (current == null) return;
+    _freshnessTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _materializePrivate();
+      _scheduleRealtimeNotify();
+    });
     try {
       await privateRealtime.connect(
         userId: current.user.userId,
@@ -1845,6 +1870,7 @@ class AppState extends ChangeNotifier {
               current.accessToken != session?.accessToken) {
             return;
           }
+          if (message['op'] == 'authenticated') _privateAuthenticated = true;
           handleRealtimeMessage(message);
         },
         onError: (error) {
@@ -1900,6 +1926,11 @@ class AppState extends ChangeNotifier {
     if (offline || !isLoggedIn || (_privateReconnectTimer?.isActive ?? false)) {
       return;
     }
+    _privateAuthenticated = false;
+    for (final view in privateViews.values) {
+      view.status = 'STALE';
+    }
+    _materializePrivate();
     final reconnectGeneration = _privateRealtimeGeneration;
     _privateReconnectAttempts++;
     _privateReconnectTimer = Timer(
@@ -1931,155 +1962,302 @@ class AppState extends ChangeNotifier {
   }
 
   void _subscribePublicSelected() {
-    if (selectedSymbol.isEmpty) return;
-    final selectedProductLine = _productLineForSymbol(selectedSymbol);
-    final instrumentsBySymbol = <String, Instrument>{
-      selectedSymbol: selectedInstrument,
-      for (final instrument in visibleInstruments)
-        instrument.symbol: instrument,
-    };
-    for (final entry in instrumentsBySymbol.entries) {
-      publicRealtime.subscribe(
-        'trades',
-        symbol: entry.key,
-        productLine: entry.value.mode.productLine,
-      );
+    final subscriptions = <Map<String, String>>[];
+    void add(
+      String channel,
+      ProductMode product,
+      String symbol, [
+      String? interval,
+    ]) {
+      if (symbol.isEmpty) return;
+      subscriptions.add({
+        'channel': channel,
+        'productLine': product.productLine,
+        'symbol': symbol,
+        'period': ?interval,
+      });
     }
-    publicRealtime.subscribe(
-      'depth',
-      symbol: selectedSymbol,
-      productLine: selectedProductLine,
-    );
-    publicRealtime.subscribe(
-      'candles',
-      symbol: selectedSymbol,
-      period: period,
-      productLine: selectedProductLine,
-    );
+
+    for (final instrument in spotInstruments) {
+      add('trades', ProductMode.spot, instrument.symbol);
+      add('bookTicker', ProductMode.spot, instrument.symbol);
+    }
+    for (final instrument in visibleInstruments) {
+      add('trades', mode, instrument.symbol);
+    }
+    add('depth', mode, selectedSymbol);
+    add('candles', mode, selectedSymbol, period);
+    if (mode.isDerivative) {
+      add('mark', mode, selectedSymbol);
+      add('index', mode, selectedSymbol);
+      if (mode.isPerpetual) add('funding', mode, selectedSymbol);
+    }
+    for (final entry in privateViews.entries) {
+      for (final position in entry.value.rows('position')) {
+        if (asInt(position['signedQuantitySteps']) != 0) {
+          add('mark', entry.key, asString(position['symbol']));
+        }
+      }
+    }
+    publicRealtime.replaceSubscriptions(subscriptions);
   }
 
   void _subscribePrivateSelected() {
-    if (!isLoggedIn || selectedSymbol.isEmpty) return;
-    final productLine = _productLineForSymbol(selectedSymbol);
-    final instrument = _instrumentForSymbol(selectedSymbol);
-    privateRealtime.subscribe(
-      'orders',
-      symbol: selectedSymbol,
-      productLine: productLine,
-    );
-    privateRealtime.subscribe(
-      'matches',
-      symbol: selectedSymbol,
-      productLine: productLine,
-    );
-    privateRealtime.subscribe(
-      'executionReports',
-      symbol: selectedSymbol,
-      productLine: productLine,
-    );
-    if (!instrument.isDerivative) return;
-    privateRealtime.subscribe(
-      'triggerOrders',
-      symbol: selectedSymbol,
-      productLine: productLine,
-    );
-    privateRealtime.subscribe(
-      'positions',
-      symbol: selectedSymbol,
-      productLine: productLine,
-    );
-    privateRealtime.subscribe(
-      'positionRisk',
-      symbol: selectedSymbol,
-      productLine: productLine,
-    );
-    privateRealtime.subscribe('accountRisk', productLine: productLine);
+    if (!isLoggedIn) return;
+    privateRealtime.replaceSubscriptions([
+      for (final product in ProductMode.values)
+        for (final channel in [
+          'accountState',
+          'orders',
+          'triggerOrders',
+          'positions',
+          'positionRisk',
+          'executionReports',
+        ])
+          {'channel': channel, 'productLine': product.productLine},
+    ]);
+  }
+
+  void _materializePrivate() {
+    if (!isLoggedIn) return;
+    var complete = _privateAuthenticated;
+    for (final product in ProductMode.values) {
+      final view = privateViews[product];
+      if (view == null) {
+        complete = false;
+        continue;
+      }
+      complete = complete && view.ready;
+      final cash = view.rows('balance');
+      final equity = <String, int>{
+        for (final b in cash)
+          asString(b['asset']):
+              asInt(b['availableUnits']) + asInt(b['lockedUnits']),
+      };
+      final activePositions = view
+          .rows('position')
+          .where((p) => asInt(p['signedQuantitySteps']) != 0)
+          .toList();
+      final risks = view.rows('risk');
+      final pnlByPosition = <String, int>{};
+      for (final p in activePositions) {
+        final matching = instruments.where(
+          (i) =>
+              i.mode == product &&
+              i.symbol == p['symbol'] &&
+              i.version == asInt(p['instrumentVersion']),
+        );
+        final instrument = matching.isEmpty ? null : matching.first;
+        final risk = risks
+            .where((r) => positionKey(r) == positionKey(p))
+            .firstOrNull;
+        final valuation = instrument == null
+            ? null
+            : positionValuation(
+                p,
+                instrument,
+                markPrices[_priceKey(product, instrument.symbol)] ?? 0,
+              );
+        if (valuation != null) pnlByPosition[positionKey(p)] = valuation.pnl;
+        final contribution =
+            valuation?.value ??
+            (!product.isOption && risk != null
+                ? asInt(risk['unrealizedPnlUnits'])
+                : null);
+        if (contribution == null) {
+          complete = false;
+        } else {
+          final asset = asString(p['marginAsset']);
+          equity[asset] = (equity[asset] ?? 0) + contribution;
+        }
+      }
+      productBalances[product] = cash
+          .map(
+            (b) => ProductBalance(
+              accountType: product.accountType,
+              asset: asString(b['asset']),
+              availableUnits: asInt(b['availableUnits']),
+              lockedUnits: asInt(b['lockedUnits']),
+              equityUnits: equity[asString(b['asset'])] ?? 0,
+            ),
+          )
+          .toList();
+      if (product == mode) {
+        balances = productBalances[product]!;
+        positions = activePositions.map(Position.fromJson).toList();
+        openOrders = view
+            .rows('order')
+            .where(
+              (o) => o['status'] == 'OPEN' && o['symbol'] == selectedSymbol,
+            )
+            .map(
+              (o) => OrderModel.fromJson({
+                ...o,
+                'status': asInt(o['executedQuantitySteps']) > 0
+                    ? 'PARTIALLY_FILLED'
+                    : 'NEW',
+              }),
+            )
+            .toList();
+        openTriggerOrders = view
+            .rows('trigger')
+            .where(
+              (o) =>
+                  ['PENDING', 'TRIGGERING'].contains(o['status']) &&
+                  o['symbol'] == selectedSymbol,
+            )
+            .map(TriggerOrderModel.fromJson)
+            .toList();
+        positionRisks = risks
+            .where(
+              (r) =>
+                  activePositions.any((p) => positionKey(p) == positionKey(r)),
+            )
+            .map(
+              (r) => PositionRisk.fromJson({
+                ...r,
+                if (pnlByPosition.containsKey(positionKey(r)))
+                  'unrealizedPnlUnits': pnlByPosition[positionKey(r)],
+              }),
+            )
+            .toList();
+        positionMode = view.positionMode;
+        openOrdersHasMore = false;
+        openOrdersNextCursor = null;
+      }
+    }
+    assetsReady = complete;
   }
 
   void handleRealtimeMessage(Map<String, dynamic> message) {
     final op = asString(message['op']);
     final channel = asString(message['channel']);
-    final data = asMap(message['data']);
+    if (op == 'authenticated' &&
+        isLoggedIn &&
+        asInt(message['userId']) == userId) {
+      _privateAuthenticated = true;
+      return;
+    }
     if (op == 'error') {
       lastError = asString(message['error'], fallback: '实时消息错误');
       notifyListeners();
       return;
     }
-    if (op != 'event') return;
-    realtimeLog.insert(0, '$channel ${DateTime.now().toIso8601String()}');
-    if (realtimeLog.length > 20) realtimeLog.removeLast();
-    final symbol = asString(
-      message['symbol'],
-      fallback: asString(data['symbol'], fallback: selectedSymbol),
-    );
-    final messageProductLine = asString(
-      message['productLine'],
-      fallback: asString(data['productLine']),
-    );
-    if (messageProductLine.isEmpty ||
-        messageProductLine != _productLineForSymbol(symbol)) {
+    final product = ProductMode.values
+        .where((p) => p.productLine == message['productLine'])
+        .firstOrNull;
+    if (product == null) return;
+    if (op == 'snapshot' ||
+        [
+          'accountState',
+          'orders',
+          'triggerOrders',
+          'positions',
+          'positionRisk',
+          'accountRisk',
+          'executionReports',
+        ].contains(channel)) {
+      if (!isLoggedIn || asInt(message['userId']) != userId) return;
+      final view = privateViews.putIfAbsent(product, PrivateView.new);
+      if (view.apply(message)) {
+        _materializePrivate();
+        _subscribePublicSelected();
+        _scheduleRealtimeNotify();
+      }
       return;
     }
-    if (channel == 'depth') {
-      if (symbol != selectedSymbol) return;
-      _applyDepthUpdate(symbol, data);
-    } else if (channel == 'trades') {
-      final price = _tradePrice(symbol, data);
-      if (price != null && price > 0) latestPrices[symbol] = price;
-    } else if (channel == 'candles') {
-      if (symbol != selectedSymbol) return;
-      final messagePeriod = asString(
-        message['period'],
-        fallback: asString(data['period'], fallback: period),
-      );
-      if (messagePeriod != period) return;
-      final candle = Candle.fromJson(data);
-      final index = candles.indexWhere(
-        (item) => item.openTime == candle.openTime,
-      );
-      if (index >= 0) {
-        candles = [...candles]..[index] = candle;
-      } else {
-        candles = [...candles, candle]
-          ..sort((a, b) => a.openTime.compareTo(b.openTime));
+    if (op != 'event') return;
+    final envelope = asMap(message['data']);
+    final data = asMap(
+      envelope.containsKey('value') ? envelope['value'] : envelope,
+    );
+    final symbol = asString(
+      message['symbol'],
+      fallback: asString(data['symbol']),
+    );
+    final instrument = instruments
+        .where((i) => i.mode == product && i.symbol == symbol)
+        .firstOrNull;
+    if (instrument == null) return;
+    final selected = product == mode && symbol == selectedSymbol;
+    final key = _priceKey(product, symbol);
+    final stream = '$key:$channel:${message['period'] ?? ''}';
+    final version = asString(envelope['version']);
+    final previous = _publicVersions[stream];
+    if (version.isNotEmpty && previous != null) {
+      final time = DateTime.tryParse(asString(message['eventTime']));
+      final previousTime = DateTime.tryParse(asString(previous['eventTime']));
+      final coreStream = ['trades', 'depth', 'bookTicker'].contains(channel);
+      if (!coreStream &&
+          time != null &&
+          previousTime != null &&
+          time != previousTime) {
+        if (time.isBefore(previousTime)) return;
+      } else if (version.compareTo(asString(previous['version'])) <= 0) {
+        return;
       }
-      if (candles.length > 300) candles = candles.sublist(candles.length - 300);
-      latestPrices[symbol] = candle.close;
-    } else if (channel == 'orders') {
-      _upsertOrder(OrderModel.fromJson(data));
-    } else if (channel == 'triggerOrders') {
-      final eventId = asInt(data['eventId']);
-      final orderData = asMap(data['order']);
-      final order = TriggerOrderModel.fromJson(orderData);
-      final previousEventId =
-          _triggerOrderEventVersions[order.triggerOrderId] ?? 0;
-      if (eventId > previousEventId) {
-        _triggerOrderEventVersions[order.triggerOrderId] = eventId;
-        _upsertTriggerOrder(order);
-      }
-    } else if (channel == 'positions') {
-      final position = Position.fromJson(data);
-      positions = [
-        for (final item in positions)
-          if (item.symbol != position.symbol ||
-              item.marginMode != position.marginMode ||
-              item.positionSide != position.positionSide)
-            item,
-        if (position.signedQuantitySteps != 0) position,
-      ];
-    } else if (channel == 'accountRisk') {
-      accountRisk = AccountRisk.fromJson(data);
-    } else if (channel == 'positionRisk') {
-      final risk = PositionRisk.fromJson(data);
-      positionRisks = [
-        for (final item in positionRisks)
-          if (item.symbol != risk.symbol ||
-              item.positionSide != risk.positionSide)
-            item,
-        risk,
-      ];
     }
-    notifyListeners();
+    if (version.isNotEmpty) {
+      _publicVersions[stream] = {
+        'version': version,
+        'eventTime': message['eventTime'],
+      };
+    }
+    if (channel == 'depth' && selected) {
+      if (data['levels'] is List) {
+        final levels = asList(data['levels']);
+        _applyDepthUpdate(symbol, {
+          ...data,
+          'updateType': 'SNAPSHOT',
+          'bids': levels.where((v) => asMap(v)['side'] == 'BUY').toList(),
+          'asks': levels.where((v) => asMap(v)['side'] == 'SELL').toList(),
+        });
+      } else {
+        _applyDepthUpdate(symbol, data);
+      }
+    } else if (channel == 'trades' || channel == 'bookTicker') {
+      double? price;
+      if (channel == 'bookTicker') {
+        final bid = asInt(asMap(data['bid'])['priceTicks']),
+            ask = asInt(asMap(data['ask'])['priceTicks']);
+        final ticks = bid > 0 && ask > 0
+            ? (bid + ask) / 2
+            : (bid > 0 ? bid : ask).toDouble();
+        price = ticks * instrument.priceTickUnits / 100000000;
+      } else {
+        price = data['priceTicks'] != null
+            ? instrument.priceFromTicks(asInt(data['priceTicks']))
+            : asDouble(data['price']);
+      }
+      if (price > 0) {
+        latestPrices[key] = price;
+        if (instrument.isSpot && instrument.quoteAsset == 'USDT') {
+          walletAssetPricesUsdt[instrument.baseAsset.toUpperCase()] = price;
+        }
+      }
+    } else if (channel == 'mark') {
+      marketMetrics[key] = {...?marketMetrics[key], ...data};
+      final ticks = data['markPriceTicks'] != null
+          ? asInt(data['markPriceTicks'])
+          : data['markPriceUnits'] != null && instrument.priceTickUnits > 0
+          ? asInt(data['markPriceUnits']) ~/ instrument.priceTickUnits
+          : instrument.ticksFromPrice(asDouble(data['markPrice']));
+      if (ticks > 0) {
+        markPrices[key] = ticks;
+        _materializePrivate();
+      }
+    } else if (channel == 'index' || channel == 'funding') {
+      marketMetrics[key] = {...?marketMetrics[key], ...data};
+    } else if (channel == 'candles' &&
+        selected &&
+        asString(message['period'], fallback: asString(data['period'])) ==
+            period) {
+      final candle = Candle.fromJson(data);
+      candles = [...candles.where((c) => c.openTime != candle.openTime), candle]
+        ..sort((a, b) => a.openTime.compareTo(b.openTime));
+      if (candles.length > 300) candles = candles.sublist(candles.length - 300);
+    }
+    _scheduleRealtimeNotify();
   }
 
   void _applyDepthUpdate(String symbol, Map<String, dynamic> data) {
@@ -2123,14 +2301,6 @@ class AppState extends ChangeNotifier {
         depth: depth,
       ),
     );
-  }
-
-  double? _tradePrice(String symbol, Map<String, dynamic> data) {
-    final decimalPrice = asDouble(data['price']);
-    if (decimalPrice > 0) return decimalPrice;
-    final priceTicks = asInt(data['priceTicks']);
-    if (priceTicks <= 0) return null;
-    return _instrumentForSymbol(symbol).priceFromTicks(priceTicks);
   }
 
   Instrument _instrumentForSymbol(String symbol) {
@@ -2198,6 +2368,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _freshnessTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
     _publicReconnectTimer?.cancel();
     _privateReconnectTimer?.cancel();

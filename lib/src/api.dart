@@ -1355,6 +1355,36 @@ class RealtimeClient {
   StreamSubscription<dynamic>? _subscription;
   bool _closing = false;
   int _connectionGeneration = 0;
+  bool _authenticated = true;
+  final _desired = <String, Map<String, String>>{};
+  final _installed = <String, Map<String, String>>{};
+
+  void replaceSubscriptions(List<Map<String, String>> subscriptions) {
+    _desired.clear();
+    for (final s in subscriptions) {
+      _desired['${s['productLine']}:${s['channel']}:${s['symbol'] ?? '*'}:${s['period'] ?? ''}'] =
+          s;
+    }
+    _reconcileSubscriptions();
+  }
+
+  void _reconcileSubscriptions() {
+    final socket = _socket;
+    if (socket == null || !_authenticated) return;
+    for (final e in _installed.entries) {
+      if (!_desired.containsKey(e.key)) {
+        socket.add(jsonEncode({'op': 'unsubscribe', 'id': e.key, ...e.value}));
+      }
+    }
+    for (final e in _desired.entries) {
+      if (!_installed.containsKey(e.key)) {
+        socket.add(jsonEncode({'op': 'subscribe', 'id': e.key, ...e.value}));
+      }
+    }
+    _installed
+      ..clear()
+      ..addAll(_desired);
+  }
 
   Future<void> connect({
     int? userId,
@@ -1372,8 +1402,6 @@ class RealtimeClient {
     if (userId != null) {
       if (config.localWebSocketUserFallback) {
         query['userId'] = '$userId';
-      } else if (accessToken != null && accessToken.isNotEmpty) {
-        query['token'] = accessToken;
       }
     }
     final uri = query.isEmpty ? base : base.replace(queryParameters: query);
@@ -1385,10 +1413,19 @@ class RealtimeClient {
       return;
     }
     _socket = socket;
+    _installed.clear();
+    _desired.clear();
+    _authenticated = accessToken == null;
     _subscription = socket.listen(
       (message) {
+        if (generation != _connectionGeneration) return;
         try {
-          onEvent(asMap(jsonDecode(message as String)));
+          final decoded = asMap(jsonDecode(message as String));
+          if (decoded['op'] == 'authenticated') {
+            _authenticated = true;
+            _reconcileSubscriptions();
+          }
+          onEvent(decoded);
         } catch (error) {
           onError(error);
         }
@@ -1402,6 +1439,11 @@ class RealtimeClient {
       },
       cancelOnError: false,
     );
+    if (accessToken != null) {
+      socket.add(
+        jsonEncode({'op': 'authenticate', 'id': 'auth', 'token': accessToken}),
+      );
+    }
   }
 
   void subscribeDefaults({
@@ -1419,7 +1461,7 @@ class RealtimeClient {
     );
     subscribe('orders', productLine: productLine);
     subscribe('triggerOrders', productLine: productLine);
-    subscribe('matches', productLine: productLine);
+    subscribe('accountState', productLine: productLine);
     subscribe('executionReports', productLine: productLine);
     subscribe('positions', productLine: productLine);
     subscribe('accountRisk', productLine: productLine);
@@ -1432,19 +1474,15 @@ class RealtimeClient {
     String? period,
     String? productLine,
   }) {
-    final socket = _socket;
-    if (socket == null) return;
-    final command = {
-      'op': 'subscribe',
-      'id': '$channel-${DateTime.now().millisecondsSinceEpoch}',
-      'channel': channel,
-    };
+    final command = <String, String>{'channel': channel};
     if (symbol != null) command['symbol'] = symbol;
     if (period != null) command['period'] = period;
     if (productLine != null && productLine.isNotEmpty) {
       command['productLine'] = productLine;
     }
-    socket.add(jsonEncode(command));
+    _desired['$productLine:$channel:${symbol ?? '*'}:${period ?? ''}'] =
+        command;
+    _reconcileSubscriptions();
   }
 
   Future<void> close() async {

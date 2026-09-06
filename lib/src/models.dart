@@ -342,6 +342,9 @@ class Instrument {
     this.optionType,
     this.optionExerciseStyle,
     this.settlementMethod,
+    this.version,
+    this.notionalMultiplierUnits,
+    this.settleScaleUnits,
   });
 
   final String symbol;
@@ -363,6 +366,9 @@ class Instrument {
   final String? optionType;
   final String? optionExerciseStyle;
   final String? settlementMethod;
+  final int? version;
+  final int? notionalMultiplierUnits;
+  final int? settleScaleUnits;
 
   factory Instrument.empty(ProductMode mode) {
     return Instrument(
@@ -445,6 +451,9 @@ class Instrument {
       optionType: nullableString(json['optionType']),
       optionExerciseStyle: nullableString(json['optionExerciseStyle']),
       settlementMethod: nullableString(json['settlementMethod']),
+      version: asNullableInt(json['version']),
+      notionalMultiplierUnits: asNullableInt(json['notionalMultiplierUnits']),
+      settleScaleUnits: asNullableInt(json['settleScaleUnits']),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -520,8 +521,12 @@ void main() {
       ),
       accessToken: 'access',
       refreshToken: 'refresh',
-      accessTokenExpiresAt: DateTime.parse('2026-08-05T00:30:00Z'),
-      refreshTokenExpiresAt: DateTime.parse('2026-09-04T00:00:00Z'),
+      accessTokenExpiresAt: DateTime.now().toUtc().add(
+        const Duration(minutes: 30),
+      ),
+      refreshTokenExpiresAt: DateTime.now().toUtc().add(
+        const Duration(days: 30),
+      ),
     );
 
     final restored = AuthSession.fromJson(session.toJson());
@@ -728,6 +733,9 @@ void main() {
       final socket = await WebSocketTransformer.upgrade(request);
       if (connectionNumber != 1) {
         socket.listen((message) {
+          if (message is String && message.contains('authenticate')) {
+            socket.add(jsonEncode({'op': 'authenticated', 'userId': 1001}));
+          }
           if (message is String && message.contains('executionReports')) {
             secondSubscription.complete();
           }
@@ -820,7 +828,7 @@ void main() {
         privateRealtime.subscriptions.any(
           (item) =>
               item.channel == 'triggerOrders' &&
-              item.symbol == state.selectedSymbol &&
+              item.symbol == null &&
               item.productLine == 'LINEAR_PERPETUAL',
         ),
         isTrue,
@@ -893,7 +901,9 @@ void main() {
       'productLine': 'SPOT',
       'data': {'symbol': 'BTC-USDT', 'price': 65001.0},
     });
-    expect(state.latestPrices['BTC-USDT'], 65001.0);
+    expect(state.latestPrices['SPOT:BTC-USDT'], 65001.0);
+    expect(state.latestPrices['LINEAR_PERPETUAL:BTC-USDT'], 65000.0);
+    state.dispose();
   });
 
   test('spot private refresh skips derivative-only product services', () async {
@@ -916,8 +926,12 @@ void main() {
 
     await state.refreshPrivateData();
 
-    expect(api.productBalanceProductLine, 'SPOT');
-    expect(api.openOrdersProductLine, 'SPOT');
+    expect(
+      api.productBalanceProductLine,
+      isNull,
+      reason: 'account state comes from versioned snapshots',
+    );
+    expect(api.openOrdersProductLine, isNull);
     expect(api.derivativeCalls, isZero);
     expect(state.positionMode, 'ONE_WAY');
     expect(state.accountRisk, isNull);
@@ -926,7 +940,7 @@ void main() {
   });
 
   test(
-    'loads open-order cursor pages and removes cancel-requested orders',
+    'loads full open-order snapshots and removes canceled orders without querying',
     () async {
       final api = _SpotRefreshApiClient();
       final spotSymbol = fallbackInstruments()
@@ -962,10 +976,24 @@ void main() {
         ..mode = ProductMode.spot
         ..selectedSymbol = spotSymbol;
 
+      state.handleRealtimeMessage({
+        'op': 'snapshot',
+        'productLine': 'SPOT',
+        'userId': 1,
+        'data': {
+          'status': 'READY',
+          'snapshotVersion': '0000000000000000001:0000000000',
+          'account': {'balances': [], 'positions': []},
+          'openOrders': [
+            for (final id in [11, 10, 9])
+              _openOrderJson(id, spotSymbol, status: 'OPEN'),
+          ],
+        },
+      });
       await state.refreshPrivateData();
       await state.loadMoreOpenOrders();
 
-      expect(api.openOrderCursors, [null, 'cursor-10']);
+      expect(api.openOrderCursors, isEmpty);
       expect(state.openOrders.map((order) => order.orderId), [11, 10, 9]);
       expect(state.openOrdersHasMore, isFalse);
       expect(state.openOrdersNextCursor, isNull);
@@ -974,10 +1002,16 @@ void main() {
         'op': 'event',
         'channel': 'orders',
         'productLine': 'SPOT',
-        'data': _openOrderJson(10, spotSymbol, status: 'CANCEL_REQUESTED'),
+        'userId': 1,
+        'data': {
+          'version': '0000000000000000002:0000000000',
+          'entityId': '10',
+          'value': _openOrderJson(10, spotSymbol, status: 'CANCELED'),
+        },
       });
 
       expect(state.openOrders.map((order) => order.orderId), [11, 9]);
+      state.dispose();
     },
   );
 
@@ -1068,14 +1102,26 @@ void main() {
       'channel': 'triggerOrders',
       'symbol': 'BTC-USDT',
       'productLine': 'LINEAR_PERPETUAL',
+      'userId': 1,
       'data': {
-        'eventId': eventId,
-        'productLine': 'LINEAR_PERPETUAL',
-        'order': orderJson(status),
+        'version': '${eventId.toString().padLeft(19, '0')}:0000000000',
+        'entityId': '7',
+        'value': [orderJson(status)],
       },
     };
     final state = AppState(offline: true)
-      ..openTriggerOrders = [TriggerOrderModel.fromJson(orderJson('PENDING'))];
+      ..session = const AuthSession(
+        user: AuthUser(
+          userId: 1,
+          username: 'test',
+          email: 'test@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'test',
+        refreshToken: 'test',
+      )
+      ..selectedSymbol = 'BTC-USDT';
+    state.handleRealtimeMessage(event(8, 'PENDING'));
 
     state.handleRealtimeMessage(event(10, 'CANCELED'));
 
@@ -1091,6 +1137,7 @@ void main() {
     state.handleRealtimeMessage(event(11, 'PENDING'));
     expect(state.openTriggerOrders.single.triggerOrderId, 7);
     expect(state.openTriggerOrders.single.status, 'PENDING');
+    state.dispose();
   });
 
   test('parses amend order batch responses', () {
@@ -1603,6 +1650,19 @@ class _RecordingRealtimeClient extends RealtimeClient {
   }) async {
     connectCount++;
     events.add(onEvent);
+  }
+
+  @override
+  void replaceSubscriptions(List<Map<String, String>> values) {
+    subscriptions.clear();
+    for (final s in values) {
+      subscribe(
+        s['channel']!,
+        symbol: s['symbol'],
+        period: s['period'],
+        productLine: s['productLine'],
+      );
+    }
   }
 
   @override

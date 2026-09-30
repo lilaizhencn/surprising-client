@@ -15,6 +15,9 @@ class PrivateView {
   String fence = '';
   DateTime? receivedAt;
   final _entities = <String, _Entry>{};
+  final _orderUpdates = <String, _Entry>{};
+  List<Map<String, dynamic>> get orderUpdates =>
+      _orderUpdates.values.toList().reversed.map((e) => e.value!).toList();
   static final _version = RegExp(r'^\d{19}:\d{10}$');
 
   bool get ready =>
@@ -52,6 +55,10 @@ class PrivateView {
         for (final raw in asList(account['balances'])) {
           final v = asMap(raw);
           put('balance:${v['asset']}', v);
+        }
+        for (final raw in asList(account['leverages'])) {
+          final v = asMap(raw);
+          put('leverage:${v['instrumentId']}:${v['marginMode']}', v);
         }
         for (final raw in asList(account['positions'])) {
           final v = asMap(raw);
@@ -97,6 +104,10 @@ class PrivateView {
           final v = asMap(raw);
           put('balance:${v['asset']}', v);
         }
+        for (final raw in asList(value['leverages'])) {
+          final v = asMap(raw);
+          put('leverage:${v['instrumentId']}:${v['marginMode']}', v);
+        }
       case 'positions':
         for (final raw in asList(value['positions'])) {
           final v = asMap(raw), key = positionKey(v);
@@ -104,6 +115,15 @@ class PrivateView {
           if (asInt(v['signedQuantitySteps']) == 0) put('risk:$key', null);
         }
       case 'orders':
+        final orderId = asString(value['orderId']);
+        if (version.compareTo(_entities['order:$orderId']?.version ?? '') > 0 &&
+            version.compareTo(_orderUpdates[orderId]?.version ?? '') > 0) {
+          _orderUpdates.remove(orderId);
+          _orderUpdates[orderId] = _Entry(version, value);
+          if (_orderUpdates.length > 100) {
+            _orderUpdates.remove(_orderUpdates.keys.first);
+          }
+        }
         put(
           'order:${value['orderId']}',
           value['status'] == 'OPEN' ? value : null,
@@ -138,6 +158,7 @@ class PrivateView {
 ) {
   if (mark <= 0 ||
       instrument.notionalMultiplierUnits == null ||
+      instrument.notionalMultiplierUnits! <= 0 ||
       asInt(p['entryPriceTicks']) <= 0) {
     return null;
   }

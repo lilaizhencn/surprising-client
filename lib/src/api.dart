@@ -439,6 +439,39 @@ class ApiClient {
     ).map((item) => ProductBalance.fromJson(asMap(item))).toList();
   }
 
+  Future<Map<String, dynamic>> leverageSetting(
+    int userId,
+    Instrument instrument,
+    String marginMode,
+  ) => get(
+    '/api/v1/gateway/trading-leverage/settings',
+    query: {
+      'userId': '$userId',
+      'instrumentId': instrument.instrumentId,
+      'productLine': instrument.mode.productLine,
+      'marginMode': marginMode,
+    },
+    productLine: instrument.mode.productLine,
+  );
+
+  Future<Map<String, dynamic>> updateLeverage(
+    int userId,
+    Instrument instrument,
+    String marginMode,
+    int leveragePpm,
+  ) => post(
+    '/api/v1/gateway/trading-leverage/settings',
+    {
+      'userId': userId,
+      'instrumentId': instrument.instrumentId,
+      'productLine': instrument.mode.productLine,
+      'marginMode': marginMode,
+      'leveragePpm': leveragePpm,
+      'reason': 'mobile trading ticket',
+    },
+    productLine: instrument.mode.productLine,
+  );
+
   Future<List<Position>> positions(int userId, {String? productLine}) async {
     final json = await get(
       '/api/v1/gateway/account/positions',

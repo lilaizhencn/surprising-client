@@ -5111,6 +5111,10 @@ class OrderBookPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxQuantity = [
+      ...orderBook.asks.take(5),
+      ...orderBook.bids.take(5),
+    ].fold<int>(0, (value, level) => math.max(value, level.quantitySteps));
     final asks = orderBook.asks.take(5).toList().reversed.toList();
     final bids = orderBook.bids.take(5).toList();
     final askTotal = asks.fold<int>(
@@ -5160,6 +5164,7 @@ class OrderBookPanel extends StatelessWidget {
           for (final level in asks)
             BookLine(
               level: level,
+              maxQuantity: maxQuantity,
               instrument: instrument,
               color: Theme.of(context).colorScheme.error,
               onTap: onPrice,
@@ -5180,6 +5185,7 @@ class OrderBookPanel extends StatelessWidget {
           for (final level in bids)
             BookLine(
               level: level,
+              maxQuantity: maxQuantity,
               instrument: instrument,
               color: Theme.of(context).colorScheme.tertiary,
               onTap: onPrice,
@@ -5193,7 +5199,7 @@ class OrderBookPanel extends StatelessWidget {
               isScrollControlled: true,
               builder: (_) => AppScope(
                 notifier: AppScope.of(context),
-                child: const FullOrderBookSheet(),
+                child: FullOrderBookSheet(onPrice: onPrice),
               ),
             ),
             child: const Text('查看20档', style: TextStyle(fontSize: 11)),
@@ -5377,18 +5383,48 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                 '持仓 (${state.positions.length})',
                 '当前委托 (${state.openOrders.length})',
                 '止盈止损 / 策略 ($botCount)',
+                '最近订单更新',
               ].asMap().entries)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
                     label: Text(entry.value),
                     selected: tab == entry.key,
-                    onSelected: (_) => setState(() => tab = entry.key),
+                    onSelected: (_) {
+                      setState(() => tab = entry.key);
+                      if (entry.key == 0) {
+                        unawaited(state.refreshPositionRiskDetails());
+                      }
+                    },
                   ),
                 ),
             ],
           ),
         ),
+        CheckboxListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('仅当前交易对'),
+          value: state.onlyCurrentTradingPair,
+          onChanged: (value) => state.setTradingPairFilter(value ?? true),
+        ),
+        if (tab == 3) ...[
+          const Text('本次连接收到的最近 100 条订单更新'),
+          if (state.recentOrderUpdates.isEmpty)
+            const TradingEmptyState(text: '暂无订单更新'),
+          for (final order in state.recentOrderUpdates)
+            OrderRow(
+              order: order,
+              instrument:
+                  state.instruments
+                      .where(
+                        (i) => i.mode == state.mode && i.symbol == order.symbol,
+                      )
+                      .firstOrNull ??
+                  Instrument.empty(state.mode),
+              onCancel: () => state.cancelOrder(order),
+            ),
+        ],
         if (!state.isLoggedIn)
           TextButton(
             onPressed: () => showAuthSheet(context),
@@ -5409,7 +5445,13 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
           ...state.openOrders.map(
             (order) => OrderRow(
               order: order,
-              instrument: state.selectedInstrument,
+              instrument:
+                  state.instruments
+                      .where(
+                        (i) => i.mode == state.mode && i.symbol == order.symbol,
+                      )
+                      .firstOrNull ??
+                  Instrument.empty(state.mode),
               onCancel: () => state.cancelOrder(order),
             ),
           ),
@@ -6891,10 +6933,24 @@ class ContractQuickSettings extends StatelessWidget {
         ),
         const SizedBox(width: 5),
         Expanded(
-          child: Text(
-            '杠杆上限 $leverage',
-            style: const TextStyle(fontSize: 10),
-            textAlign: TextAlign.center,
+          child: TradeSettingButton(
+            label: '杠杆',
+            onTap: () {
+              final state = AppScope.of(context);
+              if (!state.isLoggedIn) {
+                showAuthSheet(context);
+                return;
+              }
+              showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => TradingLeverageSheet(
+                  state: state,
+                  instrument: state.selectedInstrument,
+                  marginMode: marginMode,
+                ),
+              );
+            },
           ),
         ),
         const SizedBox(width: 5),
@@ -7874,6 +7930,7 @@ class ToggleLine extends StatelessWidget {
 class BookLine extends StatelessWidget {
   const BookLine({
     required this.level,
+    required this.maxQuantity,
     required this.instrument,
     required this.color,
     required this.onTap,
@@ -7881,6 +7938,7 @@ class BookLine extends StatelessWidget {
   });
 
   final OrderBookLevel level;
+  final int maxQuantity;
   final Instrument instrument;
   final Color color;
   final ValueChanged<String> onTap;
@@ -7891,10 +7949,9 @@ class BookLine extends StatelessWidget {
       instrument.priceFromTicks(level.priceTicks),
       digits: instrument.pricePrecision,
     );
-    final depth = math.min(
-      .86,
-      math.max(.18, math.log(level.quantitySteps.abs() + 1) / 8),
-    );
+    final depth = maxQuantity <= 0
+        ? 0.0
+        : (level.quantitySteps / maxQuantity).clamp(0.0, 1.0);
     return InkWell(
       onTap: () => onTap(price),
       child: SizedBox(
@@ -8369,6 +8426,76 @@ class WalletOrderRecordRow extends StatelessWidget {
   }
 }
 
+String tradingQuantity(Instrument instrument, int steps) => instrument.isSpot
+    ? '${scaledAmount(BigInt.from(steps) * BigInt.from(instrument.quantityStepUnits), 100000000)} ${instrument.baseAsset}'
+    : '$steps 张';
+
+String tradingAmount(Object? units, Instrument instrument, [String? asset]) {
+  final amount = units == null ? null : BigInt.tryParse('$units');
+  final text = scaledAmount(amount, instrument.settleScaleUnits ?? 100000000);
+  return text == '--'
+      ? text
+      : '$text ${asset == null || asset.isEmpty ? instrument.settleAsset : asset}';
+}
+
+String tradingTime(DateTime? time) => time == null
+    ? '--'
+    : time.toLocal().toIso8601String().substring(0, 19).replaceFirst('T', ' ');
+String tradingStatus(OrderModel order) {
+  final status = order.status == 'OPEN'
+      ? (order.executedQuantitySteps > 0 ? 'PARTIALLY_FILLED' : 'NEW')
+      : order.status;
+  return const {
+        'NEW': '未成交',
+        'ACCEPTED': '未成交',
+        'PARTIALLY_FILLED': '部分成交',
+        'FILLED': '已成交',
+        'CANCELED': '已撤销',
+        'CANCELLED': '已撤销',
+        'REJECTED': '已拒绝',
+        'CANCEL_REQUESTED': '撤销中',
+        'PENDING_RESERVE': '处理中',
+      }[status] ??
+      status;
+}
+
+class TradingDetails extends StatelessWidget {
+  const TradingDetails({required this.values, super.key});
+  final Map<String, String> values;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Wrap(
+      spacing: 12,
+      runSpacing: 10,
+      children: [
+        for (final entry in values.entries)
+          SizedBox(
+            width: (constraints.maxWidth - 12) / 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry.key,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  entry.value,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 class OrderRow extends StatelessWidget {
   const OrderRow({
     required this.order,
@@ -8376,22 +8503,33 @@ class OrderRow extends StatelessWidget {
     required this.onCancel,
     super.key,
   });
-
   final OrderModel order;
   final Instrument instrument;
-  final VoidCallback onCancel;
-
+  final VoidCallback? onCancel;
   @override
   Widget build(BuildContext context) {
+    final average = double.tryParse(order.averagePriceTicks ?? '');
+    final multiplier = instrument.notionalMultiplierUnits;
+    final linear =
+        instrument.mode == ProductMode.linear ||
+        instrument.mode == ProductMode.linearDelivery;
+    final executed = BigInt.tryParse(order.executedValueTicks ?? '');
+    final canCancel = [
+      'OPEN',
+      'NEW',
+      'ACCEPTED',
+      'PARTIALLY_FILLED',
+      'PENDING_RESERVE',
+    ].contains(order.status);
     return Panel(
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${order.side} ${order.symbol}',
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${order.side == 'BUY' ? '买入' : '卖出'} ${order.symbol}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: order.side == 'BUY'
@@ -8399,23 +8537,57 @@ class OrderRow extends StatelessWidget {
                         : Theme.of(context).colorScheme.error,
                   ),
                 ),
-                Text(
-                  '${order.orderType}/${order.timeInForce} · ${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.status}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  '价 ${money(instrument.priceFromTicks(order.priceTicks), digits: instrument.pricePrecision)} · 量 ${order.quantitySteps} · 成交 ${order.executedQuantitySteps}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
-            ),
+              ),
+              if (canCancel && onCancel != null)
+                TextButton(onPressed: onCancel, child: const Text('撤单')),
+            ],
           ),
-          IconButton.filledTonal(
-            onPressed: onCancel,
-            icon: const Icon(Icons.close),
+          Text(
+            '${order.orderType} · ${order.marginMode == 'ISOLATED' ? '逐仓' : '全仓'} · ${positionSideLabel(order.positionSide)} · ${tradingStatus(order)}',
+          ),
+          const SizedBox(height: 10),
+          TradingDetails(
+            values: {
+              '委托价格': order.orderType == 'MARKET'
+                  ? '市价'
+                  : money(
+                      instrument.priceFromTicks(order.priceTicks),
+                      digits: instrument.pricePrecision,
+                    ),
+              '成交均价': average == null || !average.isFinite
+                  ? '--'
+                  : money(
+                      average * instrument.priceTickUnits / 100000000,
+                      digits: instrument.pricePrecision,
+                    ),
+              '委托数量': tradingQuantity(instrument, order.quantitySteps),
+              '已成交数量': tradingQuantity(instrument, order.executedQuantitySteps),
+              '剩余数量': tradingQuantity(instrument, order.remainingQuantitySteps),
+              '成交进度': order.fillProgress,
+              '委托价值':
+                  !linear || multiplier == null || order.orderType == 'MARKET'
+                  ? '--'
+                  : tradingAmount(
+                      BigInt.from(order.priceTicks) *
+                          BigInt.from(order.quantitySteps) *
+                          BigInt.from(multiplier),
+                      instrument,
+                    ),
+              '成交价值': !linear || multiplier == null || executed == null
+                  ? '--'
+                  : tradingAmount(
+                      executed * BigInt.from(multiplier),
+                      instrument,
+                    ),
+              '累计手续费': tradingAmount(order.cumulativeFeeUnits, instrument),
+              '结算币种': instrument.settleAsset,
+              '只减仓 / 只做 Maker':
+                  '${order.reduceOnly ? '是' : '否'} / ${order.postOnly ? '是' : '否'}',
+              '有效方式': order.timeInForce,
+              '委托时间': tradingTime(order.createdAt),
+              '更新时间': tradingTime(order.updatedAt),
+              '订单编号': '${order.orderId}',
+            },
           ),
         ],
       ),
@@ -8438,7 +8610,7 @@ class AlgoOrderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final instrument = state.instruments.firstWhere(
-      (item) => item.symbol == order.symbol,
+      (item) => item.mode == state.mode && item.symbol == order.symbol,
       orElse: () => state.selectedInstrument,
     );
     final priceText = order.priceTicks > 0
@@ -8512,7 +8684,7 @@ class TriggerOrderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final instrument = state.instruments.firstWhere(
-      (item) => item.symbol == order.symbol,
+      (item) => item.mode == state.mode && item.symbol == order.symbol,
       orElse: () => state.selectedInstrument,
     );
     final isTakeProfit = order.triggerType == 'TAKE_PROFIT';
@@ -8561,23 +8733,63 @@ class TriggerOrderRow extends StatelessWidget {
 
 class PositionRow extends StatelessWidget {
   const PositionRow({required this.position, required this.state, super.key});
-
   final Position position;
   final AppState state;
-
   @override
   Widget build(BuildContext context) {
-    final instrument = state.instruments.firstWhere(
-      (item) => item.mode == state.mode && item.symbol == position.symbol,
-      orElse: () => state.selectedInstrument,
-    );
-    final matchingRisks = state.positionRisks.where(
-      (item) =>
-          item.symbol == position.symbol &&
-          item.positionSide == position.positionSide,
-    );
-    final risk = matchingRisks.isEmpty ? null : matchingRisks.first;
-    final long = position.signedQuantitySteps >= 0;
+    final instrument =
+        state.instruments
+            .where((i) => i.mode == state.mode && i.symbol == position.symbol)
+            .firstOrNull ??
+        Instrument.empty(state.mode);
+    final view = state.privateViews[state.mode];
+    final risk = view?.ready == true
+        ? state.positionRisks
+              .where(
+                (r) =>
+                    r.symbol == position.symbol &&
+                    r.positionSide == position.positionSide,
+              )
+              .firstOrNull
+        : null;
+    final queriedRisk = state.queriedPositionRisks
+        .where(
+          (r) =>
+              r.symbol == position.symbol &&
+              r.positionSide == position.positionSide,
+        )
+        .firstOrNull;
+    final leverage = view
+        ?.rows('leverage')
+        .where(
+          (r) =>
+              (r['instrumentId'] == instrument.instrumentId ||
+                  r['symbol'] == instrument.symbol) &&
+              r['marginMode'] == position.marginMode,
+        )
+        .firstOrNull;
+    final mark = state.markTicksFor(instrument);
+    final pnl = state.unrealizedPnlFor(position) ?? risk?.unrealizedPnlUnits;
+    final triggers =
+        view
+            ?.rows('trigger')
+            .where(
+              (r) =>
+                  r['symbol'] == position.symbol &&
+                  r['positionSide'] == position.positionSide,
+            )
+            .toList() ??
+        [];
+    String price(int? ticks) =>
+        ticks == null || ticks <= 0 || instrument.symbol.isEmpty
+        ? '--'
+        : money(
+            instrument.priceFromTicks(ticks),
+            digits: instrument.pricePrecision,
+          );
+    final asset = position.marginAsset.isEmpty
+        ? instrument.settleAsset
+        : position.marginAsset;
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -8588,17 +8800,17 @@ class PositionRow extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                '${position.symbol} ${positionSideLabel(position.positionSide)}',
+                '${position.symbol} ${position.isLong ? '多' : '空'}',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: long
+                  color: position.isLong
                       ? Theme.of(context).colorScheme.tertiary
                       : Theme.of(context).colorScheme.error,
                 ),
               ),
               Chip(
                 label: Text(
-                  '${position.marginMode} ${positionSideLabel(position.positionSide)}',
+                  '${position.marginMode == 'ISOLATED' ? '逐仓' : '全仓'} · ${positionSideLabel(position.positionSide)}',
                 ),
                 visualDensity: VisualDensity.compact,
               ),
@@ -8609,40 +8821,49 @@ class PositionRow extends StatelessWidget {
               ),
             ],
           ),
-          Row(
-            children: [
-              Expanded(
-                child: MetricPill(
-                  label: '数量',
-                  value: '${position.signedQuantitySteps}',
-                  color: long
-                      ? Theme.of(context).colorScheme.tertiary
-                      : Theme.of(context).colorScheme.error,
-                ),
+          TradingDetails(
+            values: {
+              '持仓数量': tradingQuantity(
+                instrument,
+                position.signedQuantitySteps.abs(),
               ),
-              Expanded(
-                child: MetricPill(
-                  label: '开仓均价',
-                  value: money(
-                    instrument.priceFromTicks(position.entryPriceTicks),
-                    digits: instrument.pricePrecision,
-                  ),
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
+              '杠杆': leverage == null
+                  ? '--'
+                  : '${asInt(leverage['leveragePpm']) / 1000000}×',
+              '开仓均价': price(position.entryPriceTicks),
+              '标记价格': price(mark),
+              '未实现盈亏': tradingAmount(pnl, instrument, asset),
+              '已实现盈亏': tradingAmount(
+                position.realizedPnlUnits,
+                instrument,
+                asset,
               ),
-              Expanded(
-                child: MetricPill(
-                  label: '未实现',
-                  value: risk == null
-                      ? '--'
-                      : money(
-                          unitsToDecimal(risk.unrealizedPnlUnits),
-                          digits: 4,
-                        ),
-                  color: _amber,
-                ),
+              '持仓保证金': tradingAmount(
+                position.positionMarginUnits,
+                instrument,
+                asset,
               ),
-            ],
+              '维持保证金': tradingAmount(
+                risk?.maintenanceMarginUnits,
+                instrument,
+                asset,
+              ),
+              '保证金率': risk?.marginRatioPpm == null
+                  ? '--'
+                  : percentageFromPpm(risk!.marginRatioPpm!),
+              '强平价格（快照）': price(queriedRisk?.liquidationPriceTicks),
+              '风险状态': risk?.status ?? '风险数据同步中',
+              '止盈止损': view?.ready != true
+                  ? '同步中'
+                  : triggers.isEmpty
+                  ? '未设置'
+                  : triggers
+                        .map(
+                          (r) =>
+                              '${triggerTypeLabel(asString(r['triggerType']))} ${price(asNullableInt(r['triggerPriceTicks']))}',
+                        )
+                        .join(' / '),
+            },
           ),
         ],
       ),
@@ -9380,7 +9601,7 @@ class RecentTradesPanel extends StatelessWidget {
       children: [
         if (state.recentTrades.isEmpty)
           const Padding(padding: EdgeInsets.all(16), child: Text('暂无成交')),
-        for (final trade in state.recentTrades.take(30))
+        for (final trade in state.recentTrades.take(50))
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
@@ -9414,7 +9635,10 @@ class RecentTradesPanel extends StatelessWidget {
                   child: Text(
                     asString(
                       trade['quantity'],
-                      fallback: '${asInt(trade['quantitySteps'])} 张',
+                      fallback: tradingQuantity(
+                        instrument,
+                        asInt(trade['quantitySteps']),
+                      ),
                     ),
                     textAlign: TextAlign.end,
                   ),
@@ -9435,79 +9659,118 @@ String _fundingLabel(AppState state) {
   return '资金费率\n${rate == null ? '--' : '${(asInt(rate) / 10000).toStringAsFixed(4)}%'}';
 }
 
-class FullOrderBookSheet extends StatelessWidget {
-  const FullOrderBookSheet({super.key});
+class FullOrderBookSheet extends StatefulWidget {
+  const FullOrderBookSheet({this.onPrice, super.key});
+  final ValueChanged<String>? onPrice;
+  @override
+  State<FullOrderBookSheet> createState() => _FullOrderBookSheetState();
+}
+
+class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
+  int multiple = 1;
+  int depth = 20;
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final instrument = state.selectedInstrument;
-    final book = state.orderBook;
+    final state = AppScope.of(context), instrument = state.selectedInstrument;
+    final bids = aggregateBookLevels(
+      state.orderBook.bids,
+      multiple,
+      bids: true,
+    ).take(depth).toList();
+    final asks = aggregateBookLevels(
+      state.orderBook.asks,
+      multiple,
+      bids: false,
+    ).take(depth).toList();
     return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .7,
+      height: MediaQuery.sizeOf(context).height * .8,
       child: Column(
         children: [
           ListTile(
-            title: Text('${instrument.displayName} · 20档盘口'),
-            subtitle: Text(
-              '价格单位 ${instrument.quoteAsset} · 最小变动 ${instrument.priceFromTicks(1)}',
-            ),
+            title: Text('${instrument.displayName} · 盘口'),
+            subtitle: const Text('实时完整快照，最多 20 档'),
             trailing: IconButton(
               tooltip: '关闭',
               onPressed: () => Navigator.pop(context),
               icon: const Icon(Icons.close),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Text('价格档位'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButton<int>(
+                    key: const ValueKey('book-precision'),
+                    isExpanded: true,
+                    value: multiple,
+                    items: [
+                      for (final value in [
+                        1,
+                        10,
+                        100,
+                        500,
+                        1000,
+                        10000,
+                        100000,
+                      ])
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(
+                            money(
+                              instrument.priceFromTicks(value),
+                              digits: instrument.pricePrecision,
+                            ),
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => multiple = value ?? 1),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Text('档数'),
+                const SizedBox(width: 8),
+                DropdownButton<int>(
+                  key: const ValueKey('book-depth'),
+                  value: depth,
+                  items: [
+                    for (final value in [10, 20])
+                      DropdownMenuItem(value: value, child: Text('$value')),
+                  ],
+                  onChanged: (value) => setState(() => depth = value ?? 20),
+                ),
+              ],
+            ),
+          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (book.bids.isEmpty && book.asks.isEmpty) const Text('暂无盘口'),
+                if (bids.isEmpty && asks.isEmpty) const Text('暂无盘口'),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
+                      child: _side(
+                        instrument,
+                        bids,
                         '买盘',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.tertiary,
-                        ),
+                        Theme.of(context).colorScheme.tertiary,
                       ),
                     ),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
+                      child: _side(
+                        instrument,
+                        asks,
                         '卖盘',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
+                        Theme.of(context).colorScheme.error,
                       ),
                     ),
                   ],
                 ),
-                for (
-                  var index = 0;
-                  index <
-                      math.max(book.bids.length, book.asks.length).clamp(0, 20);
-                  index++
-                )
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _levelText(
-                            instrument,
-                            index < book.bids.length ? book.bids[index] : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _levelText(
-                            instrument,
-                            index < book.asks.length ? book.asks[index] : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
               ],
             ),
           ),
@@ -9516,21 +9779,67 @@ class FullOrderBookSheet extends StatelessWidget {
     );
   }
 
-  Widget _levelText(Instrument instrument, OrderBookLevel? level) {
-    if (level == null) return const Text('--');
-    final quantity = instrument.isSpot
-        ? '${money(level.quantitySteps * instrument.quantityStepUnits / 100000000, digits: instrument.quantityPrecision)} ${instrument.baseAsset}'
-        : '${level.quantitySteps} 张';
+  Widget _side(
+    Instrument instrument,
+    List<OrderBookLevel> levels,
+    String title,
+    Color color,
+  ) {
+    var total = 0;
+    final rows = <({OrderBookLevel level, int total})>[];
+    for (final level in levels) {
+      total += level.quantitySteps;
+      rows.add((level: level, total: total));
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          money(
-            instrument.priceFromTicks(level.priceTicks),
-            digits: instrument.pricePrecision,
-          ),
+          title,
+          style: TextStyle(color: color, fontWeight: FontWeight.w700),
         ),
-        Text(quantity),
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 32),
+                    alignment: Alignment.centerLeft,
+                  ),
+                  onPressed: widget.onPrice == null
+                      ? null
+                      : () {
+                          widget.onPrice!(
+                            money(
+                              instrument.priceFromTicks(row.level.priceTicks),
+                              digits: instrument.pricePrecision,
+                            ),
+                          );
+                          Navigator.pop(context);
+                        },
+                  child: Text(
+                    money(
+                      instrument.priceFromTicks(row.level.priceTicks),
+                      digits: instrument.pricePrecision,
+                    ),
+                    style: TextStyle(color: color),
+                  ),
+                ),
+                Text(
+                  '数量 ${tradingQuantity(instrument, row.level.quantitySteps)}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                Text(
+                  '累计 ${tradingQuantity(instrument, row.total)}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -9600,4 +9909,156 @@ class _ProductLineTabsState extends State<ProductLineTabs> {
       ),
     );
   }
+}
+
+class TradingLeverageSheet extends StatefulWidget {
+  const TradingLeverageSheet({
+    required this.state,
+    required this.instrument,
+    required this.marginMode,
+    super.key,
+  });
+  final AppState state;
+  final Instrument instrument;
+  final String marginMode;
+  @override
+  State<TradingLeverageSheet> createState() => _TradingLeverageSheetState();
+}
+
+class _TradingLeverageSheetState extends State<TradingLeverageSheet> {
+  final controller = TextEditingController();
+  late final int? userId;
+  late final String? token;
+  Map<String, dynamic>? setting;
+  bool loading = true, saving = false;
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    userId = widget.state.userId;
+    token = widget.state.session?.accessToken;
+    unawaited(load());
+  }
+
+  bool get sameSession =>
+      userId != null &&
+      widget.state.userId == userId &&
+      widget.state.session?.accessToken == token;
+  Future<void> load() async {
+    try {
+      if (!sameSession) throw StateError('请先登录');
+      final row = await widget.state.api.leverageSetting(
+        userId!,
+        widget.instrument,
+        widget.marginMode,
+      );
+      if (!mounted) return;
+      if (!sameSession) throw StateError('登录状态已变化，请重新打开');
+      if (asInt(row['maxLeveragePpm']) < 1000000 ||
+          asInt(row['leveragePpm']) < 1000000) {
+        throw StateError('杠杆配置尚未就绪');
+      }
+      setState(() {
+        setting = row;
+        controller.text = '${asInt(row['leveragePpm']) / 1000000}';
+        loading = false;
+      });
+    } catch (cause) {
+      if (mounted) {
+        setState(() {
+          error = '加载杠杆失败：$cause';
+          loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> save() async {
+    if (saving || setting == null) return;
+    final ppm = decimalIncrement(
+      controller.text,
+      100,
+    ); // leverage × 1,000,000, no rounding.
+    if (!sameSession ||
+        ppm == null ||
+        ppm < 1000000 ||
+        ppm > asInt(setting!['maxLeveragePpm'])) {
+      setState(() => error = sameSession ? '请输入有效范围内的杠杆倍数' : '登录状态已变化，请重新打开');
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await widget.state.api.updateLeverage(
+        userId!,
+        widget.instrument,
+        widget.marginMode,
+        ppm,
+      );
+      if (!mounted) return;
+      if (!sameSession) {
+        setState(() => error = '登录状态已变化，请核对设置');
+        return;
+      }
+      widget.state.leverageUpdated();
+      Navigator.pop(context);
+    } catch (cause) {
+      if (mounted) setState(() => error = '修改杠杆失败：$cause');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      16,
+      16,
+      16,
+      MediaQuery.viewInsetsOf(context).bottom + 24,
+    ),
+    child: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${widget.instrument.symbol} · ${widget.marginMode == 'ISOLATED' ? '逐仓' : '全仓'}杠杆',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          if (loading) const LinearProgressIndicator(),
+          if (setting != null) ...[
+            Text('允许范围 1–${asInt(setting!['maxLeveragePpm']) / 1000000}×'),
+            TextField(
+              controller: controller,
+              enabled: !saving,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: '杠杆倍数'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: saving ? null : save,
+              child: Text(saving ? '保存中…' : '保存杠杆'),
+            ),
+          ],
+          if (error != null)
+            Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+        ],
+      ),
+    ),
+  );
 }

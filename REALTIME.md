@@ -39,3 +39,11 @@ Validation includes analyzer, unit/widget tests and a local WebSocket handshake 
 线上公共复核脚本：`dart run tool/public_realtime_smoke.dart`。本次已验证三个已配置永续合约的真实订阅/退订确认、K 线周期切换和重连。其他五产品目前没有线上可交易 instrument，完整产品数据隔离使用本地协议回归覆盖。线上非空持仓及真实订单执行/触发事件仍须独立验证。
 
 专用账号只读复核：登录、私有认证、36 个订阅确认成功；U 本位永续返回 READY 的周期快照，持仓/活动委托/活动条件单均为零，与 REST 一致。其他产品为 INITIALIZING，账户 REST 返回 404，App 不把它们视为已同步的空账户，因此跨产品资产总览仍可能显示同步中。空闲账号本次未产生私有增量事件；非空持仓、成交、撤单和条件单触发由协议回归覆盖，未提交真实交易。断线重连后重新认证、36 个订阅和永续新快照恢复成功。复核工具 `dart run tool/private_realtime_smoke.dart` 在终端隐藏输入账号密码，不保存凭据。
+
+## 明细和标记价重算复核
+
+CorePositionView 当前不提供 instrumentChangeId，不能将其缺失默认为 0 再与 instrument.changeId 比较，否则持仓永远无法本地估值。现在缺失时按产品与合约匹配；显式版本不一致时仍拒绝计算。mark 事件在 UI 通知节流之前重算持仓 PnL 和余额权益，无风险快照也能显示有效的本地 PnL；其他风险字段不会因此被伪造。清仓和退出登录清理对应估值，过期私有视图隐藏当前 PnL。
+
+accountState 中的 leverages 按 instrumentId + marginMode 合并；最近订单更新最多保留 100 条，接受终态且不允许旧事件覆盖。当前交易对筛选只是展示筛选，私有订阅仍覆盖六产品，持仓的额外 mark 订阅也不受筛选影响。
+
+强平价格通过 risk/positions/latest 快照补充；持仓/余额变化后合并刷新，mark 高频事件不触发重复风险查询。返回结果按请求版本、账号和产品检查；切换、重连及退出登录会失效旧请求。强平价标为快照，保证金率/维持保证金采用后端风险推送。

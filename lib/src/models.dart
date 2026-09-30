@@ -535,15 +535,28 @@ class OrderBook {
   }
 
   factory OrderBook.fromJson(Map<String, dynamic> json) {
+    List<OrderBookLevel> levels(String side) {
+      final byPrice = <int, OrderBookLevel>{};
+      for (final raw in asList(json[side])) {
+        final level = OrderBookLevel.fromJson(asMap(raw));
+        if (level.priceTicks > 0 && level.quantitySteps > 0) {
+          byPrice[level.priceTicks] = level;
+        }
+      }
+      final sorted = byPrice.values.toList()
+        ..sort(
+          (a, b) => side == 'bids'
+              ? b.priceTicks.compareTo(a.priceTicks)
+              : a.priceTicks.compareTo(b.priceTicks),
+        );
+      return sorted.take(20).toList();
+    }
+
     return OrderBook(
       symbol: asString(json['symbol']),
       sequence: asInt(json['sequence']),
-      bids: asList(
-        json['bids'],
-      ).map((e) => OrderBookLevel.fromJson(asMap(e))).toList(),
-      asks: asList(
-        json['asks'],
-      ).map((e) => OrderBookLevel.fromJson(asMap(e))).toList(),
+      bids: levels('bids'),
+      asks: levels('asks'),
     );
   }
 }
@@ -644,6 +657,9 @@ class Position {
     required this.signedQuantitySteps,
     required this.entryPriceTicks,
     required this.realizedPnlUnits,
+    this.instrumentId = '',
+    this.marginAsset = '',
+    this.positionMarginUnits,
   });
 
   final String symbol;
@@ -651,7 +667,10 @@ class Position {
   final String positionSide;
   final int signedQuantitySteps;
   final int entryPriceTicks;
-  final int realizedPnlUnits;
+  final int? realizedPnlUnits;
+  final String instrumentId;
+  final String marginAsset;
+  final int? positionMarginUnits;
 
   bool get isLong => signedQuantitySteps >= 0;
 
@@ -662,7 +681,10 @@ class Position {
       positionSide: asString(json['positionSide'], fallback: 'NET'),
       signedQuantitySteps: asInt(json['signedQuantitySteps']),
       entryPriceTicks: asInt(json['entryPriceTicks']),
-      realizedPnlUnits: asInt(json['realizedPnlUnits']),
+      realizedPnlUnits: asNullableInt(json['realizedPnlUnits']),
+      instrumentId: asString(json['instrumentId']),
+      marginAsset: asString(json['marginAsset']),
+      positionMarginUnits: asNullableInt(json['positionMarginUnits']),
     );
   }
 }
@@ -683,6 +705,11 @@ class OrderModel {
     required this.status,
     required this.reduceOnly,
     required this.postOnly,
+    this.averagePriceTicks,
+    this.executedValueTicks,
+    this.cumulativeFeeUnits,
+    this.createdAt,
+    this.updatedAt,
   });
 
   final int orderId;
@@ -699,6 +726,18 @@ class OrderModel {
   final String status;
   final bool reduceOnly;
   final bool postOnly;
+  final String? averagePriceTicks;
+  final String? executedValueTicks;
+  final int? cumulativeFeeUnits;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  String get fillProgress =>
+      quantitySteps <= 0 ||
+          executedQuantitySteps < 0 ||
+          executedQuantitySteps > quantitySteps
+      ? '--'
+      : '${(BigInt.from(executedQuantitySteps) * BigInt.from(10000) ~/ BigInt.from(quantitySteps)).toInt() / 100}%';
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     return OrderModel(
@@ -716,6 +755,15 @@ class OrderModel {
       status: asString(json['status']),
       reduceOnly: asBool(json['reduceOnly']),
       postOnly: asBool(json['postOnly']),
+      averagePriceTicks: nullableString(json['averagePriceTicks']),
+      executedValueTicks: nullableString(json['executedValueTicks']),
+      cumulativeFeeUnits: asNullableInt(json['cumulativeFeeUnits']),
+      createdAt: orderTimestamp(
+        json['createdAtEpochMillis'] ?? json['createdAt'],
+      ),
+      updatedAt: orderTimestamp(
+        json['updatedAtEpochMillis'] ?? json['updatedAt'],
+      ),
     );
   }
 }
@@ -1256,25 +1304,31 @@ class PositionRisk {
     required this.positionMarginUnits,
     required this.marginRatioPpm,
     required this.status,
+    this.maintenanceMarginUnits,
+    this.liquidationPriceTicks,
   });
 
   final String symbol;
   final String positionSide;
   final int markPriceTicks;
-  final int unrealizedPnlUnits;
+  final int? unrealizedPnlUnits;
   final int positionMarginUnits;
-  final int marginRatioPpm;
+  final int? marginRatioPpm;
   final String status;
+  final int? maintenanceMarginUnits;
+  final int? liquidationPriceTicks;
 
   factory PositionRisk.fromJson(Map<String, dynamic> json) {
     return PositionRisk(
       symbol: asString(json['symbol']),
       positionSide: asString(json['positionSide'], fallback: 'NET'),
       markPriceTicks: asInt(json['markPriceTicks']),
-      unrealizedPnlUnits: asInt(json['unrealizedPnlUnits']),
+      unrealizedPnlUnits: asNullableInt(json['unrealizedPnlUnits']),
       positionMarginUnits: asInt(json['positionMarginUnits']),
-      marginRatioPpm: asInt(json['marginRatioPpm']),
-      status: asString(json['status'], fallback: 'NORMAL'),
+      marginRatioPpm: asNullableInt(json['marginRatioPpm']),
+      status: asString(json['status'], fallback: 'PENDING'),
+      maintenanceMarginUnits: asNullableInt(json['maintenanceMarginUnits']),
+      liquidationPriceTicks: asNullableInt(json['liquidationPriceTicks']),
     );
   }
 }
@@ -1875,9 +1929,12 @@ List<Map<String, dynamic>> mergeRecentTrades(
   final result = rows.values.toList()
     ..sort((a, b) {
       final sequence = asInt(b['sequence']).compareTo(asInt(a['sequence']));
-      return sequence != 0
-          ? sequence
-          : asString(b['eventTime']).compareTo(asString(a['eventTime']));
+      if (sequence != 0) return sequence;
+      final time = asString(b['eventTime']).compareTo(asString(a['eventTime']));
+      if (time != 0) return time;
+      final aId = BigInt.tryParse(asString(a['tradeId'])),
+          bId = BigInt.tryParse(asString(b['tradeId']));
+      return aId != null && bId != null ? bId.compareTo(aId) : 0;
     });
   return result.take(50).toList();
 }
@@ -1897,4 +1954,54 @@ int? decimalIncrement(String text, int incrementUnits) {
   final value = units ~/ step;
   if (value > BigInt.from(9223372036854775807)) return null;
   return value.toInt();
+}
+
+DateTime? orderTimestamp(Object? raw) {
+  if (raw == null) return null;
+  final millis = int.tryParse('$raw');
+  if (millis != null) {
+    if (millis <= 0 || millis.abs() > 8640000000000000) return null;
+    return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+  }
+  return DateTime.tryParse('$raw');
+}
+
+String scaledAmount(BigInt? units, int? scale) {
+  if (units == null || scale == null || scale <= 0) return '--';
+  final divisor = BigInt.from(scale);
+  final fraction = units.abs().remainder(divisor);
+  final digits = scale.toString().length - 1;
+  if (BigInt.from(10).pow(digits) != divisor) return '--';
+  final tail = fraction
+      .toString()
+      .padLeft(digits, '0')
+      .replaceFirst(RegExp(r'0+$'), '');
+  return '${units.isNegative ? '-' : ''}${units.abs() ~/ divisor}${tail.isEmpty ? '' : '.$tail'}';
+}
+
+List<OrderBookLevel> aggregateBookLevels(
+  List<OrderBookLevel> levels,
+  int multiple, {
+  required bool bids,
+}) {
+  if (multiple <= 0) throw ArgumentError.value(multiple, 'multiple');
+  final buckets = <int, OrderBookLevel>{};
+  for (final level in levels) {
+    final bucket =
+        (bids
+            ? level.priceTicks ~/ multiple
+            : (level.priceTicks + multiple - 1) ~/ multiple) *
+        multiple;
+    final previous = buckets[bucket];
+    buckets[bucket] = OrderBookLevel(
+      priceTicks: bucket,
+      quantitySteps: (previous?.quantitySteps ?? 0) + level.quantitySteps,
+      orderCount: (previous?.orderCount ?? 0) + level.orderCount,
+    );
+  }
+  return buckets.values.toList()..sort(
+    (a, b) => bids
+        ? b.priceTicks.compareTo(a.priceTicks)
+        : a.priceTicks.compareTo(b.priceTicks),
+  );
 }

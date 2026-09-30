@@ -249,6 +249,53 @@ class AppState extends ChangeNotifier {
   final Map<ProductMode, PrivateView> privateViews = {};
   final Map<ProductMode, List<ProductBalance>> productBalances = {};
   bool assetsReady = false;
+  bool onlyCurrentTradingPair = true;
+  final Map<String, int> positionPnlUnits = {};
+  List<PositionRisk> queriedPositionRisks = [];
+  int _riskDetailsVersion = 0;
+  Timer? _riskDetailsTimer;
+  String _riskInputKey = '';
+
+  int? markTicksFor(Instrument instrument) =>
+      markPrices[_priceKey(instrument.mode, instrument.symbol)];
+  int? unrealizedPnlFor(Position position) =>
+      positionPnlUnits['${mode.productLine}:${position.symbol}:${position.positionSide}'];
+  List<OrderModel> get recentOrderUpdates =>
+      (privateViews[mode]?.orderUpdates ?? [])
+          .where(
+            (row) => !onlyCurrentTradingPair || row['symbol'] == selectedSymbol,
+          )
+          .map(OrderModel.fromJson)
+          .toList();
+  void leverageUpdated() {
+    lastNotice = '杠杆已更新，账户数据以最新推送为准';
+    notifyListeners();
+  }
+
+  void setTradingPairFilter(bool enabled) {
+    onlyCurrentTradingPair = enabled;
+    _materializePrivate();
+    notifyListeners();
+  }
+
+  Future<void> refreshPositionRiskDetails() async {
+    final id = userId, product = mode, token = session?.accessToken;
+    final request = ++_riskDetailsVersion;
+    queriedPositionRisks = [];
+    if (offline || id == null || !product.isDerivative || positions.isEmpty) {
+      return;
+    }
+    final rows = await api.positionRisks(id, productLine: product.productLine);
+    if (request != _riskDetailsVersion ||
+        userId != id ||
+        session?.accessToken != token ||
+        mode != product) {
+      return;
+    }
+    queriedPositionRisks = rows;
+    notifyListeners();
+  }
+
   bool _privateAuthenticated = false;
   Timer? _freshnessTimer;
   int _publicRequestVersion = 0;
@@ -640,6 +687,10 @@ class AppState extends ChangeNotifier {
     await sessionStore.clear();
     session = null;
     privateViews.clear();
+    _riskInputKey = '';
+    positionPnlUnits.clear();
+    queriedPositionRisks = [];
+    ++_riskDetailsVersion;
     productBalances.clear();
     assetsReady = false;
     balances = const [];
@@ -1041,9 +1092,14 @@ class AppState extends ChangeNotifier {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
     _privateRealtimeGeneration++;
+    _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
     _privateAuthenticated = false;
     privateViews.clear();
+    _riskInputKey = '';
+    positionPnlUnits.clear();
+    queriedPositionRisks = [];
+    ++_riskDetailsVersion;
     productBalances.clear();
     assetsReady = false;
     await privateRealtime.close();
@@ -1105,6 +1161,9 @@ class AppState extends ChangeNotifier {
     required bool reconnect,
   }) async {
     final selection = ++_selectionVersion;
+    _riskInputKey = '';
+    ++_riskDetailsVersion;
+    queriedPositionRisks = [];
     ++_publicRequestVersion;
     ++_openOrdersRequestVersion;
     mode = nextMode;
@@ -2048,6 +2107,10 @@ class AppState extends ChangeNotifier {
     final connectGeneration = ++_privateRealtimeGeneration;
     _privateAuthenticated = false;
     privateViews.clear();
+    _riskInputKey = '';
+    positionPnlUnits.clear();
+    queriedPositionRisks = [];
+    ++_riskDetailsVersion;
     productBalances.clear();
     assetsReady = false;
     balances = const [];
@@ -2056,6 +2119,7 @@ class AppState extends ChangeNotifier {
     openTriggerOrders = const [];
     positionRisks = const [];
     accountRisk = null;
+    _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
     final current = session;
     if (current == null) return;
@@ -2233,6 +2297,7 @@ class AppState extends ChangeNotifier {
   void _materializePrivate() {
     if (!isLoggedIn) return;
     var complete = _privateAuthenticated;
+    positionPnlUnits.clear();
     for (final product in ProductMode.values) {
       final view = privateViews[product];
       if (view == null) {
@@ -2257,7 +2322,8 @@ class AppState extends ChangeNotifier {
           (i) =>
               i.mode == product &&
               i.symbol == p['symbol'] &&
-              i.changeId == asInt(p['instrumentChangeId']),
+              (p['instrumentChangeId'] == null ||
+                  i.changeId == asInt(p['instrumentChangeId'])),
         );
         final instrument = matching.isEmpty ? null : matching.first;
         final risk = risks
@@ -2271,10 +2337,19 @@ class AppState extends ChangeNotifier {
                 markPrices[_priceKey(product, instrument.symbol)] ?? 0,
               );
         if (valuation != null) pnlByPosition[positionKey(p)] = valuation.pnl;
+        final pnl =
+            valuation?.pnl ??
+            (view.ready && risk != null
+                ? asNullableInt(risk['unrealizedPnlUnits'])
+                : null);
+        if (pnl != null && view.ready) {
+          positionPnlUnits['${product.productLine}:${p['symbol']}:${p['positionSide'] ?? 'NET'}'] =
+              pnl;
+        }
         final contribution =
             valuation?.value ??
             (!product.isOption && risk != null
-                ? asInt(risk['unrealizedPnlUnits'])
+                ? asNullableInt(risk['unrealizedPnlUnits'])
                 : null);
         if (contribution == null) {
           complete = false;
@@ -2282,6 +2357,9 @@ class AppState extends ChangeNotifier {
           final asset = asString(p['marginAsset']);
           equity[asset] = (equity[asset] ?? 0) + contribution;
         }
+      }
+      if (equity.keys.any((asset) => !cash.any((b) => b['asset'] == asset))) {
+        complete = false;
       }
       productBalances[product] = cash
           .map(
@@ -2296,11 +2374,18 @@ class AppState extends ChangeNotifier {
           .toList();
       if (product == mode) {
         balances = productBalances[product]!;
-        positions = activePositions.map(Position.fromJson).toList();
+        positions = activePositions
+            .where(
+              (p) => !onlyCurrentTradingPair || p['symbol'] == selectedSymbol,
+            )
+            .map(Position.fromJson)
+            .toList();
         openOrders = view
             .rows('order')
             .where(
-              (o) => o['status'] == 'OPEN' && o['symbol'] == selectedSymbol,
+              (o) =>
+                  o['status'] == 'OPEN' &&
+                  (!onlyCurrentTradingPair || o['symbol'] == selectedSymbol),
             )
             .map(
               (o) => OrderModel.fromJson({
@@ -2316,7 +2401,7 @@ class AppState extends ChangeNotifier {
             .where(
               (o) =>
                   ['PENDING', 'TRIGGERING'].contains(o['status']) &&
-                  o['symbol'] == selectedSymbol,
+                  (!onlyCurrentTradingPair || o['symbol'] == selectedSymbol),
             )
             .map(TriggerOrderModel.fromJson)
             .toList();
@@ -2339,6 +2424,22 @@ class AppState extends ChangeNotifier {
       }
     }
     assetsReady = complete;
+    final riskKey =
+        '$userId:${mode.productLine}:${privateViews[mode]?.ready}:${positions.map((p) => '${p.symbol}:${p.positionSide}:${p.marginMode}:${p.signedQuantitySteps}:${p.entryPriceTicks}:${p.positionMarginUnits}').join('|')}:${balances.map((b) => '${b.asset}:${b.availableUnits}:${b.lockedUnits}').join('|')}';
+    if (riskKey != _riskInputKey) {
+      _riskInputKey = riskKey;
+      queriedPositionRisks = [];
+      ++_riskDetailsVersion;
+      _riskDetailsTimer?.cancel();
+      if (!offline &&
+          positions.isNotEmpty &&
+          privateViews[mode]?.ready == true) {
+        _riskDetailsTimer = Timer(
+          const Duration(milliseconds: 350),
+          () => unawaited(refreshPositionRiskDetails()),
+        );
+      }
+    }
   }
 
   void handleRealtimeMessage(Map<String, dynamic> message) {
@@ -2400,7 +2501,9 @@ class AppState extends ChangeNotifier {
     final stream = '$key:$channel:${message['period'] ?? ''}';
     final version = asString(envelope['version']);
     final previous = _publicVersions[stream];
-    if (version.isNotEmpty && previous != null) {
+    final depthBaseline =
+        channel == 'depth' && data['updateType'] == 'SNAPSHOT';
+    if (!depthBaseline && version.isNotEmpty && previous != null) {
       final time = DateTime.tryParse(asString(message['eventTime']));
       final previousTime = DateTime.tryParse(asString(previous['eventTime']));
       final coreStream = ['trades', 'depth', 'bookTicker'].contains(channel);
@@ -2484,6 +2587,11 @@ class AppState extends ChangeNotifier {
     final updateType = asString(data['updateType'], fallback: 'SNAPSHOT');
     final depth = asInt(data['depth'], fallback: 50);
     if (updateType != 'DELTA') {
+      if (data['updateType'] != 'SNAPSHOT' &&
+          sequence > 0 &&
+          sequence < orderBook.sequence) {
+        return;
+      }
       orderBook = OrderBook.fromJson({
         'symbol': symbol,
         'sequence': sequence,
@@ -2492,10 +2600,8 @@ class AppState extends ChangeNotifier {
       });
       return;
     }
-    final previousSequence = asInt(
-      data['previousSequence'],
-      fallback: orderBook.sequence,
-    );
+    if (sequence <= orderBook.sequence) return;
+    final previousSequence = asNullableInt(data['previousSequence']);
     if (orderBook.symbol != symbol ||
         orderBook.sequence == 0 ||
         previousSequence != orderBook.sequence) {
@@ -2585,10 +2691,12 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_riskDetailsVersion;
     ++_selectionVersion;
     ++_instrumentRequestVersion;
     ++_publicRequestVersion;
     ++_openOrdersRequestVersion;
+    _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
     _publicReconnectTimer?.cancel();

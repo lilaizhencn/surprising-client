@@ -11,6 +11,7 @@ class ApiClient {
   }
 
   final AppConfig config;
+  List<Instrument> instrumentCatalog = [];
   final HttpClient _httpClient;
   String? _accessToken;
   String? _refreshToken;
@@ -44,10 +45,11 @@ class ApiClient {
   Future<AuthSession> register({
     required String password,
     required String email,
+    bool phone = false,
   }) async {
     final json = await post('/api/v1/auth/register', {
       'password': password,
-      'email': email,
+      if (phone) 'phone': email else 'email': email,
     });
     return AuthSession.fromJson(json);
   }
@@ -60,7 +62,22 @@ class ApiClient {
       'identifier': username,
       'password': password,
     });
+    if (json['requiresVerification'] == true) {
+      throw LoginChallenge.fromJson(json);
+    }
     return AuthSession.fromJson(json);
+  }
+
+  Future<AuthSession> verifyLogin(
+    LoginChallenge challenge,
+    Map<String, String> codes,
+  ) async {
+    return AuthSession.fromJson(
+      await post('/api/v1/auth/login/verify', {
+        'challengeToken': challenge.token,
+        ...codes,
+      }),
+    );
   }
 
   Future<bool> verifyEmail(AuthSession session, String code) async {
@@ -274,15 +291,56 @@ class ApiClient {
   }
 
   Future<List<Instrument>> instruments() async {
-    final json = await get('/api/v1/gateway/instrument/list');
-    return asList(
-      json['instruments'],
+    final json = await get(
+      '/api/v1/gateway/instrument/list',
+      query: {'status': 'TRADING', 'includeMarketSummary': 'true'},
+    );
+    instrumentCatalog = asList(
+      json['instruments'] ?? json['items'],
     ).map((item) => Instrument.fromJson(asMap(item))).toList();
+    return instrumentCatalog;
+  }
+
+  Future<List<Map<String, dynamic>>> recentTrades(
+    String symbol, {
+    String? productLine,
+  }) async {
+    final json = await get(
+      '/api/v1/gateway/candlestick/trades/recent',
+      query: {'symbol': symbol, 'limit': '50'},
+      productLine: productLine,
+    );
+    return asList(json['trades']).map(asMap).toList();
+  }
+
+  // Domain widgets retain display symbols; the current wire contract uses IDs.
+  Object? normalizeInstruments(Object? value, String? productLine) {
+    if (value is List) {
+      return value.map((v) => normalizeInstruments(v, productLine)).toList();
+    }
+    if (value is! Map) return value;
+    final row = Map<String, dynamic>.from(value);
+    final product = asString(row['productLine'], fallback: productLine ?? '');
+    final id = asString(row['instrumentId']);
+    final instrument = instrumentCatalog
+        .where(
+          (i) =>
+              i.instrumentId == id &&
+              id.isNotEmpty &&
+              (product.isEmpty || i.mode.productLine == product),
+        )
+        .firstOrNull;
+    return {
+      for (final entry in row.entries)
+        entry.key: normalizeInstruments(entry.value, product),
+      if (instrument != null && !row.containsKey('symbol'))
+        'symbol': instrument.symbol,
+    };
   }
 
   Future<OrderBook> orderBook(
     String symbol, {
-    int depth = 50,
+    int depth = 20,
     String? productLine,
   }) async {
     final json = await get(
@@ -1211,7 +1269,7 @@ class ApiClient {
     } on ApiException catch (error) {
       if (error.statusCode != 401 ||
           _refreshToken == null ||
-          path == '/api/v1/auth/refresh') {
+          path.startsWith('/api/v1/auth/')) {
         rethrow;
       }
       final refreshed = await _refreshAccessToken();
@@ -1268,6 +1326,26 @@ class ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    if (path.startsWith('/api/v1/gateway/') && !path.contains('/wallet/')) {
+      final symbol = asString(body?['symbol'] ?? query?['symbol']);
+      final instrument = instrumentCatalog
+          .where(
+            (i) =>
+                i.symbol == symbol &&
+                (productLine == null || i.mode.productLine == productLine),
+          )
+          .firstOrNull;
+      if (instrument != null && instrument.instrumentId.isNotEmpty) {
+        if (query?.containsKey('symbol') == true) {
+          query = {...query!}..remove('symbol');
+          query['instrumentId'] = instrument.instrumentId;
+        }
+        if (body?.containsKey('symbol') == true) {
+          body = {...body!}..remove('symbol');
+          body['instrumentId'] = instrument.instrumentId;
+        }
+      }
+    }
     final base = Uri.parse(config.gatewayBaseUrl);
     final uri = base.replace(
       path: path,
@@ -1306,7 +1384,7 @@ class ApiClient {
       final json = asMap(decoded);
       return _unwrapResponseResult(json);
     }
-    return decoded;
+    return normalizeInstruments(decoded, productLine);
   }
 
   Map<String, dynamic> _unwrapResponseResult(Map<String, dynamic> json) {
@@ -1362,7 +1440,7 @@ class RealtimeClient {
   void replaceSubscriptions(List<Map<String, String>> subscriptions) {
     _desired.clear();
     for (final s in subscriptions) {
-      _desired['${s['productLine']}:${s['channel']}:${s['symbol'] ?? '*'}:${s['period'] ?? ''}'] =
+      _desired['${s['productLine']}:${s['channel']}:${s['instrumentId'] ?? s['symbol'] ?? '*'}:${s['period'] ?? ''}'] =
           s;
     }
     _reconcileSubscriptions();

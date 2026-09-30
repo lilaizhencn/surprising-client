@@ -803,10 +803,22 @@ void main() {
       );
       expect(
         publicRealtime.subscriptions.any(
-          (item) => item.productLine == 'LINEAR_PERPETUAL',
+          (item) =>
+              item.productLine == 'LINEAR_PERPETUAL' &&
+              item.channel != 'trades',
         ),
         isFalse,
       );
+      // Market overview trades remain explicit subscriptions across trade products.
+      expect(
+        publicRealtime.subscriptions.any(
+          (item) =>
+              item.productLine == 'LINEAR_PERPETUAL' &&
+              item.channel == 'trades',
+        ),
+        isTrue,
+      );
+      state.dispose();
     },
   );
 

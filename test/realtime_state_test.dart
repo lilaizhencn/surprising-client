@@ -32,6 +32,55 @@ Map<String, dynamic> snapshot(
 };
 
 void main() {
+  test(
+    'public WS retains multiple instrument IDs and unsubscribes only removed IDs',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final messages = <Map<String, dynamic>>[];
+      final installed = Completer<void>();
+      final removed = Completer<void>();
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.listen((raw) {
+          final message = asMap(jsonDecode(raw as String));
+          messages.add(message);
+          if (messages.where((m) => m['op'] == 'subscribe').length == 2 &&
+              !installed.isCompleted) {
+            installed.complete();
+          }
+          if (message['op'] == 'unsubscribe' && !removed.isCompleted) {
+            removed.complete();
+          }
+        });
+      });
+      final client = RealtimeClient(
+        AppConfig(websocketUrl: 'ws://127.0.0.1:${server.port}'),
+      );
+      addTearDown(() async {
+        await client.close();
+        await server.close(force: true);
+      });
+      await client.connect(onEvent: (_) {}, onError: (e) => fail('$e'));
+      Map<String, String> subscription(String id) => {
+        'channel': 'trades',
+        'productLine': 'LINEAR_PERPETUAL',
+        'instrumentId': id,
+      };
+      client.replaceSubscriptions([subscription('42'), subscription('43')]);
+      await installed.future.timeout(const Duration(seconds: 3));
+      client.replaceSubscriptions([subscription('43')]);
+      await removed.future.timeout(const Duration(seconds: 3));
+      expect(
+        messages
+            .where((m) => m['op'] == 'subscribe')
+            .map((m) => m['instrumentId']),
+        ['42', '43'],
+      );
+      expect(messages.last['instrumentId'], '42');
+      expect(messages.last['op'], 'unsubscribe');
+    },
+  );
+
   for (final product in ProductMode.values) {
     test(
       '${product.name}: fence preserves newer updates, tombstones and gap repair',

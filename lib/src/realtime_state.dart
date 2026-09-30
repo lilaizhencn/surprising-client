@@ -7,7 +7,7 @@ class _Entry {
 }
 
 String positionKey(Map<String, dynamic> row) =>
-    '${row['symbol']}:${row['positionSide'] ?? 'NET'}';
+    '${row['instrumentId'] ?? row['symbol']}:${row['marginMode'] ?? 'CROSS'}:${row['positionSide'] ?? 'NET'}';
 
 /// Absolute entity updates, including tombstones, fenced by periodic full snapshots.
 class PrivateView {

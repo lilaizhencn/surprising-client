@@ -272,6 +272,23 @@ class AuthUser {
   }
 }
 
+class LoginChallenge implements Exception {
+  LoginChallenge.fromJson(Map<String, dynamic> json)
+    : token = asString(json['challengeToken']),
+      expiresAt = DateTime.parse(asString(json['expiresAt'])),
+      methods = asList(json['methods']).map(asMap).toList() {
+    if (token.isEmpty ||
+        methods.isEmpty ||
+        methods.any((m) => !['EMAIL', 'PHONE', 'TOTP'].contains(m['type']))) {
+      throw const FormatException('不支持的登录验证方式');
+    }
+  }
+  final String token;
+  final DateTime expiresAt;
+  final List<Map<String, dynamic>> methods;
+  bool get expired => !expiresAt.isAfter(DateTime.now());
+}
+
 class AuthSession {
   const AuthSession({
     required this.user,
@@ -323,6 +340,10 @@ class AuthSession {
 
 class Instrument {
   const Instrument({
+    this.instrumentId = '',
+    this.lastPrice,
+    this.change24h,
+    this.volume24h,
     required this.symbol,
     required this.instrumentType,
     required this.contractType,
@@ -347,6 +368,10 @@ class Instrument {
     this.settleScaleUnits,
   });
 
+  final String instrumentId;
+  final double? lastPrice;
+  final double? change24h;
+  final double? volume24h;
   final String symbol;
   final String instrumentType;
   final String contractType;
@@ -428,7 +453,16 @@ class Instrument {
   }
 
   factory Instrument.fromJson(Map<String, dynamic> json) {
+    double? number(String key) => double.tryParse(asString(json[key]));
     return Instrument(
+      instrumentId: asString(json['instrumentId']),
+      lastPrice: number('lastPrice'),
+      change24h:
+          number('change24h') ??
+          (number('change24hPpm') == null
+              ? null
+              : number('change24hPpm')! / 10000),
+      volume24h: number('volume24h'),
       symbol: asString(json['symbol']),
       instrumentType: asString(json['instrumentType'], fallback: 'PERPETUAL'),
       contractType: asString(
@@ -1825,4 +1859,42 @@ List<Candle> fallbackCandles() {
       volume: 80 + index * 3.0,
     );
   });
+}
+
+/// REST history and live events overlap after reconnect; retain one row per trade.
+List<Map<String, dynamic>> mergeRecentTrades(
+  List<Map<String, dynamic>> older,
+  List<Map<String, dynamic>> newer,
+) {
+  final rows = <String, Map<String, dynamic>>{};
+  for (final row in [...older, ...newer]) {
+    final id = asString(row['tradeId'], fallback: asString(row['sequence']));
+    if (id.isEmpty) continue;
+    rows[id] = row;
+  }
+  final result = rows.values.toList()
+    ..sort((a, b) {
+      final sequence = asInt(b['sequence']).compareTo(asInt(a['sequence']));
+      return sequence != 0
+          ? sequence
+          : asString(b['eventTime']).compareTo(asString(a['eventTime']));
+    });
+  return result.take(50).toList();
+}
+
+/// Convert a user decimal to integer increments without rounding an invalid tick.
+int? decimalIncrement(String text, int incrementUnits) {
+  if (incrementUnits <= 0 ||
+      !RegExp(r'^\d+(?:\.\d{1,8})?$').hasMatch(text.trim())) {
+    return null;
+  }
+  final parts = text.trim().split('.');
+  final units =
+      BigInt.parse(parts.first) * BigInt.from(100000000) +
+      BigInt.parse(parts.length == 1 ? '0' : parts.last.padRight(8, '0'));
+  final step = BigInt.from(incrementUnits);
+  if (units % step != BigInt.zero) return null;
+  final value = units ~/ step;
+  if (value > BigInt.from(9223372036854775807)) return null;
+  return value.toInt();
 }

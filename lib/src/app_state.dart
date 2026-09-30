@@ -190,6 +190,7 @@ class AppState extends ChangeNotifier {
         ? fallbackInstruments()
         : seedInstruments ?? const <Instrument>[];
     instruments = initialInstruments;
+    api.instrumentCatalog = initialInstruments;
     selectedSymbol = initialInstruments.isNotEmpty
         ? initialInstruments.first.symbol
         : '';
@@ -209,6 +210,9 @@ class AppState extends ChangeNotifier {
   final List<Instrument>? seedInstruments;
 
   AuthSession? session;
+  LoginChallenge? pendingLoginChallenge;
+  List<Map<String, dynamic>> recentTrades = [];
+  bool submittingOrder = false;
   AuthSession? pendingVerificationSession;
   AuthSession? pendingBiometricSession;
   bool biometricLoginAvailable = false;
@@ -649,6 +653,7 @@ class AppState extends ChangeNotifier {
       final loaded = await api.instruments();
       if (loaded.isNotEmpty) {
         instruments = loaded;
+        if (!loaded.any((i) => i.mode == mode)) mode = loaded.first.mode;
         final candidates = visibleInstruments;
         if (!candidates.any(
           (instrument) => instrument.symbol == selectedSymbol,
@@ -685,16 +690,29 @@ class AppState extends ChangeNotifier {
     try {
       final symbol = selectedSymbol;
       final productLine = _productLineForSymbol(symbol);
+      final beforeTrades = _publicVersions['$productLine:$symbol:trades:'];
+      final beforeTicker = _publicVersions['$productLine:$symbol:bookTicker:'];
       final beforeBook = _publicVersions['$productLine:$symbol:depth:'];
       final beforeCandles =
           _publicVersions['$productLine:$symbol:candles:$period'];
       final results = await Future.wait([
         api.orderBook(symbol, productLine: productLine),
         api.candles(symbol, period, productLine: productLine),
+        api.recentTrades(symbol, productLine: productLine).catchError((
+          Object error,
+        ) {
+          _recordRealtimeIssue('加载最新成交失败：$error');
+          return <Map<String, dynamic>>[];
+        }),
       ]);
       if (requestVersion != _publicRequestVersion) return;
+      final loadedTrades = results[2] as List<Map<String, dynamic>>;
+      recentTrades = mergeRecentTrades(loadedTrades, recentTrades);
       final loadedBook = results[0] as OrderBook;
-      if (identical(beforeBook, _publicVersions['$productLine:$symbol:depth:'])) {
+      if (identical(
+        beforeBook,
+        _publicVersions['$productLine:$symbol:depth:'],
+      )) {
         orderBook = loadedBook;
       }
       final loadedCandles = results[1] as List<Candle>;
@@ -708,17 +726,20 @@ class AppState extends ChangeNotifier {
           for (final c in [...loadedCandles, ...candles]) c.openTime: c,
         }.values.toList()..sort((a, b) => a.openTime.compareTo(b.openTime));
       }
-      if (candles.isNotEmpty) {
+      if (candles.isNotEmpty &&
+          identical(
+            beforeTicker,
+            _publicVersions['$productLine:$symbol:bookTicker:'],
+          ) &&
+          identical(
+            beforeTrades,
+            _publicVersions['$productLine:$symbol:trades:'],
+          )) {
         latestPrices[_priceKey(mode, symbol)] = candles.last.close;
       }
       lastError = null;
     } catch (error) {
       if (requestVersion != _publicRequestVersion) return;
-      if (!offline) {
-        orderBook = OrderBook.empty(selectedSymbol);
-        candles = const [];
-        latestPrices.remove(_priceKey(mode, selectedSymbol));
-      }
       if (silent) {
         _recordRealtimeIssue('加载行情失败：$error');
       } else {
@@ -825,14 +846,18 @@ class AppState extends ChangeNotifier {
     lastError = null;
     lastNotice = null;
     notifyListeners();
+    pendingLoginChallenge = null;
     try {
       final authenticated = await api.login(
         username: email.trim(),
         password: password,
       );
-      await _activateSession(authenticated, persist: true);
-      lastNotice = '登录成功';
+      await _acceptLogin(authenticated);
+      lastNotice = authenticated.requiresEmailVerification ? '请完成邮箱验证' : '登录成功';
       return authenticated;
+    } on LoginChallenge catch (challenge) {
+      pendingLoginChallenge = challenge;
+      return null;
     } catch (error) {
       lastError = '登录失败：$error';
       return null;
@@ -842,7 +867,44 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<AuthSession?> register(String email, String password) async {
+  Future<void> _acceptLogin(AuthSession authenticated) async {
+    if (authenticated.accessToken.isEmpty ||
+        authenticated.refreshToken.isEmpty) {
+      throw StateError('登录响应缺少令牌');
+    }
+    pendingLoginChallenge = null;
+    if (authenticated.requiresEmailVerification) {
+      pendingVerificationSession = authenticated;
+      api.setSession(authenticated);
+    } else {
+      await _activateSession(authenticated, persist: true);
+    }
+  }
+
+  Future<bool> verifyLogin(Map<String, String> codes) async {
+    final challenge = pendingLoginChallenge;
+    if (challenge == null || challenge.expired) {
+      lastError = '验证已过期，请重新登录';
+      notifyListeners();
+      return false;
+    }
+    try {
+      await _acceptLogin(await api.verifyLogin(challenge, codes));
+      lastError = null;
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = '安全验证失败：$error';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<AuthSession?> register(
+    String email,
+    String password, {
+    bool phone = false,
+  }) async {
     if (offline) return null;
     loadingPrivate = true;
     lastError = null;
@@ -852,6 +914,7 @@ class AppState extends ChangeNotifier {
       final created = await api.register(
         password: password,
         email: email.trim(),
+        phone: phone,
       );
       api.setSession(created);
       if (created.requiresEmailVerification) {
@@ -990,18 +1053,23 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> selectMode(ProductMode nextMode) async {
+    ++_publicRequestVersion;
+    ++_openOrdersRequestVersion;
     mode = nextMode;
+    recentTrades = [];
+    accountRisk = null;
+    openAlgoOrders = [];
+    liquidationOrders = [];
     balances = const [];
     positions = const [];
     openOrders = const [];
     openTriggerOrders = const [];
     positionRisks = const [];
-    _materializePrivate();
     final candidates = visibleInstruments;
-    if (candidates.isNotEmpty &&
-        !candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
-      selectedSymbol = candidates.first.symbol;
+    if (!candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
+      selectedSymbol = candidates.firstOrNull?.symbol ?? '';
     }
+    _materializePrivate();
     orderBook = offline
         ? fallbackOrderBook(selectedInstrument)
         : OrderBook.empty(selectedSymbol);
@@ -1013,6 +1081,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> selectSymbol(String symbol) async {
+    ++_publicRequestVersion;
+    ++_openOrdersRequestVersion;
+    recentTrades = [];
     selectedSymbol = symbol;
     _materializePrivate();
     orderBook = offline
@@ -1044,12 +1115,32 @@ class AppState extends ChangeNotifier {
     required bool reduceOnly,
     required bool postOnly,
   }) async {
+    if (submittingOrder) return;
+    lastError = null;
+    lastNotice = null;
+    final instrument = selectedInstrument;
+    if (instrument.symbol.isEmpty ||
+        quantitySteps <= 0 ||
+        (orderType != 'MARKET' &&
+            (!price.isFinite ||
+                price <= 0 ||
+                decimalIncrement(
+                      price.toStringAsFixed(8),
+                      instrument.priceTickUnits,
+                    ) ==
+                    null))) {
+      lastError = '请输入有效的价格和数量';
+      notifyListeners();
+      return;
+    }
     final id = userId;
     if (id == null) {
       lastError = '请先登录再下单';
       notifyListeners();
       return;
     }
+    submittingOrder = true;
+    notifyListeners();
     try {
       final instrument = selectedInstrument;
       final productLine = instrument.mode.productLine;
@@ -1075,11 +1166,17 @@ class AppState extends ChangeNotifier {
         postOnly: postOnly,
         productLine: productLine,
       );
-      _upsertOrder(order);
+      if (mode == instrument.mode &&
+          selectedSymbol == instrument.symbol &&
+          userId == id) {
+        _upsertOrder(order);
+      }
       lastNotice = '订单已提交 #${order.orderId}';
       await refreshPrivateData();
     } catch (error) {
       lastError = '下单失败：$error';
+    } finally {
+      submittingOrder = false;
     }
     notifyListeners();
   }
@@ -1168,26 +1265,48 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
+  Future<int> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
+    lastError = null;
+    lastNotice = null;
+    final symbol = selectedSymbol;
+    final product = mode;
     final id = userId;
     if (id == null) {
       lastError = '请先登录再提交止盈止损';
       notifyListeners();
-      return;
+      return 0;
     }
     final validDrafts = drafts.where(_validTriggerDraft).toList();
-    if (validDrafts.isEmpty) {
+    if (validDrafts.isEmpty || validDrafts.length != drafts.length) {
       lastError = '请先填写有效的触发价和数量';
       notifyListeners();
-      return;
+      return 0;
     }
+    for (final draft in validDrafts) {
+      final position = positions
+          .where(
+            (p) =>
+                p.symbol == symbol &&
+                p.marginMode == draft.marginMode &&
+                p.positionSide == draft.positionSide &&
+                p.signedQuantitySteps != 0,
+          )
+          .firstOrNull;
+      if (position == null ||
+          (position.signedQuantitySteps > 0 ? 'SELL' : 'BUY') != draft.side ||
+          draft.quantitySteps > position.signedQuantitySteps.abs()) {
+        lastError = '止盈止损必须对应当前仓位，数量不能超过可平仓数量';
+        notifyListeners();
+        return 0;
+      }
+    }
+    final created = <TriggerOrderModel>[];
     try {
-      final created = <TriggerOrderModel>[];
       for (final draft in validDrafts) {
         created.add(
           await api.placeTriggerOrder(
             userId: id,
-            symbol: selectedSymbol,
+            symbol: symbol,
             side: draft.side,
             triggerType: draft.triggerType,
             triggerPriceTicks: draft.triggerPriceTicks,
@@ -1196,19 +1315,23 @@ class AppState extends ChangeNotifier {
             quantitySteps: draft.quantitySteps,
             marginMode: draft.marginMode,
             positionSide: draft.positionSide,
-            productLine: _productLineForSymbol(selectedSymbol),
+            productLine: product.productLine,
           ),
         );
       }
-      for (final order in created) {
-        _upsertTriggerOrder(order);
+      if (mode == product && selectedSymbol == symbol) {
+        for (final order in created) {
+          _upsertTriggerOrder(order);
+        }
       }
       lastNotice = '止盈止损已提交 ${created.length} 档';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '提交止盈止损失败：$error';
+      await refreshPrivateData();
+      lastError = '已提交 ${created.length} 档，其余提交失败，请核对当前委托后重试：$error';
     }
     notifyListeners();
+    return created.length;
   }
 
   bool _validTriggerDraft(TriggerOrderDraft draft) {
@@ -1973,7 +2096,17 @@ class AppState extends ChangeNotifier {
       subscriptions.add({
         'channel': channel,
         'productLine': product.productLine,
-        'symbol': symbol,
+        if (instruments.any(
+          (i) =>
+              i.mode == product &&
+              i.symbol == symbol &&
+              i.instrumentId.isNotEmpty,
+        ))
+          'instrumentId': instruments
+              .firstWhere((i) => i.mode == product && i.symbol == symbol)
+              .instrumentId
+        else
+          'symbol': symbol,
         'period': ?interval,
       });
     }
@@ -1982,8 +2115,8 @@ class AppState extends ChangeNotifier {
       add('trades', ProductMode.spot, instrument.symbol);
       add('bookTicker', ProductMode.spot, instrument.symbol);
     }
-    for (final instrument in visibleInstruments) {
-      add('trades', mode, instrument.symbol);
+    for (final instrument in instruments.where((i) => i.mode.isDerivative)) {
+      add('trades', instrument.mode, instrument.symbol);
     }
     add('depth', mode, selectedSymbol);
     add('candles', mode, selectedSymbol, period);
@@ -2130,6 +2263,10 @@ class AppState extends ChangeNotifier {
   }
 
   void handleRealtimeMessage(Map<String, dynamic> message) {
+    api.instrumentCatalog = instruments;
+    message = asMap(
+      api.normalizeInstruments(message, asString(message['productLine'])),
+    );
     final op = asString(message['op']);
     final channel = asString(message['channel']);
     if (op == 'authenticated' &&
@@ -2225,6 +2362,7 @@ class AppState extends ChangeNotifier {
             : (bid > 0 ? bid : ask).toDouble();
         price = ticks * instrument.priceTickUnits / 100000000;
       } else {
+        if (selected) recentTrades = mergeRecentTrades(recentTrades, [data]);
         price = data['priceTicks'] != null
             ? instrument.priceFromTicks(asInt(data['priceTicks']))
             : asDouble(data['price']);

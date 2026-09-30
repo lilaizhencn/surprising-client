@@ -4,9 +4,9 @@
 
 Public and private data use separate connections. Private subscriptions wait for authentication; session changes and reconnects reset the baseline. Tokens are not included in URLs.
 
-行情页仅显示 SPOT；交易页按六产品各自的 symbol 订阅成交、深度、K 线，衍生品同时订阅 mark/index，永续订阅 funding。订阅集合变化时退订旧项。现货 bookTicker 提供资产折算，六产品实际持仓驱动额外 mark 订阅。价格缓存按 productLine + symbol 隔离。
+首页和行情默认展示 U 本位永续，行情页可筛选其他产品；交易页按六产品各自的 symbol 订阅成交、深度、K 线，衍生品同时订阅 mark/index，永续订阅 funding。订阅集合变化时退订旧项。现货 bookTicker 提供资产折算，六产品实际持仓驱动额外 mark 订阅。价格缓存按 productLine + symbol 隔离。
 
-Markets show spot instruments. Trading streams are isolated by product and symbol, and subscriptions are reconciled when selection changes. Spot book tickers support conversion; actual positions drive extra mark subscriptions.
+Home and markets default to U-margined perpetual instruments; the market page can filter other products. Trading streams are isolated by product and symbol, and subscriptions are reconciled when selection changes. Spot book tickers support conversion; actual positions drive extra mark subscriptions.
 
 登录后订阅六产品的 accountState/orders/triggerOrders/positions/positionRisk/executionReports。取消 matches。每个产品有独立 PrivateView；先按 version 合并绝对值事件，再刷新 UI，不因 UI 节流而丢掉私有状态。snapshot 的版本栅栏保留较新增量；终态墓碑防止旧事件复活。周期完整快照修复丢包，超过 15 秒或非 READY 不展示当前资产估值。
 
@@ -23,3 +23,9 @@ Assets cover all six products. Equity adds floating value to cash without double
 验证：`flutter analyze`、`flutter test`，包含真实本地 WebSocket 的认证和退订测试。协议测试不能替代部署环境中完整推送链路联调。
 
 Validation includes analyzer, unit/widget tests and a local WebSocket handshake test; it does not replace deployment integration testing.
+
+## Web parity (2026-09-30)
+
+当前 REST 和 WS 以 `instrumentId` 为合约标识。App 保留 symbol 作为展示字段，通过 instrument 元数据按产品映射请求、订阅和返回事件；订阅键包含 instrumentId，防止同 channel 不同合约相互覆盖。首页和行情默认展示 U 本位永续，与当前 Web 一致；行情列表成交订阅独立于交易页的 depth/candles/mark/index/funding 订阅，产品切换会替换后者。
+
+最近成交使用 `/api/v1/gateway/candlestick/trades/recent` 快照并合并 WS trades，按 tradeId 去重、sequence 降序保留 50 条。空深度仍替换盘口，较晚返回的历史行情不覆盖更新的成交价。行情不再显示模拟涨跌幅、成交量、资金费率或倒计时。

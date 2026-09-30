@@ -11,16 +11,16 @@ import 'app_state.dart';
 import 'api.dart';
 import 'models.dart';
 
-const _ink = Color(0xFFEAF3F7);
-const _muted = Color(0xFF91A4B2);
-const _paper = Color(0xFF081017);
-const _panel = Color(0xFF0E1821);
-const _panelSoft = Color(0xFF16232D);
-const _line = Color(0xFF2A3D49);
-const _pink = Color(0xFF4FD7E7);
-const _violet = Color(0xFF168FA4);
-const _mint = Color(0xFF43D3A0);
-const _red = Color(0xFFF07880);
+const _ink = Color(0xFFF2F0F3);
+const _muted = Color(0xFFC6CAD6);
+const _paper = Color(0xFF111318);
+const _panel = Color(0xFF191C23);
+const _panelSoft = Color(0xFF222630);
+const _line = Color(0xFF3B4252);
+const _pink = Color(0xFF7C9AFF);
+const _violet = Color(0xFF5D82FF);
+const _mint = Color(0xFF55DF9A);
+const _red = Color(0xFFFF7D86);
 const _amber = Color(0xFFF1B85C);
 const _lime = Color(0xFFF1B85C);
 
@@ -90,41 +90,48 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
               brightness: isLight ? Brightness.light : Brightness.dark,
               useMaterial3: true,
               scaffoldBackgroundColor: isLight
-                  ? const Color(0xFFF6F8FA)
+                  ? const Color(0xFFFBF9FB)
                   : _paper,
               colorScheme: isLight
                   ? ColorScheme.light(
-                      primary: _pink,
+                      primary: const Color(0xFF003EC7),
+                      onSurface: const Color(0xFF1B1C1E),
+                      onSurfaceVariant: const Color(0xFF434656),
+                      outlineVariant: const Color(0xFFE9E7EA),
                       secondary: _violet,
-                      tertiary: _mint,
+                      tertiary: const Color(0xFF006D3F),
                       surface: Colors.white,
-                      surfaceContainerHighest: const Color(0xFFEFF1F3),
-                      error: _red,
+                      surfaceContainerHighest: const Color(0xFFF5F3F6),
+                      error: const Color(0xFF9E0D22),
                     )
                   : const ColorScheme.dark(
                       primary: _pink,
+                      onPrimary: Color(0xFF111318),
+                      onSurface: _ink,
+                      onSurfaceVariant: _muted,
+                      outlineVariant: _line,
                       secondary: _violet,
                       tertiary: _mint,
                       surface: _panel,
                       surfaceContainerHighest: _panelSoft,
                       error: _red,
                     ),
-              canvasColor: isLight ? const Color(0xFFF6F8FA) : _paper,
+              canvasColor: isLight ? const Color(0xFFFBF9FB) : _paper,
               dividerColor: isLight ? const Color(0xFFD9DEE5) : _line,
               textTheme: TextTheme(
                 titleLarge: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: isLight ? const Color(0xFF14212B) : _ink,
+                  color: isLight ? const Color(0xFF1B1C1E) : _ink,
                 ),
                 titleMedium: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: isLight ? const Color(0xFF14212B) : _ink,
+                  color: isLight ? const Color(0xFF1B1C1E) : _ink,
                 ),
                 bodyMedium: TextStyle(
                   fontSize: 12,
-                  color: isLight ? const Color(0xFF253746) : _ink,
+                  color: isLight ? const Color(0xFF1B1C1E) : _ink,
                 ),
                 labelMedium: TextStyle(
                   fontSize: 11,
@@ -162,16 +169,18 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
                 ),
               ),
               chipTheme: ChipThemeData(
-                backgroundColor: _panelSoft,
+                backgroundColor: isLight ? const Color(0xFFF5F3F6) : _panelSoft,
                 selectedColor: _pink.withValues(alpha: .20),
-                side: const BorderSide(color: _line),
-                labelStyle: const TextStyle(
-                  color: _ink,
+                side: BorderSide(
+                  color: isLight ? const Color(0xFFC3C5D9) : _line,
+                ),
+                labelStyle: TextStyle(
+                  color: isLight ? const Color(0xFF1B1C1E) : _ink,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
-                secondaryLabelStyle: const TextStyle(
-                  color: _ink,
+                secondaryLabelStyle: TextStyle(
+                  color: isLight ? const Color(0xFF1B1C1E) : _ink,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
@@ -181,18 +190,22 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
               ),
               iconButtonTheme: IconButtonThemeData(
                 style: IconButton.styleFrom(
-                  backgroundColor: _panelSoft,
-                  foregroundColor: _ink,
+                  backgroundColor: isLight
+                      ? const Color(0xFFF5F3F6)
+                      : _panelSoft,
+                  foregroundColor: isLight ? const Color(0xFF1B1C1E) : _ink,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
-                    side: const BorderSide(color: _line),
+                    side: BorderSide(
+                      color: isLight ? const Color(0xFFC3C5D9) : _line,
+                    ),
                   ),
                 ),
               ),
               filledButtonTheme: FilledButtonThemeData(
                 style: FilledButton.styleFrom(
-                  backgroundColor: _pink,
-                  foregroundColor: Colors.white,
+                  backgroundColor: isLight ? const Color(0xFF003EC7) : _pink,
+                  foregroundColor: isLight ? Colors.white : _paper,
                   disabledBackgroundColor: _panelSoft,
                   disabledForegroundColor: _muted,
                   shape: RoundedRectangleBorder(
@@ -202,8 +215,10 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
               ),
               outlinedButtonTheme: OutlinedButtonThemeData(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: _ink,
-                  side: const BorderSide(color: _line),
+                  foregroundColor: isLight ? const Color(0xFF1B1C1E) : _ink,
+                  side: BorderSide(
+                    color: isLight ? const Color(0xFFC3C5D9) : _line,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -230,6 +245,19 @@ class _ClientShellState extends State<ClientShell> {
   String? seenNotice;
   String? seenError;
 
+  void openInstrument(Instrument instrument) {
+    setState(() => index = instrument.isSpot ? 2 : 3);
+  }
+
+  void setTab(int next) {
+    final state = AppScope.of(context);
+    if (next == 2) unawaited(state.selectMode(ProductMode.spot));
+    if (next == 3 && state.mode.isSpot) {
+      unawaited(state.selectMode(ProductMode.linear));
+    }
+    setState(() => index = next);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -237,8 +265,12 @@ class _ClientShellState extends State<ClientShell> {
     final page = switch (index) {
       0 => const HomePage(),
       1 => const MarketsPage(),
-      2 => TradePage(key: ValueKey('trade-${state.mode.name}')),
-      3 => TradePage(key: ValueKey('contract-${state.mode.name}')),
+      2 => TradePage(
+        key: ValueKey('trade-${state.mode.name}-${state.selectedSymbol}'),
+      ),
+      3 => TradePage(
+        key: ValueKey('contract-${state.mode.name}-${state.selectedSymbol}'),
+      ),
       _ => const WalletPage(),
     };
     return Scaffold(
@@ -326,9 +358,14 @@ class ExchangeBottomNav extends StatelessWidget {
     return Container(
       height: 56 + bottomInset,
       padding: EdgeInsets.only(bottom: bottomInset),
-      decoration: const BoxDecoration(
-        color: _panel,
-        border: Border(top: BorderSide(color: _line, width: .7)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+            width: .7,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -364,20 +401,24 @@ class _ExchangeNavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedColor = item.label == '资产' ? _lime : _amber;
+    final selectedColor = Theme.of(context).colorScheme.primary;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ExchangeNavGlyph(
-          label: item.label,
-          color: selected ? selectedColor : _muted,
-          selected: selected,
+        Icon(
+          selected ? item.selectedIcon : item.icon,
+          color: selected
+              ? selectedColor
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+          size: 24,
         ),
         const SizedBox(height: 2),
         Text(
           item.label,
           style: TextStyle(
-            color: selected ? selectedColor : _muted,
+            color: selected
+                ? selectedColor
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 10,
             fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
           ),
@@ -616,238 +657,259 @@ class _ExchangeNavGlyphPainter extends CustomPainter {
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
-
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final instrument = state.selectedInstrument;
-    final bestBid = state.orderBook.bids.isNotEmpty
-        ? state.orderBook.bids.first
-        : null;
-    final bestAsk = state.orderBook.asks.isNotEmpty
-        ? state.orderBook.asks.first
-        : null;
-    final latestPrice = state.latestPriceFor(instrument);
     return RefreshIndicator(
-      onRefresh: () async {
-        await state.refreshPublicData();
-        await state.refreshPrivateData();
-      },
+      onRefresh: state.refreshInstruments,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
           Row(
             children: [
-              const SparkleMark(size: 44),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Surprising',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: _ink,
-                      ),
-                    ),
-                    Text('现货 · 永续 · 交割 · 期权', style: TextStyle(color: _muted)),
-                  ],
+              Expanded(
+                child: Text(
+                  'Surprising',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              IconButton.filledTonal(
-                onPressed: () => state.refreshPublicData(),
-                icon: const Icon(Icons.refresh),
+              IconButton(
+                tooltip: '账户',
+                onPressed: () {
+                  if (state.isLoggedIn) {
+                    context
+                        .findAncestorStateOfType<_ClientShellState>()
+                        ?.setTab(4);
+                  } else {
+                    showAuthSheet(context);
+                  }
+                },
+                icon: const Icon(Icons.account_circle_outlined),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          GradientPanel(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        instrument.displayName,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${instrument.mode.label} · ${instrument.settleAsset}结算',
-                        style: const TextStyle(color: _muted),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        latestPrice == null
-                            ? '--'
-                            : money(
-                                latestPrice,
-                                digits: instrument.pricePrecision,
-                              ),
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          color: _mint,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    MetricPill(
-                      label: '买一',
-                      value: bestBid == null
-                          ? '--'
-                          : compactInt(bestBid.quantitySteps),
-                      color: _mint,
-                    ),
-                    const SizedBox(height: 8),
-                    MetricPill(
-                      label: '卖一',
-                      value: bestAsk == null
-                          ? '--'
-                          : compactInt(bestAsk.quantitySteps),
-                      color: _red,
-                    ),
-                  ],
-                ),
-              ],
+          const SizedBox(height: 24),
+          Text(
+            '交易，从这里开始',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          const Text('现货 · 永续 · 交割 · 期权'),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: () =>
+                context.findAncestorStateOfType<_ClientShellState>()?.setTab(3),
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('开始永续交易'),
             ),
           ),
-          const SizedBox(height: 14),
+          if (!state.isLoggedIn)
+            OutlinedButton(
+              onPressed: () => showAuthSheet(context),
+              child: const Text('登录 / 创建账户'),
+            )
+          else
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(state.session!.user.username),
+              subtitle: Text(state.session!.user.email),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context
+                  .findAncestorStateOfType<_ClientShellState>()
+                  ?.setTab(4),
+            ),
+          const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
-                child: QuickTile(
-                  icon: Icons.candlestick_chart,
-                  title: 'K线',
-                  value: state.period,
+                child: Text(
+                  '市场概览',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: QuickTile(
-                  icon: Icons.stacked_line_chart,
-                  title: '盘口',
-                  value: 'L2',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: QuickTile(
-                  icon: Icons.shield_outlined,
-                  title: '风控',
-                  value: state.accountRisk?.status ?? '--',
-                ),
+              TextButton(
+                onPressed: () => context
+                    .findAncestorStateOfType<_ClientShellState>()
+                    ?.setTab(1),
+                child: const Text('全部行情'),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          if (!state.isLoggedIn)
-            Panel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '把账户接入你的交易节奏',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '登录后查看真实资产、委托、仓位与个性化行情。',
-                    style: TextStyle(color: _muted, height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  PrimaryAction(
-                    label: '登录 / 创建账户',
-                    icon: Icons.arrow_forward,
-                    onPressed: () => showAuthSheet(context),
-                  ),
-                ],
-              ),
+          if (state.instruments
+              .where((i) => i.mode == ProductMode.linear)
+              .isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('暂无行情，下拉刷新'),
             ),
-          if (!state.isLoggedIn) const SizedBox(height: 14),
-          SectionTitle(
-            title: '精选交易对',
-            action: TextButton(
-              onPressed: () => state.refreshInstruments(),
-              child: const Text('刷新'),
-            ),
-          ),
-          ...state.instruments
-              .take(6)
-              .map((item) => InstrumentRow(instrument: item)),
+          for (final instrument
+              in state.instruments
+                  .where((i) => i.mode == ProductMode.linear)
+                  .take(8))
+            PublicMarketRow(instrument: instrument),
         ],
       ),
     );
   }
 }
 
-class MarketsPage extends StatelessWidget {
+class MarketsPage extends StatefulWidget {
   const MarketsPage({super.key});
+  @override
+  State<MarketsPage> createState() => _MarketsPageState();
+}
 
+class _MarketsPageState extends State<MarketsPage> {
+  String query = '';
+  ProductMode product = ProductMode.linear;
+  bool sortByChange = false;
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final instruments = state.spotInstruments;
+    final items = state.instruments
+        .where(
+          (i) =>
+              i.mode == product &&
+              i.symbol.toLowerCase().contains(query.toLowerCase()),
+        )
+        .toList();
+    if (sortByChange) {
+      items.sort(
+        (a, b) => (b.change24h ?? double.negativeInfinity).compareTo(
+          a.change24h ?? double.negativeInfinity,
+        ),
+      );
+    }
     return RefreshIndicator(
       onRefresh: state.refreshInstruments,
       child: ListView(
-        padding: EdgeInsets.zero,
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          Text('行情', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 16),
+          TextField(
+            key: const ValueKey('market-search'),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: '搜索交易对',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (v) => setState(() => query = v),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                const Expanded(child: ExchangeSearchBox(hint: '搜索代币交易对和趋势')),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: '更多',
-                  onPressed: state.refreshInstruments,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide.none,
-                    foregroundColor: _ink,
+                for (final mode in ProductMode.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(mode.label),
+                      selected: product == mode,
+                      onSelected: (_) => setState(() => product = mode),
+                    ),
                   ),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 34,
-                    height: 34,
-                  ),
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.more_horiz, size: 22),
-                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          const MarketPrimaryTabs(selectedIndex: 1),
-          const Divider(height: 1, color: _line),
-          const CategoryStrip(),
-          const MarketSortHeader(),
-          if (instruments.isEmpty)
-            const EmptyState(text: '暂无行情数据')
-          else
-            ...instruments.map((instrument) {
-              return MarketTickerRow(
-                instrument: instrument,
-                selected: instrument.symbol == state.selectedSymbol,
-                onTap: () => unawaited(() async {
-                  await state.selectMode(ProductMode.spot);
-                  await state.selectSymbol(instrument.symbol);
-                }()),
-              );
-            }),
-          const SizedBox(height: 24),
+          Row(
+            children: [
+              const Expanded(child: Text('交易对 / 最新价')),
+              TextButton(
+                onPressed: () => setState(() => sortByChange = !sortByChange),
+                child: Text(sortByChange ? '24h 涨跌幅 ↓' : '24h 涨跌幅'),
+              ),
+            ],
+          ),
+          if (items.isEmpty)
+            const Padding(padding: EdgeInsets.all(24), child: Text('暂无匹配的交易对')),
+          for (final instrument in items)
+            PublicMarketRow(instrument: instrument),
         ],
+      ),
+    );
+  }
+}
+
+class PublicMarketRow extends StatelessWidget {
+  const PublicMarketRow({required this.instrument, super.key});
+  final Instrument instrument;
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final price = state.latestPriceFor(instrument) ?? instrument.lastPrice;
+    final change = instrument.change24h;
+    final colors = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () async {
+        final shell = context.findAncestorStateOfType<_ClientShellState>();
+        await state.selectMode(instrument.mode);
+        await state.selectSymbol(instrument.symbol);
+        if (context.mounted) shell?.openInstrument(instrument);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    instrument.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    instrument.mode.label,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(
+                price == null
+                    ? '--'
+                    : money(price, digits: instrument.pricePrecision),
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 76,
+              child: Text(
+                change == null
+                    ? '--'
+                    : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  color: change == null
+                      ? colors.onSurfaceVariant
+                      : change >= 0
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -861,8 +923,8 @@ class TradePage extends StatefulWidget {
 }
 
 class _TradePageState extends State<TradePage> {
-  final priceController = TextEditingController(text: '65000');
-  final quantityController = TextEditingController(text: '1');
+  final priceController = TextEditingController();
+  final quantityController = TextEditingController();
   String side = 'BUY';
   String orderType = 'LIMIT';
   String timeInForce = 'GTC';
@@ -870,6 +932,7 @@ class _TradePageState extends State<TradePage> {
   String positionSide = 'NET';
   bool reduceOnly = false;
   bool postOnly = false;
+  bool priceInitialized = false;
 
   @override
   void dispose() {
@@ -883,7 +946,8 @@ class _TradePageState extends State<TradePage> {
     final state = AppScope.of(context);
     final instrument = state.selectedInstrument;
     final latestPrice = state.latestPriceFor(instrument);
-    if (state.orderBook.bids.isNotEmpty && priceController.text == '65000') {
+    if (state.orderBook.bids.isNotEmpty && !priceInitialized) {
+      priceInitialized = true;
       priceController.text = money(
         instrument.priceFromTicks(state.orderBook.bids.first.priceTicks),
         digits: instrument.pricePrecision,
@@ -903,7 +967,10 @@ class _TradePageState extends State<TradePage> {
             compact: true,
             onChanged: (mode) => unawaited(state.selectMode(mode)),
           ),
-          const Divider(height: 10, color: _line),
+          Divider(
+            height: 10,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
           TradeSymbolHeader(
             instrument: instrument,
             latestPrice: latestPrice,
@@ -918,6 +985,21 @@ class _TradePageState extends State<TradePage> {
             ),
           ],
           if (instrument.isDerivative) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 6,
+                children: [
+                  Text(
+                    '最新价 ${latestPrice == null ? '--' : money(latestPrice, digits: instrument.pricePrecision)}',
+                  ),
+                  Text(
+                    '标记价 ${state.markPrices['${state.mode.productLine}:${instrument.symbol}'] == null ? '--' : money(instrument.priceFromTicks(state.markPrices['${state.mode.productLine}:${instrument.symbol}']!), digits: instrument.pricePrecision)}',
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 6),
             ContractQuickSettings(
               marginMode: marginMode,
@@ -956,7 +1038,10 @@ class _TradePageState extends State<TradePage> {
                     instrument: instrument,
                     loggedIn: state.isLoggedIn,
                     onSide: (value) => setState(() => side = value),
-                    onOrderType: (value) => setState(() => orderType = value),
+                    onOrderType: (value) => setState(() {
+                      orderType = value;
+                      if (value == 'MARKET') postOnly = false;
+                    }),
                     onTimeInForce: (value) =>
                         setState(() => timeInForce = value),
                     onMarginMode: (value) => setState(() => marginMode = value),
@@ -965,8 +1050,20 @@ class _TradePageState extends State<TradePage> {
                     onReduceOnly: (value) => setState(() => reduceOnly = value),
                     onPostOnly: (value) => setState(() => postOnly = value),
                     onSubmit: () {
+                      if (state.submittingOrder) return;
                       if (!state.isLoggedIn) {
                         showAuthSheet(context);
+                        return;
+                      }
+                      if (orderType != 'MARKET' &&
+                          decimalIncrement(
+                                priceController.text,
+                                instrument.priceTickUnits,
+                              ) ==
+                              null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('价格必须符合最小价格变动')),
+                        );
                         return;
                       }
                       unawaited(
@@ -975,8 +1072,13 @@ class _TradePageState extends State<TradePage> {
                           orderType: orderType,
                           timeInForce: timeInForce,
                           price: double.tryParse(priceController.text) ?? 0,
-                          quantitySteps:
-                              int.tryParse(quantityController.text) ?? 0,
+                          quantitySteps: instrument.isSpot
+                              ? decimalIncrement(
+                                      quantityController.text,
+                                      instrument.quantityStepUnits,
+                                    ) ??
+                                    0
+                              : int.tryParse(quantityController.text) ?? 0,
                           marginMode: instrument.isSpot ? 'CROSS' : marginMode,
                           positionSide:
                               instrument.isSpot ||
@@ -1008,6 +1110,9 @@ class _TradePageState extends State<TradePage> {
             ),
           ),
           const SizedBox(height: 8),
+          if (state.submittingOrder) const LinearProgressIndicator(),
+          RecentTradesPanel(state: state),
+          const SizedBox(height: 12),
           PrivateTradingPanel(state: state),
           if (instrument.isDerivative) ...[
             Theme(
@@ -1017,8 +1122,10 @@ class _TradePageState extends State<TradePage> {
               child: ExpansionTile(
                 tilePadding: const EdgeInsets.symmetric(horizontal: 2),
                 childrenPadding: EdgeInsets.zero,
-                collapsedIconColor: _muted,
-                iconColor: _ink,
+                collapsedIconColor: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant,
+                iconColor: Theme.of(context).colorScheme.onSurface,
                 title: const Text(
                   '高级委托',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
@@ -1026,7 +1133,13 @@ class _TradePageState extends State<TradePage> {
                 children: [
                   AlgoOrderPanel(state: state, marginMode: marginMode),
                   const SizedBox(height: 6),
-                  TriggerOrderPanel(state: state, marginMode: marginMode),
+                  TriggerOrderPanel(
+                    key: ValueKey(
+                      '${state.mode}-${state.selectedSymbol}-$marginMode-${state.positionMode}',
+                    ),
+                    state: state,
+                    marginMode: marginMode,
+                  ),
                 ],
               ),
             ),
@@ -1036,8 +1149,10 @@ class _TradePageState extends State<TradePage> {
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 2),
-              collapsedIconColor: _muted,
-              iconColor: _ink,
+              collapsedIconColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
+              iconColor: Theme.of(context).colorScheme.onSurface,
               title: Text(
                 '${instrument.displayName.replaceAll('-', '')} ${instrument.contractLabel} K线图表',
                 maxLines: 1,
@@ -1126,16 +1241,20 @@ class _WalletPageState extends State<WalletPage> {
           children: [
             Row(
               children: [
-                const Text(
+                Text(
                   '总资产估值',
                   style: TextStyle(
-                    color: _muted,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Icon(Icons.visibility_outlined, color: _muted, size: 16),
+                Icon(
+                  Icons.visibility_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: 16,
+                ),
                 const Spacer(),
                 IconButton(
                   tooltip: '资金记录',
@@ -1145,7 +1264,7 @@ class _WalletPageState extends State<WalletPage> {
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     side: BorderSide.none,
-                    foregroundColor: _ink,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
                   ),
                   constraints: const BoxConstraints.tightFor(
                     width: 34,
@@ -1175,10 +1294,10 @@ class _WalletPageState extends State<WalletPage> {
                   padding: const EdgeInsets.only(bottom: 5),
                   child: Text(
                     state.valuationCurrency.code,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: _ink,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -1197,7 +1316,10 @@ class _WalletPageState extends State<WalletPage> {
                           ),
                         )
                         .toList(),
-                    icon: const Icon(Icons.arrow_drop_down, color: _muted),
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -1210,15 +1332,19 @@ class _WalletPageState extends State<WalletPage> {
                     '今日收益 —（等待真实账务收益数据）',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _muted,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
                 const SizedBox(width: 3),
-                const Icon(Icons.chevron_right, color: _ink, size: 18),
+                Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).colorScheme.onSurface,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 const SizedBox(width: 78, height: 36, child: AssetSparkline()),
               ],
@@ -1262,7 +1388,7 @@ class _WalletPageState extends State<WalletPage> {
               ),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1278,7 +1404,9 @@ class _WalletPageState extends State<WalletPage> {
                         Text(
                           '在交易所交易 DEX 代币',
                           style: TextStyle(
-                            color: _muted,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1316,7 +1444,7 @@ class _WalletPageState extends State<WalletPage> {
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     side: BorderSide.none,
-                    foregroundColor: _ink,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
                   ),
                   constraints: const BoxConstraints.tightFor(
                     width: 34,
@@ -1358,22 +1486,37 @@ class _WalletPageState extends State<WalletPage> {
               ),
             ),
             const SizedBox(height: 14),
-            const Row(
+            Row(
               children: [
                 Text(
                   '代币',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
                 Spacer(),
-                Icon(Icons.keyboard_arrow_up, color: _ink),
+                Icon(
+                  Icons.keyboard_arrow_up,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            const Row(
+            Row(
               children: [
-                Text('名称/数量', style: TextStyle(color: _muted, fontSize: 12)),
+                Text(
+                  '名称/数量',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
                 Spacer(),
-                Text('价值/现货收益', style: TextStyle(color: _muted, fontSize: 12)),
+                Text(
+                  '价值/现货收益',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -1403,8 +1546,8 @@ class _WalletPageState extends State<WalletPage> {
                 child: ExpansionTile(
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: EdgeInsets.zero,
-                  collapsedIconColor: _ink,
-                  iconColor: _ink,
+                  collapsedIconColor: Theme.of(context).colorScheme.onSurface,
+                  iconColor: Theme.of(context).colorScheme.onSurface,
                   title: const Text(
                     '钱包工具',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
@@ -1498,9 +1641,14 @@ class _WalletPageState extends State<WalletPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SectionTitle(title: '提币'),
-                          const Text(
+                          Text(
                             '通过独立安全表单核对网络、地址、数量和验证信息。',
-                            style: TextStyle(color: _muted, fontSize: 11),
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           PrimaryAction(
@@ -1569,9 +1717,14 @@ class _WalletPageState extends State<WalletPage> {
                             ],
                           ),
                           const SizedBox(height: 10),
-                          const Text(
+                          Text(
                             '小额划转无需额外验证；大额划转按 USDT 估值验证，绑定 2FA 后还需动态验证码。',
-                            style: TextStyle(color: _muted, fontSize: 11),
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
                           ),
                           if (state.transferVerificationRequired) ...[
                             const SizedBox(height: 8),
@@ -1628,8 +1781,10 @@ class _WalletPageState extends State<WalletPage> {
                                 state.transferOutcomeTerminalFailure
                                     ? '本次划转已失败，可以重新填写后再试。'
                                     : '划转结果待确认，请勿重复提交。',
-                                style: const TextStyle(
-                                  color: _muted,
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                   fontSize: 11,
                                 ),
                               ),
@@ -1676,8 +1831,8 @@ class _WalletPageState extends State<WalletPage> {
               child: ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: EdgeInsets.zero,
-                collapsedIconColor: _ink,
-                iconColor: _ink,
+                collapsedIconColor: Theme.of(context).colorScheme.onSurface,
+                iconColor: Theme.of(context).colorScheme.onSurface,
                 title: const Text(
                   '交易账户资产',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
@@ -1900,9 +2055,13 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: chainValues.isEmpty
-                            ? const Text(
+                            ? Text(
                                 '无可用网络',
-                                style: TextStyle(color: _muted),
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
                               )
                             : SmallDropdown(
                                 value: chain,
@@ -1965,17 +2124,23 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       hintText: '请粘贴并逐字核对接收地址',
                       isDense: true,
                       filled: true,
-                      fillColor: _panelSoft,
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: _line),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: _pink),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                     ),
                   ),
@@ -2010,9 +2175,13 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       !previewReceived.startsWith('-'))
                     InfoLine(label: '预计到账', value: '$previewReceived $symbol'),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     '客户端校验用于提前发现输入问题，最终以钱包和风控服务校验为准。网络选错或地址错误可能导致资产无法找回。',
-                    style: TextStyle(color: _muted, fontSize: 11, height: 1.45),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                      height: 1.45,
+                    ),
                   ),
                 ],
               ),
@@ -2056,7 +2225,10 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
               Text(
                 localError!,
                 key: const ValueKey('withdrawal-local-error'),
-                style: const TextStyle(color: _red, fontSize: 12),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
               ),
             ],
             if (state.withdrawalConfirmation != null) ...[
@@ -2349,10 +2521,14 @@ class RechargeNetworkPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFF333333)),
               ),
-              child: const Row(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info, color: _ink, size: 24),
+                  Icon(
+                    Icons.info,
+                    color: Theme.of(context).colorScheme.onSurface,
+                    size: 24,
+                  ),
                   SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -2369,7 +2545,7 @@ class RechargeNetworkPage extends StatelessWidget {
                         Text(
                           '请确保您选择的网络，与汇出平台或钱包的网络保持一致。',
                           style: TextStyle(
-                            color: _ink,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 17,
                             height: 1.45,
                           ),
@@ -2389,13 +2565,22 @@ class RechargeNetworkPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 34),
-            const Row(
+            Row(
               children: [
-                Text('网络', style: TextStyle(color: _muted, fontSize: 17)),
+                Text(
+                  '网络',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 17,
+                  ),
+                ),
                 Spacer(),
                 Text(
                   '到账时间/最小充币金额',
-                  style: TextStyle(color: _muted, fontSize: 17),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 17,
+                  ),
                 ),
               ],
             ),
@@ -2525,10 +2710,10 @@ class _RechargeAddressPageState extends State<RechargeAddressPage> {
               ),
             ),
             const SizedBox(height: 34),
-            const Text(
+            Text(
               '地址 〉',
               style: TextStyle(
-                color: _muted,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
               ),
@@ -2680,12 +2865,16 @@ class RechargeSearchField extends StatelessWidget {
       style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(
-          color: _muted,
+        hintStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: 19,
           fontWeight: FontWeight.w800,
         ),
-        prefixIcon: const Icon(Icons.search, color: _ink, size: 30),
+        prefixIcon: Icon(
+          Icons.search,
+          color: Theme.of(context).colorScheme.onSurface,
+          size: 30,
+        ),
         filled: true,
         fillColor: const Color(0xFF1F1F1F),
         border: OutlineInputBorder(
@@ -2738,13 +2927,15 @@ class RechargeCoinRow extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: _mint.withValues(alpha: .16),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.tertiary.withValues(alpha: .16),
                             borderRadius: BorderRadius.circular(5),
                           ),
-                          child: const Text(
+                          child: Text(
                             '3.5% 年化收益',
                             style: TextStyle(
-                              color: _mint,
+                              color: Theme.of(context).colorScheme.tertiary,
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
                             ),
@@ -2756,8 +2947,8 @@ class RechargeCoinRow extends StatelessWidget {
                   const SizedBox(height: 7),
                   Text(
                     assetDisplayName(symbol),
-                    style: const TextStyle(
-                      color: _muted,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
                     ),
@@ -2820,7 +3011,10 @@ class RechargeNetworkRow extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   '0.01 $symbol',
-                  style: const TextStyle(color: _muted, fontSize: 16),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 16,
+                  ),
                 ),
               ],
             ),
@@ -2865,7 +3059,11 @@ class RechargeInfoLine extends StatelessWidget {
               ),
               if (showInfo) ...[
                 const SizedBox(width: 6),
-                const Icon(Icons.info_outline, color: _muted, size: 18),
+                Icon(
+                  Icons.info_outline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: 18,
+                ),
               ],
             ],
           ),
@@ -2877,8 +3075,8 @@ class RechargeInfoLine extends StatelessWidget {
               textAlign: TextAlign.right,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _muted,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 21,
                 fontWeight: FontWeight.w800,
               ),
@@ -2886,7 +3084,10 @@ class RechargeInfoLine extends StatelessWidget {
           ),
           if (showChevron) ...[
             const SizedBox(width: 3),
-            const Icon(Icons.keyboard_arrow_down, color: _muted),
+            Icon(
+              Icons.keyboard_arrow_down,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ],
         ],
       ),
@@ -2986,7 +3187,9 @@ class ProfilePage extends StatelessWidget {
                       state.isLoggedIn
                           ? 'UID ${state.userId} · ${state.session!.user.status}'
                           : '登录后同步订单、持仓和资产',
-                      style: const TextStyle(color: _muted),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -3073,7 +3276,10 @@ class ProfilePage extends StatelessWidget {
               color: Colors.transparent,
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.security, color: _mint),
+                leading: Icon(
+                  Icons.security,
+                  color: Theme.of(context).colorScheme.tertiary,
+                ),
                 title: const Text('安全中心'),
                 subtitle: const Text('2FA、敏感场景和 API Key'),
                 trailing: const Icon(Icons.chevron_right),
@@ -3124,7 +3330,10 @@ class ProfilePage extends StatelessWidget {
           (line) => Panel(
             child: Text(
               line,
-              style: const TextStyle(fontSize: 12, color: _muted),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),
@@ -3445,9 +3654,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
               ],
             ),
             if (notice != null)
-              Text(notice!, style: const TextStyle(color: _mint)),
+              Text(
+                notice!,
+                style: TextStyle(color: Theme.of(context).colorScheme.tertiary),
+              ),
             if (error != null)
-              Text(error!, style: const TextStyle(color: _red)),
+              Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             SectionTitle(title: mfaEnabled ? '2FA 已启用' : '绑定 2FA'),
             if (!mfaEnabled && enrollmentSecret.isEmpty)
               PrimaryAction(
@@ -3522,15 +3737,21 @@ class _SecuritySheetState extends State<SecuritySheet> {
               );
             }),
             const SectionTitle(title: '安全设置验证'),
-            const Text(
+            Text(
               '修改敏感场景前需要邮箱验证码，绑定 2FA 后还需动态验证码。',
-              style: TextStyle(color: _muted, fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             ),
             AppTextField(controller: securityEmailCode, label: '安全设置邮箱验证码'),
             const SectionTitle(title: '修改密码'),
-            const Text(
+            Text(
               '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
-              style: TextStyle(color: _muted, fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
             AppTextField(
@@ -3596,7 +3817,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
             ),
             Text(
               '提币前必须完成认证。材料会存入对象存储，审核只读取已上传的材料元数据和原件。',
-              style: const TextStyle(color: _muted, fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -3605,9 +3829,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '申请主体',
-                        style: TextStyle(color: _muted, fontSize: 11),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
                       ),
                       SmallDropdown(
                         value: kycApplicantType,
@@ -3625,9 +3852,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '认证等级',
-                        style: TextStyle(color: _muted, fontSize: 11),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
                       ),
                       SmallDropdown(
                         value: kycLevel,
@@ -3652,9 +3882,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '主证件类型',
-                        style: TextStyle(color: _muted, fontSize: 11),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
                       ),
                       SmallDropdown(
                         value: kycDocumentType,
@@ -3679,9 +3912,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '认证服务',
-                        style: TextStyle(color: _muted, fontSize: 11),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
                       ),
                       SmallDropdown(
                         value: kycProvider,
@@ -3749,9 +3985,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
             ],
             const SizedBox(height: 8),
             if (kycDocumentRecords.isEmpty)
-              const Text(
+              Text(
                 '尚未上传材料。请至少上传主证件；标准及以上认证请同时上传地址证明。',
-                style: TextStyle(color: _muted, fontSize: 10),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10,
+                ),
               )
             else
               ...kycDocumentRecords.map(
@@ -3768,9 +4007,12 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         '人脸状态',
-                        style: TextStyle(color: _muted, fontSize: 11),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
                       ),
                       SmallDropdown(
                         value: kycFaceStatus,
@@ -4056,8 +4298,19 @@ class OrderTicket extends StatelessWidget {
     }
 
     void stepQuantity(int direction) {
-      final current = int.tryParse(quantityController.text) ?? 0;
-      quantityController.text = math.max(0, current + direction).toString();
+      final current = instrument.isSpot
+          ? decimalIncrement(
+                  quantityController.text,
+                  instrument.quantityStepUnits,
+                ) ??
+                0
+          : int.tryParse(quantityController.text) ?? 0;
+      final next = math.max(0, current + direction);
+      quantityController.text = instrument.isSpot
+          ? (next * instrument.quantityStepUnits / 100000000).toStringAsFixed(
+              instrument.quantityPrecision,
+            )
+          : next.toString();
     }
 
     return Panel(
@@ -4145,20 +4398,18 @@ class OrderTicket extends StatelessWidget {
             TradeNumericField(
               controller: quantityController,
               label: '数量',
-              suffixLabel: instrument.baseAsset,
+              suffixLabel: instrument.isSpot ? instrument.baseAsset : '张',
               onMinus: () => stepQuantity(-1),
               onPlus: () => stepQuantity(1),
             ),
             const SizedBox(height: 6),
-            const OrderAmountSlider(),
-            const SizedBox(height: 5),
-            OrderMetaRow(label: '可用', value: '--  ⇆'),
-            OrderMetaRow(label: '最大', value: '0.000 ${instrument.baseAsset}'),
-            if (instrument.isDerivative)
-              OrderMetaRow(
-                label: '保证金',
-                value: '0.00 ${instrument.quoteAsset}',
+            Text(
+              '最小价格变动 ${instrument.priceFromTicks(1)} ${instrument.quoteAsset}',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10,
               ),
+            ),
             const SizedBox(height: 3),
             Row(
               children: [
@@ -4182,7 +4433,11 @@ class OrderTicket extends StatelessWidget {
             const SizedBox(height: 6),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: loggedIn ? (buy ? _mint : _red) : _violet,
+                backgroundColor: loggedIn
+                    ? (buy
+                          ? Theme.of(context).colorScheme.tertiary
+                          : Theme.of(context).colorScheme.error)
+                    : Theme.of(context).colorScheme.secondary,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -4192,7 +4447,7 @@ class OrderTicket extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              onPressed: onSubmit,
+              onPressed: AppScope.of(context).submittingOrder ? null : onSubmit,
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn
@@ -4417,7 +4672,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
           const SizedBox(height: 8),
           FilledButton.icon(
             style: FilledButton.styleFrom(
-              backgroundColor: _violet,
+              backgroundColor: Theme.of(context).colorScheme.secondary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -4452,7 +4707,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   bool submitting = false;
 
   void addLevel(String triggerType) {
-    final defaultPrice = _defaultTriggerPriceTicks().toString();
+    final defaultPrice = _defaultTriggerPrice();
     setState(() {
       levels.add(
         _TriggerLevelInput(
@@ -4465,33 +4720,39 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
           activationPriceTicks: triggerType == 'TRAILING_STOP'
               ? defaultPrice
               : '',
-          callbackRatePpm: triggerType == 'TRAILING_STOP' ? '1000' : '',
+          callbackRatePpm: triggerType == 'TRAILING_STOP' ? '0.1' : '',
           quantitySteps: '1',
         ),
       );
     });
   }
 
-  int _defaultTriggerPriceTicks() {
+  String _defaultTriggerPrice() {
     final instrument = widget.state.selectedInstrument;
-    final latestPrice = widget.state.latestPriceFor(instrument);
-    if (latestPrice != null && latestPrice > 0) {
-      return instrument.ticksFromPrice(latestPrice);
-    }
-    final book = widget.state.orderBook;
-    if (book.symbol == instrument.symbol && book.bids.isNotEmpty) {
-      return book.bids.first.priceTicks;
-    }
-    return 0;
+    final price = widget.state.latestPriceFor(instrument);
+    return price == null
+        ? ''
+        : price.toStringAsFixed(instrument.pricePrecision);
   }
 
   List<TriggerOrderDraft> _drafts() {
     final hedgeMode = widget.state.positionMode == 'HEDGE';
     return levels
         .map((level) {
-          final triggerPriceTicks = int.tryParse(level.triggerPriceTicks) ?? 0;
-          final activationPriceTicks = int.tryParse(level.activationPriceTicks);
-          final callbackRatePpm = int.tryParse(level.callbackRatePpm);
+          final triggerPriceTicks =
+              decimalIncrement(
+                level.triggerPriceTicks,
+                widget.state.selectedInstrument.priceTickUnits,
+              ) ??
+              0;
+          final activationPriceTicks = decimalIncrement(
+            level.activationPriceTicks,
+            widget.state.selectedInstrument.priceTickUnits,
+          );
+          final callbackRatePpm = decimalIncrement(
+            level.callbackRatePpm,
+            10000,
+          );
           final quantitySteps = int.tryParse(level.quantitySteps) ?? 0;
           return TriggerOrderDraft(
             side: level.closeTarget == 'LONG' ? 'SELL' : 'BUY',
@@ -4528,10 +4789,15 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
 
   Future<void> submit() async {
     final drafts = _drafts();
-    if (drafts.isEmpty || submitting) return;
+    if (drafts.isEmpty || drafts.length != levels.length || submitting) return;
     setState(() => submitting = true);
-    await widget.state.placeTriggerOrders(drafts);
-    if (mounted) setState(() => submitting = false);
+    final submitted = await widget.state.placeTriggerOrders(drafts);
+    if (mounted) {
+      setState(() {
+        levels.removeRange(0, submitted);
+        submitting = false;
+      });
+    }
   }
 
   @override
@@ -4570,11 +4836,14 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
             ],
           ),
           if (levels.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text(
                 '暂无待提交档位',
-                style: TextStyle(color: _muted, fontSize: 12),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
             )
           else ...[
@@ -4590,7 +4859,10 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 ),
                 minimumSize: const Size.fromHeight(38),
               ),
-              onPressed: validCount == 0 || submitting ? null : submit,
+              onPressed:
+                  validCount == 0 || validCount != levels.length || submitting
+                  ? null
+                  : submit,
               icon: Icon(
                 submitting ? Icons.hourglass_top : Icons.notifications,
               ),
@@ -4625,16 +4897,14 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                     if (value == 'TRAILING_STOP') {
                       level.triggerPriceTicks = '0';
                       if (level.activationPriceTicks.isEmpty) {
-                        level.activationPriceTicks = _defaultTriggerPriceTicks()
-                            .toString();
+                        level.activationPriceTicks = _defaultTriggerPrice();
                       }
                       if (level.callbackRatePpm.isEmpty) {
-                        level.callbackRatePpm = '1000';
+                        level.callbackRatePpm = '0.1';
                       }
                     } else {
                       if (level.triggerPriceTicks == '0') {
-                        level.triggerPriceTicks = _defaultTriggerPriceTicks()
-                            .toString();
+                        level.triggerPriceTicks = _defaultTriggerPrice();
                       }
                       level.activationPriceTicks = '';
                       level.callbackRatePpm = '';
@@ -4661,14 +4931,21 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
             ],
           ),
           const SizedBox(height: 8),
+          Text(
+            level.triggerType == 'TRAILING_STOP'
+                ? '激活后按回调比例触发平仓'
+                : '标记价格 ${(level.triggerType == 'TAKE_PROFIT') == (level.closeTarget == 'LONG') ? '≥' : '≤'} 触发价时市价平仓',
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: AppTextField(
                   key: ValueKey('${level.id}-price'),
                   initialValue: level.triggerPriceTicks,
-                  label: '触发价 ticks',
-                  onChanged: (value) => level.triggerPriceTicks = value,
+                  label: '触发价 (${widget.state.selectedInstrument.quoteAsset})',
+                  onChanged: (value) =>
+                      setState(() => level.triggerPriceTicks = value),
                 ),
               ),
               const SizedBox(width: 6),
@@ -4676,8 +4953,9 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 child: AppTextField(
                   key: ValueKey('${level.id}-quantity'),
                   initialValue: level.quantitySteps,
-                  label: '平仓数量 steps',
-                  onChanged: (value) => level.quantitySteps = value,
+                  label: '平仓数量（张）',
+                  onChanged: (value) =>
+                      setState(() => level.quantitySteps = value),
                 ),
               ),
             ],
@@ -4690,8 +4968,9 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                   child: AppTextField(
                     key: ValueKey('${level.id}-activation'),
                     initialValue: level.activationPriceTicks,
-                    label: '激活价 ticks',
-                    onChanged: (value) => level.activationPriceTicks = value,
+                    label: '激活价格',
+                    onChanged: (value) =>
+                        setState(() => level.activationPriceTicks = value),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -4699,8 +4978,9 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                   child: AppTextField(
                     key: ValueKey('${level.id}-callback'),
                     initialValue: level.callbackRatePpm,
-                    label: '回调 ppm',
-                    onChanged: (value) => level.callbackRatePpm = value,
+                    label: '回调比例 (%)',
+                    onChanged: (value) =>
+                        setState(() => level.callbackRatePpm = value),
                   ),
                 ),
               ],
@@ -4773,15 +5053,24 @@ class OrderBookPanel extends StatelessWidget {
       padding: const EdgeInsets.all(6),
       child: Column(
         children: [
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: Text(
                   '价格',
-                  style: TextStyle(color: _muted, fontSize: 10),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 10,
+                  ),
                 ),
               ),
-              Text('数量', style: TextStyle(color: _muted, fontSize: 10)),
+              Text(
+                instrument.isSpot ? '数量 (${instrument.baseAsset})' : '数量（张）',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 3),
@@ -4789,7 +5078,7 @@ class OrderBookPanel extends StatelessWidget {
             BookLine(
               level: level,
               instrument: instrument,
-              color: _red,
+              color: Theme.of(context).colorScheme.error,
               onTap: onPrice,
             ),
           Padding(
@@ -4798,10 +5087,10 @@ class OrderBookPanel extends StatelessWidget {
               displayPrice == null
                   ? '--'
                   : money(displayPrice, digits: instrument.pricePrecision),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: _mint,
+                color: Theme.of(context).colorScheme.tertiary,
               ),
             ),
           ),
@@ -4809,7 +5098,7 @@ class OrderBookPanel extends StatelessWidget {
             BookLine(
               level: level,
               instrument: instrument,
-              color: _mint,
+              color: Theme.of(context).colorScheme.tertiary,
               onTap: onPrice,
             ),
           const Spacer(),
@@ -4834,9 +5123,9 @@ class OrderBookRatioBar extends StatelessWidget {
     return Row(
       children: [
         Text(
-          '${(buy * 100).toStringAsFixed(2)}%',
-          style: const TextStyle(
-            color: _mint,
+          '${(buy * 100).toStringAsFixed(0)}%',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.tertiary,
             fontSize: 10.5,
             fontWeight: FontWeight.w600,
           ),
@@ -4850,20 +5139,23 @@ class OrderBookRatioBar extends StatelessWidget {
                 Expanded(
                   flex: math.max(1, (buy * 1000).round()),
                   child: Container(
-                    decoration: const BoxDecoration(
-                      color: _mint,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.tertiary,
                       borderRadius: BorderRadius.horizontal(
                         left: Radius.circular(999),
                       ),
                     ),
                   ),
                 ),
-                Container(width: 1, color: _paper),
+                Container(
+                  width: 1,
+                  color: Theme.of(context).colorScheme.surface,
+                ),
                 Expanded(
                   flex: math.max(1, (sell * 1000).round()),
                   child: Container(
-                    decoration: const BoxDecoration(
-                      color: _red,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.error,
                       borderRadius: BorderRadius.horizontal(
                         right: Radius.circular(999),
                       ),
@@ -4876,9 +5168,9 @@ class OrderBookRatioBar extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         Text(
-          '${(sell * 100).toStringAsFixed(2)}%',
-          style: const TextStyle(
-            color: _red,
+          '${(sell * 100).toStringAsFixed(0)}%',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.error,
             fontSize: 10.5,
             fontWeight: FontWeight.w600,
           ),
@@ -4900,11 +5192,13 @@ class OrderBookToolbar extends StatelessWidget {
             height: 30,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
-              color: _panelSoft,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: _line),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Expanded(
                   child: Text(
@@ -4912,13 +5206,17 @@ class OrderBookToolbar extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: _muted,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                Icon(Icons.keyboard_arrow_down, color: _muted, size: 16),
+                Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: 16,
+                ),
               ],
             ),
           ),
@@ -4969,11 +5267,18 @@ class _BookGridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class PrivateTradingPanel extends StatelessWidget {
+class PrivateTradingPanel extends StatefulWidget {
   const PrivateTradingPanel({required this.state, super.key});
 
   final AppState state;
 
+  @override
+  State<PrivateTradingPanel> createState() => _PrivateTradingPanelState();
+}
+
+class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
+  int tab = 0;
+  AppState get state => widget.state;
   @override
   Widget build(BuildContext context) {
     final botCount =
@@ -4996,7 +5301,7 @@ class PrivateTradingPanel extends StatelessWidget {
                       unitsToDecimal(state.accountRisk!.equityUnits),
                       digits: 4,
                     ),
-                    color: _violet,
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
                 ),
                 Expanded(
@@ -5013,24 +5318,48 @@ class PrivateTradingPanel extends StatelessWidget {
                   child: MetricPill(
                     label: '保证金率',
                     value: percentageFromPpm(state.accountRisk!.marginRatioPpm),
-                    color: _red,
+                    color: Theme.of(context).colorScheme.error,
                   ),
                 ),
               ],
             ),
           ),
-        TradingPanelTabs(
-          positionCount: state.positions.length,
-          orderCount: state.openOrders.length,
-          botCount: botCount,
-        ),
-        if (state.positions.isEmpty)
-          const TradingEmptyState(text: '暂无仓位')
-        else
-          ...state.positions.map(
-            (position) => PositionRow(position: position, state: state),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final entry in [
+                '持仓 (${state.positions.length})',
+                '当前委托 (${state.openOrders.length})',
+                '止盈止损 / 策略 ($botCount)',
+              ].asMap().entries)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(entry.value),
+                    selected: tab == entry.key,
+                    onSelected: (_) => setState(() => tab = entry.key),
+                  ),
+                ),
+            ],
           ),
-        if (state.openOrders.isNotEmpty) ...[
+        ),
+        if (!state.isLoggedIn)
+          TextButton(
+            onPressed: () => showAuthSheet(context),
+            child: const Text('登录查看持仓与委托'),
+          ),
+        if (tab == 0) ...[
+          if (state.positions.isEmpty)
+            const TradingEmptyState(text: '暂无仓位')
+          else
+            ...state.positions.map(
+              (position) => PositionRow(position: position, state: state),
+            ),
+        ],
+        if (tab == 1 && state.openOrders.isEmpty)
+          const TradingEmptyState(text: '暂无委托'),
+        if (tab == 1 && state.openOrders.isNotEmpty) ...[
           const SectionTitle(title: '当前委托'),
           ...state.openOrders.map(
             (order) => OrderRow(
@@ -5051,7 +5380,9 @@ class PrivateTradingPanel extends StatelessWidget {
               ),
             ),
         ],
-        if (state.openAlgoOrders.isNotEmpty) ...[
+        if (tab == 2 && botCount == 0)
+          const TradingEmptyState(text: '暂无止盈止损或策略委托'),
+        if (tab == 2 && state.openAlgoOrders.isNotEmpty) ...[
           const SectionTitle(title: '交易机器人'),
           ...state.openAlgoOrders.map(
             (order) => AlgoOrderRow(
@@ -5061,7 +5392,7 @@ class PrivateTradingPanel extends StatelessWidget {
             ),
           ),
         ],
-        if (state.openTriggerOrders.isNotEmpty) ...[
+        if (tab == 2 && state.openTriggerOrders.isNotEmpty) ...[
           const SectionTitle(title: '止盈止损'),
           ...state.openTriggerOrders.map(
             (order) => TriggerOrderRow(
@@ -5071,7 +5402,7 @@ class PrivateTradingPanel extends StatelessWidget {
             ),
           ),
         ],
-        if (state.liquidationOrders.isNotEmpty) ...[
+        if (tab == 0 && state.liquidationOrders.isNotEmpty) ...[
           const SectionTitle(title: '爆仓记录'),
           ...state.liquidationOrders.map(
             (order) => Panel(
@@ -5109,8 +5440,12 @@ class TradingPanelTabs extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 2, bottom: 6),
       padding: const EdgeInsets.only(top: 4),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _line)),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -5124,7 +5459,9 @@ class TradingPanelTabs extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: index == 0 ? _ink : _muted,
+                      color: index == 0
+                          ? Theme.of(context).colorScheme.onSurface
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -5149,7 +5486,7 @@ class TradingPanelTabs extends StatelessWidget {
             style: IconButton.styleFrom(
               backgroundColor: Colors.transparent,
               side: BorderSide.none,
-              foregroundColor: _ink,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
             ),
             constraints: const BoxConstraints.tightFor(width: 32, height: 32),
             padding: EdgeInsets.zero,
@@ -5177,13 +5514,15 @@ class TradingEmptyState extends StatelessWidget {
           Icon(
             Icons.content_paste_search_outlined,
             size: 38,
-            color: _muted.withValues(alpha: .62),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurfaceVariant.withValues(alpha: .62),
           ),
           const SizedBox(height: 8),
           Text(
             text,
-            style: const TextStyle(
-              color: _muted,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -5196,201 +5535,337 @@ class TradingEmptyState extends StatelessWidget {
 
 class AuthSheet extends StatefulWidget {
   const AuthSheet({super.key});
-
   @override
   State<AuthSheet> createState() => _AuthSheetState();
 }
 
 class _AuthSheetState extends State<AuthSheet> {
-  final email = TextEditingController();
+  final identifier = TextEditingController();
   final password = TextEditingController();
   final code = TextEditingController();
-  bool register = false;
-  bool verify = false;
-  bool forgot = false;
-  bool reset = false;
+  final codes = <String, String>{};
+  String mode = 'login';
+  bool phone = false;
   bool busy = false;
+  bool showPassword = false;
+  String? message;
 
   @override
   void dispose() {
+    identifier.dispose();
     password.dispose();
-    email.dispose();
     code.dispose();
     super.dispose();
+  }
+
+  Future<void> submit(AppState state) async {
+    if (busy) return;
+    final challenge = state.pendingLoginChallenge;
+    final needsPassword =
+        ['login', 'register', 'reset'].contains(mode) && challenge == null;
+    if (challenge == null &&
+            mode != 'verify' &&
+            identifier.text.trim().isEmpty ||
+        needsPassword && password.text.isEmpty ||
+        ['verify', 'reset'].contains(mode) && code.text.trim().isEmpty) {
+      setState(() => message = '请填写所有必填信息');
+      return;
+    }
+    if (challenge != null &&
+        (challenge.expired ||
+            challenge.methods.any(
+              (m) => !RegExp(
+                r'^\d{6}$',
+              ).hasMatch(codes[asString(m['type'])] ?? ''),
+            ))) {
+      setState(
+        () => message = challenge.expired ? '验证已过期，请返回登录' : '请输入全部六位验证码',
+      );
+      return;
+    }
+    setState(() {
+      busy = true;
+      message = null;
+    });
+    var close = false;
+    var next = mode;
+    if (challenge != null) {
+      await state.verifyLogin({
+        for (final entry in codes.entries)
+          switch (entry.key) {
+            'EMAIL' => 'emailCode',
+            'PHONE' => 'phoneCode',
+            _ => 'totpCode',
+          }: entry.value,
+      });
+      if (state.pendingVerificationSession != null) next = 'verify';
+      close = state.isLoggedIn;
+    } else if (mode == 'forgot') {
+      if (await state.requestPasswordReset(identifier.text)) next = 'reset';
+    } else if (mode == 'reset') {
+      if (await state.resetPassword(
+        identifier: identifier.text,
+        code: code.text,
+        newPassword: password.text,
+      )) {
+        next = 'login';
+        password.clear();
+        code.clear();
+      }
+    } else if (mode == 'verify') {
+      close = await state.verifyPendingEmail(code.text);
+    } else {
+      if (mode == 'register') {
+        await state.register(identifier.text, password.text, phone: phone);
+      } else {
+        await state.login(identifier.text, password.text);
+      }
+      if (state.pendingVerificationSession != null) next = 'verify';
+      if (state.pendingLoginChallenge != null) password.clear();
+      close = state.isLoggedIn;
+    }
+    if (!mounted) return;
+    setState(() {
+      busy = false;
+      mode = next;
+      message = state.lastError ?? state.lastNotice;
+    });
+    if (close) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final title = verify
-        ? '验证邮箱'
-        : reset
-        ? '设置新密码'
-        : forgot
-        ? '找回密码'
-        : register
-        ? '注册账户'
-        : '登录账户';
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+    final challenge = state.pendingLoginChallenge;
+    final title = challenge != null
+        ? '安全验证'
+        : switch (mode) {
+            'register' => '注册账户',
+            'forgot' => '找回密码',
+            'reset' => '设置新密码',
+            'verify' => '验证邮箱',
+            _ => '登录账户',
+          };
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        8,
+        20,
+        MediaQuery.viewInsetsOf(context).bottom + 24,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
+      child: AutofillGroup(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Surprising',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  tooltip: '关闭',
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(title, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 20),
+            if (challenge != null) ...[
+              const Text('输入所有要求的验证码以完成登录'),
+              for (final method in challenge.methods)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: TextField(
+                    enabled: !busy,
+                    keyboardType: TextInputType.number,
+                    autofillHints: const [AutofillHints.oneTimeCode],
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(6),
+                    ],
+                    onChanged: (v) => codes[asString(method['type'])] = v,
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      labelText: switch (method['type']) {
+                        'EMAIL' => '邮箱验证码',
+                        'PHONE' => '短信验证码',
+                        _ => '身份验证器验证码',
+                      },
+                      helperText: nullableString(method['destination']),
+                    ),
+                  ),
+                ),
+            ] else ...[
+              if (mode == 'register') ...[
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('邮箱')),
+                    ButtonSegment(value: true, label: Text('手机号')),
+                  ],
+                  selected: {phone},
+                  onSelectionChanged: busy
+                      ? null
+                      : (v) => setState(() => phone = v.first),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (mode != 'verify')
+                TextField(
+                  controller: identifier,
+                  enabled: !busy,
+                  keyboardType: mode == 'register' && phone
+                      ? TextInputType.phone
+                      : TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.username],
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    labelText: mode == 'login'
+                        ? '邮箱或手机号'
+                        : phone && mode == 'register'
+                        ? '国际手机号'
+                        : '邮箱',
+                  ),
+                ),
+              if (['login', 'register', 'reset'].contains(mode)) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: password,
+                  enabled: !busy,
+                  obscureText: !showPassword,
+                  autofillHints: [
+                    mode == 'login'
+                        ? AutofillHints.password
+                        : AutofillHints.newPassword,
+                  ],
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    labelText: mode == 'reset' ? '新密码' : '密码',
+                    suffixIcon: IconButton(
+                      tooltip: showPassword ? '隐藏密码' : '显示密码',
+                      onPressed: () =>
+                          setState(() => showPassword = !showPassword),
+                      icon: Icon(
+                        showPassword ? Icons.visibility_off : Icons.visibility,
+                      ),
+                    ),
+                  ),
+                  onSubmitted: (_) => submit(state),
+                ),
+              ],
+              if (['verify', 'reset'].contains(mode)) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: code,
+                  enabled: !busy,
+                  keyboardType: TextInputType.number,
+                  autofillHints: const [AutofillHints.oneTimeCode],
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: '邮箱验证码',
+                  ),
+                ),
+              ],
+            ],
+            if (message != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(message!, key: const ValueKey('auth-message')),
+              ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: busy ? null : () => submit(state),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  busy
+                      ? '处理中…'
+                      : challenge != null
+                      ? '确认验证'
+                      : switch (mode) {
+                          'forgot' => '发送验证码',
+                          'reset' => '更新密码',
+                          'verify' => '完成邮箱验证',
+                          'register' => '创建账户',
+                          _ => '登录',
+                        },
                 ),
               ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
+            ),
+            if (mode == 'verify')
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        setState(() => busy = true);
+                        await state.resendPendingEmail();
+                        if (mounted) {
+                          setState(() {
+                            busy = false;
+                            message = state.lastError ?? state.lastNotice;
+                          });
+                        }
+                      },
+                child: const Text('重新发送验证码'),
               ),
-            ],
-          ),
-          if (state.pendingBiometricSession != null) ...[
-            PrimaryAction(
-              label: '使用生物识别登录',
-              icon: Icons.fingerprint,
-              onPressed: busy
-                  ? null
-                  : () async {
-                      setState(() => busy = true);
-                      final succeeded = await state.unlockBiometricSession();
-                      if (!context.mounted) return;
-                      setState(() => busy = false);
-                      if (succeeded) Navigator.of(context).pop();
-                    },
-            ),
-            const SizedBox(height: 8),
-            const Divider(),
+            if (mode == 'login' && challenge == null) ...[
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => setState(() {
+                        mode = 'forgot';
+                        message = null;
+                        password.clear();
+                      }),
+                child: const Text('忘记密码？'),
+              ),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => setState(() {
+                        mode = 'register';
+                        message = null;
+                      }),
+                child: const Text('没有账户，去注册'),
+              ),
+              if (state.pendingBiometricSession != null)
+                TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          setState(() => busy = true);
+                          final ok = await state.unlockBiometricSession();
+                          if (!context.mounted) return;
+                          setState(() {
+                            busy = false;
+                            message = state.lastError;
+                          });
+                          if (ok) Navigator.pop(context);
+                        },
+                  icon: const Icon(Icons.fingerprint),
+                  label: const Text('使用生物识别登录'),
+                ),
+            ] else
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => setState(() {
+                        state.pendingLoginChallenge = null;
+                        mode = 'login';
+                        codes.clear();
+                        code.clear();
+                        password.clear();
+                        message = null;
+                      }),
+                child: const Text('返回登录'),
+              ),
           ],
-          if (!verify) ...[AppTextField(controller: email, label: '邮箱')],
-          if (!forgot && !verify) ...[
-            const SizedBox(height: 8),
-            AppTextField(
-              controller: password,
-              label: reset ? '新密码' : '密码',
-              obscure: true,
-            ),
-          ],
-          if (verify || reset) ...[
-            const SizedBox(height: 8),
-            AppTextField(controller: code, label: '邮箱验证码'),
-          ],
-          const SizedBox(height: 12),
-          PrimaryAction(
-            label: verify
-                ? '完成邮箱验证'
-                : reset
-                ? '更新密码'
-                : forgot
-                ? '发送验证码'
-                : register
-                ? '创建账户'
-                : '登录',
-            icon: verify
-                ? Icons.mark_email_read
-                : reset
-                ? Icons.password
-                : forgot
-                ? Icons.mark_email_unread
-                : register
-                ? Icons.person_add
-                : Icons.login,
-            onPressed: () async {
-              if (busy) return;
-              final messenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(context);
-              setState(() => busy = true);
-              bool succeeded = false;
-              if (verify) {
-                succeeded = await state.verifyPendingEmail(code.text);
-              } else if (forgot) {
-                succeeded = await state.requestPasswordReset(email.text);
-                if (succeeded) {
-                  setState(() {
-                    forgot = false;
-                    reset = true;
-                  });
-                }
-              } else if (reset) {
-                succeeded = await state.resetPassword(
-                  identifier: email.text,
-                  code: code.text,
-                  newPassword: password.text,
-                );
-                if (succeeded) {
-                  setState(() {
-                    reset = false;
-                    register = false;
-                    code.clear();
-                    password.clear();
-                  });
-                }
-              } else if (register) {
-                final created = await state.register(email.text, password.text);
-                if (created?.requiresEmailVerification == true) {
-                  setState(() => verify = true);
-                } else {
-                  succeeded = created != null;
-                }
-              } else {
-                succeeded =
-                    await state.login(email.text, password.text) != null;
-              }
-              if (!mounted) return;
-              setState(() => busy = false);
-              if (state.lastError != null) {
-                messenger.showSnackBar(
-                  SnackBar(content: Text(state.lastError!)),
-                );
-              }
-              if (succeeded || state.isLoggedIn) {
-                navigator.pop();
-              }
-            },
-          ),
-          if (verify)
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      setState(() => busy = true);
-                      await state.resendPendingEmail();
-                      if (mounted) setState(() => busy = false);
-                    },
-              child: const Text('重新发送验证码'),
-            ),
-          if (!verify && !reset)
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () => setState(() {
-                      forgot = !forgot;
-                      register = false;
-                      password.clear();
-                    }),
-              child: Text(forgot ? '返回登录' : '忘记密码？'),
-            ),
-          if (!verify && !forgot && !reset)
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () => setState(() => register = !register),
-              child: Text(register ? '已有账户，去登录' : '没有账户，去注册'),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -5432,13 +5907,18 @@ class PageHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
-                    color: _ink,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-                Text(subtitle, style: const TextStyle(color: _muted)),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -5460,20 +5940,24 @@ class ExchangeSearchBox extends StatelessWidget {
       height: 38,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: _panelSoft,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          const Icon(Icons.search, color: _muted, size: 18),
+          Icon(
+            Icons.search,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            size: 18,
+          ),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
               hint,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _muted,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -5508,7 +5992,9 @@ class MarketPrimaryTabs extends StatelessWidget {
               Text(
                 tabs[index],
                 style: TextStyle(
-                  color: selected ? _ink : _muted,
+                  color: selected
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
@@ -5558,8 +6044,10 @@ class ProductPageSelector extends StatelessWidget {
             vertical: compact ? 8 : 10,
           ),
           decoration: BoxDecoration(
-            color: _panelSoft,
-            border: Border.all(color: _line),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -5568,10 +6056,16 @@ class ProductPageSelector extends StatelessWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: _pink.withValues(alpha: .16),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .16),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.open_in_new, color: _pink, size: 17),
+                child: Icon(
+                  Icons.open_in_new,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 17,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -5581,8 +6075,8 @@ class ProductPageSelector extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: _muted,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
@@ -5590,8 +6084,8 @@ class ProductPageSelector extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       value.label,
-                      style: const TextStyle(
-                        color: _ink,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
@@ -5599,7 +6093,11 @@ class ProductPageSelector extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: _muted, size: 20),
+              Icon(
+                Icons.chevron_right,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
             ],
           ),
         ),
@@ -5644,10 +6142,10 @@ class ProductPagePickerSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             '打开产品页',
             style: TextStyle(
-              color: _ink,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
@@ -5658,27 +6156,42 @@ class ProductPagePickerSheet extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 shape: RoundedRectangleBorder(
-                  side: BorderSide(color: item.mode == current ? _pink : _line),
+                  side: BorderSide(
+                    color: item.mode == current
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.outlineVariant,
+                  ),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 tileColor: item.mode == current
-                    ? _pink.withValues(alpha: .14)
-                    : _panelSoft,
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .14)
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 title: Text(
                   item.label,
-                  style: const TextStyle(
-                    color: _ink,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 subtitle: Text(
                   item.detail,
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
                 trailing: item.mode == current
-                    ? const Icon(Icons.check_circle, color: _pink)
-                    : const Icon(Icons.chevron_right, color: _muted),
+                    ? Icon(
+                        Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : Icon(
+                        Icons.chevron_right,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                 onTap: () => Navigator.of(context).pop(item.mode),
               ),
             ),
@@ -5703,8 +6216,12 @@ class CategoryStrip extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           if (index == values.length) {
-            return const Center(
-              child: Icon(Icons.format_list_bulleted, color: _ink, size: 20),
+            return Center(
+              child: Icon(
+                Icons.format_list_bulleted,
+                color: Theme.of(context).colorScheme.onSurface,
+                size: 20,
+              ),
             );
           }
           final selected = index == 0;
@@ -5712,13 +6229,17 @@ class CategoryStrip extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               decoration: BoxDecoration(
-                color: selected ? _panelSoft : Colors.transparent,
+                color: selected
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Text(
                 values[index],
                 style: TextStyle(
-                  color: selected ? _ink : _muted,
+                  color: selected
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -5736,7 +6257,7 @@ class MarketSortHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.fromLTRB(10, 7, 10, 5),
       child: Row(
         children: [
@@ -5744,7 +6265,10 @@ class MarketSortHeader extends StatelessWidget {
             flex: 7,
             child: Text(
               '名称↕ / 成交额↕',
-              style: TextStyle(color: _muted, fontSize: 11),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
             ),
           ),
           Expanded(
@@ -5752,7 +6276,10 @@ class MarketSortHeader extends StatelessWidget {
             child: Text(
               '最新价格↕',
               textAlign: TextAlign.right,
-              style: TextStyle(color: _muted, fontSize: 11),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
             ),
           ),
           SizedBox(width: 7),
@@ -5761,7 +6288,10 @@ class MarketSortHeader extends StatelessWidget {
             child: Text(
               '24 小时涨跌↕',
               textAlign: TextAlign.right,
-              style: TextStyle(color: _muted, fontSize: 11),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
             ),
           ),
         ],
@@ -5786,7 +6316,7 @@ class MarketTickerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final latestPrice = state.latestPriceFor(instrument);
-    final change = syntheticChange(instrument);
+    final change = instrument.change24h;
     final quote = instrument.quoteAsset.isEmpty
         ? instrument.settleAsset
         : instrument.quoteAsset;
@@ -5798,7 +6328,9 @@ class MarketTickerRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
         color: selected
-            ? _panelSoft.withValues(alpha: .28)
+            ? Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: .28)
             : Colors.transparent,
         child: Row(
           children: [
@@ -5833,13 +6365,19 @@ class MarketTickerRow extends StatelessWidget {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: _line),
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outlineVariant,
+                                  ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   instrument.contractLabel,
-                                  style: const TextStyle(
-                                    color: _ink,
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
                                     fontSize: 9,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -5853,8 +6391,10 @@ class MarketTickerRow extends StatelessWidget {
                           '${assetDisplayName(instrument.baseAsset)} | ${volumeText(instrument)} $quote',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: _muted,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
@@ -5886,7 +6426,10 @@ class MarketTickerRow extends StatelessWidget {
                         : '${instrument.quoteAsset} ${money(latestPrice, digits: 2)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: _muted, fontSize: 11),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
                   ),
                 ],
               ),
@@ -5897,11 +6440,17 @@ class MarketTickerRow extends StatelessWidget {
               height: 32,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: change >= 0 ? _mint : _red,
+                color: change == null
+                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    : change >= 0
+                    ? Theme.of(context).colorScheme.tertiary
+                    : Theme.of(context).colorScheme.error,
                 borderRadius: BorderRadius.circular(7),
               ),
               child: Text(
-                '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                change == null
+                    ? '--'
+                    : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13,
@@ -5930,7 +6479,7 @@ class TradeSymbolHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final change = syntheticChange(instrument);
+    final change = instrument.change24h;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -5959,26 +6508,37 @@ class TradeSymbolHeader extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        border: Border.all(color: _line),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         instrument.contractLabel,
-                        style: const TextStyle(
-                          color: _ink,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                  const Icon(Icons.arrow_drop_down, color: _ink),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ],
               ),
               const SizedBox(height: 2),
               Text(
-                '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                change == null
+                    ? '--'
+                    : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
                 style: TextStyle(
-                  color: change >= 0 ? _mint : _red,
+                  color: change == null
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : change >= 0
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.error,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -5992,7 +6552,7 @@ class TradeSymbolHeader extends StatelessWidget {
           style: IconButton.styleFrom(
             backgroundColor: Colors.transparent,
             side: BorderSide.none,
-            foregroundColor: _ink,
+            foregroundColor: Theme.of(context).colorScheme.onSurface,
           ),
           constraints: const BoxConstraints.tightFor(width: 32, height: 32),
           padding: EdgeInsets.zero,
@@ -6004,7 +6564,7 @@ class TradeSymbolHeader extends StatelessWidget {
           style: IconButton.styleFrom(
             backgroundColor: Colors.transparent,
             side: BorderSide.none,
-            foregroundColor: _ink,
+            foregroundColor: Theme.of(context).colorScheme.onSurface,
           ),
           constraints: const BoxConstraints.tightFor(width: 32, height: 32),
           padding: EdgeInsets.zero,
@@ -6062,8 +6622,8 @@ class ProductLifecyclePanel extends StatelessWidget {
               ),
               Text(
                 instrument.mode.productLine,
-                style: const TextStyle(
-                  color: _muted,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                 ),
@@ -6111,7 +6671,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                           underlyingPrice,
                           digits: underlying?.pricePrecision ?? 2,
                         ),
-                  color: _violet,
+                  color: Theme.of(context).colorScheme.secondary,
                 ),
                 MetricPill(
                   label: '行权价',
@@ -6125,27 +6685,32 @@ class ProductLifecyclePanel extends StatelessWidget {
                   value: latestPrice == null
                       ? '--'
                       : money(latestPrice!, digits: instrument.pricePrecision),
-                  color: _mint,
+                  color: Theme.of(context).colorScheme.tertiary,
                 ),
                 MetricPill(
                   label: '内在价值',
                   value: intrinsic == null
                       ? '--'
                       : money(intrinsic, digits: instrument.pricePrecision),
-                  color: intrinsic != null && intrinsic > 0 ? _mint : _muted,
+                  color: intrinsic != null && intrinsic > 0
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 MetricPill(
                   label: 'Delta估算',
                   value: estimatedDelta(instrument, underlyingPrice, strike),
-                  color: _violet,
+                  color: Theme.of(context).colorScheme.secondary,
                 ),
               ],
             ),
             const SizedBox(height: 8),
             if (chain.isEmpty)
-              const Text(
+              Text(
                 '暂无同到期期权链',
-                style: TextStyle(color: _muted, fontSize: 12),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               )
             else
               Column(
@@ -6172,7 +6737,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                     value: instrument.mode == ProductMode.inverseDelivery
                         ? '币本位反向'
                         : 'U本位正向',
-                    color: _violet,
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -6188,7 +6753,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                   child: MetricPill(
                     label: '最大杠杆',
                     value: '${(instrument.maxLeveragePpm / 1000000).round()}x',
-                    color: _mint,
+                    color: Theme.of(context).colorScheme.tertiary,
                   ),
                 ),
               ],
@@ -6221,14 +6786,20 @@ class LifecycleChip extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 96, maxWidth: 168),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
-        color: _panelSoft,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: _line),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: _muted, fontSize: 9)),
+          Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 9,
+            ),
+          ),
           const SizedBox(height: 3),
           Text(
             value,
@@ -6271,7 +6842,11 @@ class ContractQuickSettings extends StatelessWidget {
         ),
         const SizedBox(width: 5),
         Expanded(
-          child: TradeSettingButton(label: leverage, onTap: () {}),
+          child: Text(
+            '杠杆上限 $leverage',
+            style: const TextStyle(fontSize: 10),
+            textAlign: TextAlign.center,
+          ),
         ),
         const SizedBox(width: 5),
         Expanded(
@@ -6282,12 +6857,16 @@ class ContractQuickSettings extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 5),
-        const Expanded(
+        Expanded(
           flex: 4,
           child: Text(
-            '资金费率 (8时)/倒计时\n-0.00010%/02:27:38',
+            _fundingLabel(AppScope.of(context)),
             textAlign: TextAlign.right,
-            style: TextStyle(color: _muted, fontSize: 9.5, height: 1.12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 9.5,
+              height: 1.12,
+            ),
           ),
         ),
       ],
@@ -6314,7 +6893,7 @@ class TradeSettingButton extends StatelessWidget {
         height: 30,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: _panelSoft,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -6358,13 +6937,17 @@ class AssetPortfolioCard extends StatelessWidget {
               color: Color(0xFF2A2A2A),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: _ink, size: 16),
+            child: Icon(
+              icon,
+              color: Theme.of(context).colorScheme.onSurface,
+              size: 16,
+            ),
           ),
           const Spacer(),
           Text(
             title,
-            style: const TextStyle(
-              color: _muted,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -6496,7 +7079,10 @@ class WalletTokenRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   money(asset.totalBalance, digits: 8),
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -6514,8 +7100,8 @@ class WalletTokenRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 value == null ? '暂无实时估值' : '现货账户余额',
-                style: const TextStyle(
-                  color: _muted,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -6620,15 +7206,19 @@ class ModeSelector extends StatelessWidget {
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? _pink.withValues(alpha: .20)
-              : _panelSoft,
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: .20)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
         foregroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected) ? _ink : _muted,
+          (states) => states.contains(WidgetState.selected)
+              ? Theme.of(context).colorScheme.onSurface
+              : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
         side: WidgetStateProperty.resolveWith(
           (states) => BorderSide(
-            color: states.contains(WidgetState.selected) ? _pink : _line,
+            color: states.contains(WidgetState.selected)
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
         shape: WidgetStateProperty.all(
@@ -6664,15 +7254,19 @@ class PositionModeSelector extends StatelessWidget {
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? _violet.withValues(alpha: .18)
-              : _panelSoft,
+              ? Theme.of(context).colorScheme.secondary.withValues(alpha: .18)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
         foregroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected) ? _ink : _muted,
+          (states) => states.contains(WidgetState.selected)
+              ? Theme.of(context).colorScheme.onSurface
+              : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
         side: WidgetStateProperty.resolveWith(
           (states) => BorderSide(
-            color: states.contains(WidgetState.selected) ? _violet : _line,
+            color: states.contains(WidgetState.selected)
+                ? Theme.of(context).colorScheme.secondary
+                : Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
         shape: WidgetStateProperty.all(
@@ -6716,14 +7310,24 @@ class SymbolStrip extends StatelessWidget {
           final item = instruments[index];
           return ChoiceChip(
             selected: item.symbol == selected,
-            selectedColor: _pink.withValues(alpha: .20),
-            backgroundColor: _panelSoft,
-            side: BorderSide(color: item.symbol == selected ? _pink : _line),
+            selectedColor: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: .20),
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest,
+            side: BorderSide(
+              color: item.symbol == selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
             labelStyle: TextStyle(
-              color: item.symbol == selected ? _ink : _muted,
+              color: item.symbol == selected
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
@@ -6755,9 +7359,12 @@ class BuySellSwitch extends StatelessWidget {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(36),
               backgroundColor: value == 'BUY'
-                  ? _mint
-                  : _panelSoft.withValues(alpha: .86),
-              foregroundColor: value == 'BUY' ? Colors.white : _mint,
+                  ? Theme.of(context).colorScheme.tertiary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(alpha: .86),
+              foregroundColor: value == 'BUY'
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.tertiary,
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
               ),
@@ -6775,9 +7382,12 @@ class BuySellSwitch extends StatelessWidget {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(36),
               backgroundColor: value == 'SELL'
-                  ? _red
-                  : _panelSoft.withValues(alpha: .86),
-              foregroundColor: value == 'SELL' ? Colors.white : _red,
+                  ? Theme.of(context).colorScheme.error
+                  : Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(alpha: .86),
+              foregroundColor: value == 'SELL'
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.error,
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.horizontal(
                   right: Radius.circular(8),
@@ -6823,20 +7433,20 @@ class TradeNumericField extends StatelessWidget {
         controller: controller,
         enabled: enabled,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: const TextStyle(
-          color: _ink,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface,
           fontSize: 14,
           fontWeight: FontWeight.w700,
         ),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(
-            color: _muted,
+          labelStyle: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 10.5,
             fontWeight: FontWeight.w500,
           ),
           filled: true,
-          fillColor: _panelSoft,
+          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 4,
             vertical: 6,
@@ -6862,8 +7472,8 @@ class TradeNumericField extends StatelessWidget {
                         suffixLabel!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _ink,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
@@ -6886,15 +7496,23 @@ class TradeNumericField extends StatelessWidget {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: _line),
+            borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: _pink),
+            borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
           disabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: _line.withValues(alpha: .55)),
+            borderSide: BorderSide(
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withValues(alpha: .55),
+            ),
           ),
         ),
       ),
@@ -6922,14 +7540,22 @@ class BestPriceButton extends StatelessWidget {
         height: 46,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: enabled ? _panelSoft : _panelSoft.withValues(alpha: .55),
+          color: enabled
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withValues(alpha: .55),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _line),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
         child: Text(
           enabled ? '最优价' : '市价',
           style: TextStyle(
-            color: enabled ? _ink : _muted,
+            color: enabled
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -6953,8 +7579,8 @@ class OrderMetaRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: _muted,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -6965,8 +7591,8 @@ class OrderMetaRow extends StatelessWidget {
               value,
               textAlign: TextAlign.right,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _ink,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -6991,7 +7617,10 @@ class OrderAmountSlider extends StatelessWidget {
           Positioned(
             left: 8,
             right: 8,
-            child: Container(height: 3, color: _line),
+            child: Container(
+              height: 3,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -7002,9 +7631,13 @@ class OrderAmountSlider extends StatelessWidget {
                   width: index == 0 ? 14 : 10,
                   height: index == 0 ? 14 : 10,
                   decoration: BoxDecoration(
-                    color: index == 0 ? _panel : _paper,
+                    color: index == 0
+                        ? Theme.of(context).colorScheme.surface
+                        : Theme.of(context).colorScheme.surface,
                     border: Border.all(
-                      color: index == 0 ? _ink : _line,
+                      color: index == 0
+                          ? Theme.of(context).colorScheme.onSurface
+                          : Theme.of(context).colorScheme.outlineVariant,
                       width: 1.5,
                     ),
                   ),
@@ -7041,18 +7674,18 @@ class SmallDropdown extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _line),
-        color: _panelSoft,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
-          dropdownColor: _panel,
-          iconEnabledColor: _muted,
-          style: const TextStyle(
+          dropdownColor: Theme.of(context).colorScheme.surface,
+          iconEnabledColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          style: TextStyle(
             fontSize: 10.5,
-            color: _ink,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w500,
           ),
           items: values
@@ -7103,30 +7736,39 @@ class AppTextField extends StatelessWidget {
       enabled: enabled,
       obscureText: obscure,
       onChanged: onChanged,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 11.5,
         fontWeight: FontWeight.w500,
-        color: _ink,
+        color: Theme.of(context).colorScheme.onSurface,
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: _muted, fontSize: 11),
+        labelStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 11,
+        ),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
         filled: true,
-        fillColor: _panelSoft,
+        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: _line),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: _pink),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: BorderSide(color: _line.withValues(alpha: .55)),
+          borderSide: BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withValues(alpha: .55),
+          ),
         ),
       ),
       keyboardType: obscure
@@ -7166,7 +7808,12 @@ class ToggleLine extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: TextStyle(fontSize: 10.5, color: enabled ? _ink : _muted),
+              style: TextStyle(
+                fontSize: 10.5,
+                color: enabled
+                    ? Theme.of(context).colorScheme.onSurface
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],
@@ -7225,8 +7872,18 @@ class BookLine extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  compactInt(level.quantitySteps),
-                  style: const TextStyle(fontSize: 11, color: _ink),
+                  instrument.isSpot
+                      ? money(
+                          level.quantitySteps *
+                              instrument.quantityStepUnits /
+                              100000000,
+                          digits: instrument.quantityPrecision,
+                        )
+                      : compactInt(level.quantitySteps),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ],
             ),
@@ -7260,13 +7917,17 @@ class InstrumentRow extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 17,
-              backgroundColor: selected ? _pink : _panelSoft,
+              backgroundColor: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Text(
                 instrument.baseAsset.isEmpty
                     ? '?'
                     : instrument.baseAsset.substring(0, 1),
                 style: TextStyle(
-                  color: selected ? Colors.white : _pink,
+                  color: selected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -7282,7 +7943,10 @@ class InstrumentRow extends StatelessWidget {
                   ),
                   Text(
                     '${instrument.mode.label} · ${instrument.status} · ${(instrument.maxLeveragePpm / 1000000).round()}X',
-                    style: const TextStyle(color: _muted, fontSize: 12),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -7292,7 +7956,7 @@ class InstrumentRow extends StatelessWidget {
               value: latestPrice == null
                   ? '--'
                   : money(latestPrice, digits: instrument.pricePrecision),
-              color: _mint,
+              color: Theme.of(context).colorScheme.tertiary,
             ),
           ],
         ),
@@ -7322,7 +7986,7 @@ class BalanceRow extends StatelessWidget {
                 child: MetricPill(
                   label: '可用',
                   value: money(balance.available, digits: 4),
-                  color: _mint,
+                  color: Theme.of(context).colorScheme.tertiary,
                 ),
               ),
               Expanded(
@@ -7351,8 +8015,8 @@ class DepositAddressCard extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _line),
-        color: _panelSoft,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -7539,7 +8203,7 @@ class WalletAssetRow extends StatelessWidget {
                 child: MetricPill(
                   label: '可用',
                   value: money(asset.availableBalance, digits: 8),
-                  color: _mint,
+                  color: Theme.of(context).colorScheme.tertiary,
                 ),
               ),
               Expanded(
@@ -7587,11 +8251,15 @@ class WalletOrderRecordRow extends StatelessWidget {
           CircleAvatar(
             radius: 18,
             backgroundColor: isOut
-                ? _red.withValues(alpha: 0.12)
-                : _mint.withValues(alpha: 0.12),
+                ? Theme.of(context).colorScheme.error.withValues(alpha: 0.12)
+                : Theme.of(
+                    context,
+                  ).colorScheme.tertiary.withValues(alpha: 0.12),
             child: Icon(
               isOut ? Icons.call_made : Icons.call_received,
-              color: isOut ? _red : _mint,
+              color: isOut
+                  ? Theme.of(context).colorScheme.error
+                  : Theme.of(context).colorScheme.tertiary,
               size: 18,
             ),
           ),
@@ -7606,13 +8274,19 @@ class WalletOrderRecordRow extends StatelessWidget {
                 ),
                 Text(
                   '${record.status} · ${record.refNo}',
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (record.errorMessage.isNotEmpty)
                   Text(
                     record.errorMessage,
-                    style: const TextStyle(color: _red, fontSize: 12),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
                   ),
               ],
             ),
@@ -7625,13 +8299,18 @@ class WalletOrderRecordRow extends StatelessWidget {
                 '${isOut ? '-' : '+'}${money(record.amount, digits: 8)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: isOut ? _red : _mint,
+                  color: isOut
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.tertiary,
                 ),
               ),
               if (record.fee > 0)
                 Text(
                   'fee ${money(record.fee, digits: 8)}',
-                  style: const TextStyle(color: _muted, fontSize: 11),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
                 ),
             ],
           ),
@@ -7666,12 +8345,17 @@ class OrderRow extends StatelessWidget {
                   '${order.side} ${order.symbol}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: order.side == 'BUY' ? _mint : _red,
+                    color: order.side == 'BUY'
+                        ? Theme.of(context).colorScheme.tertiary
+                        : Theme.of(context).colorScheme.error,
                   ),
                 ),
                 Text(
                   '${order.orderType}/${order.timeInForce} · ${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.status}',
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
                 Text(
                   '价 ${money(instrument.priceFromTicks(order.priceTicks), digits: instrument.pricePrecision)} · 量 ${order.quantitySteps} · 成交 ${order.executedQuantitySteps}',
@@ -7726,12 +8410,17 @@ class AlgoOrderRow extends StatelessWidget {
                   '${algoTypeLabel(order.algoType)} ${order.side} ${order.symbol}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: order.side == 'BUY' ? _mint : _red,
+                    color: order.side == 'BUY'
+                        ? Theme.of(context).colorScheme.tertiary
+                        : Theme.of(context).colorScheme.error,
                   ),
                 ),
                 Text(
                   '${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.timeInForce} · ${order.status}',
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
                 Text(
                   '价 $priceText · 进度 $progress/${order.quantitySteps} · 切片 ${order.childQuantitySteps}/${order.intervalSeconds}s',
@@ -7741,7 +8430,10 @@ class AlgoOrderRow extends StatelessWidget {
                     order.rejectReason!.isNotEmpty)
                   Text(
                     order.rejectReason!,
-                    style: const TextStyle(color: _red, fontSize: 11),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 11,
+                    ),
                   ),
               ],
             ),
@@ -7789,12 +8481,17 @@ class TriggerOrderRow extends StatelessWidget {
                   '${triggerTypeLabel(order.triggerType)} ${order.symbol}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: isTakeProfit ? _mint : _red,
+                    color: isTakeProfit
+                        ? Theme.of(context).colorScheme.tertiary
+                        : Theme.of(context).colorScheme.error,
                   ),
                 ),
                 Text(
                   '${triggerCloseLabel(order.side, order.positionSide)} · ${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.status}',
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
                 Text(
                   '$triggerText · 量 ${order.quantitySteps}',
@@ -7842,7 +8539,9 @@ class PositionRow extends StatelessWidget {
                 '${position.symbol} ${positionSideLabel(position.positionSide)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: long ? _mint : _red,
+                  color: long
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.error,
                 ),
               ),
               const SizedBox(width: 8),
@@ -7866,7 +8565,9 @@ class PositionRow extends StatelessWidget {
                 child: MetricPill(
                   label: '数量',
                   value: '${position.signedQuantitySteps}',
-                  color: long ? _mint : _red,
+                  color: long
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.error,
                 ),
               ),
               Expanded(
@@ -7876,7 +8577,7 @@ class PositionRow extends StatelessWidget {
                     instrument.priceFromTicks(position.entryPriceTicks),
                     digits: instrument.pricePrecision,
                   ),
-                  color: _violet,
+                  color: Theme.of(context).colorScheme.secondary,
                 ),
               ),
               Expanded(
@@ -8214,14 +8915,9 @@ String assetDisplayName(String symbol) {
   };
 }
 
-String volumeText(Instrument instrument) {
-  final seed = instrument.symbol.codeUnits.fold<int>(
-    0,
-    (sum, code) => sum + code,
-  );
-  final amount = 6 + (seed % 130);
-  return '$amount.${seed % 100}亿';
-}
+String volumeText(Instrument instrument) => instrument.volume24h == null
+    ? '--'
+    : money(instrument.volume24h!, digits: 2);
 
 String shortDateTime(DateTime? value) {
   if (value == null) return '--';
@@ -8330,17 +9026,6 @@ class OptionChainRow {
   }
 }
 
-double syntheticChange(Instrument instrument) {
-  if (instrument.isSpot) {
-    return 0.6 + (instrument.symbol.length % 5) * .21;
-  }
-  final seed = instrument.symbol.codeUnits.fold<int>(
-    0,
-    (sum, code) => sum + code,
-  );
-  return -0.7 - (seed % 430) / 100;
-}
-
 String networkDisplayName(String chain, String symbol) {
   final upper = chain.toUpperCase();
   return switch (upper) {
@@ -8429,7 +9114,13 @@ class MetricPill extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 9, color: _muted)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           Text(
             value,
             maxLines: 1,
@@ -8464,9 +9155,15 @@ class QuickTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: _violet),
+          Icon(icon, color: Theme.of(context).colorScheme.secondary),
           const SizedBox(height: 8),
-          Text(title, style: const TextStyle(color: _muted, fontSize: 12)),
+          Text(
+            title,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
           Text(
             value,
             maxLines: 1,
@@ -8521,7 +9218,10 @@ class InfoLine extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: _muted, fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             ),
           ),
           Flexible(
@@ -8548,10 +9248,18 @@ class EmptyState extends StatelessWidget {
     return Panel(
       child: Row(
         children: [
-          const Icon(Icons.inbox_outlined, color: _muted),
+          Icon(
+            Icons.inbox_outlined,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(text, style: const TextStyle(color: _muted)),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ],
       ),
@@ -8609,4 +9317,70 @@ class _SparklePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class RecentTradesPanel extends StatelessWidget {
+  const RecentTradesPanel({required this.state, super.key});
+  final AppState state;
+  @override
+  Widget build(BuildContext context) {
+    final instrument = state.selectedInstrument;
+    return ExpansionTile(
+      title: const Text('最新成交'),
+      children: [
+        if (state.recentTrades.isEmpty)
+          const Padding(padding: EdgeInsets.all(16), child: Text('暂无成交')),
+        for (final trade in state.recentTrades.take(30))
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    asNullableDateTime(
+                          trade['eventTime'],
+                        )?.toLocal().toIso8601String().substring(11, 19) ??
+                        '--',
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    trade['priceTicks'] == null
+                        ? asString(trade['price'], fallback: '--')
+                        : money(
+                            instrument.priceFromTicks(
+                              asInt(trade['priceTicks']),
+                            ),
+                            digits: instrument.pricePrecision,
+                          ),
+                    style: TextStyle(
+                      color: trade['side'] == 'BUY'
+                          ? Theme.of(context).colorScheme.tertiary
+                          : Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    asString(
+                      trade['quantity'],
+                      fallback: '${asInt(trade['quantitySteps'])} 张',
+                    ),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+String _fundingLabel(AppState state) {
+  if (!state.mode.isPerpetual) return '';
+  final metrics =
+      state.marketMetrics['${state.mode.productLine}:${state.selectedSymbol}'];
+  final rate = metrics?['fundingRatePpm'];
+  return '资金费率\n${rate == null ? '--' : '${(asInt(rate) / 10000).toStringAsFixed(4)}%'}';
 }

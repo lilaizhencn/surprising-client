@@ -24,6 +24,54 @@ Instrument market({String id = '42', String symbol = 'BTC-USDT-PERP'}) =>
 
 void main() {
   test(
+    'instrument catalog loads every page and isolates identical symbols across products',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final cursors = <String?>[];
+      server.listen((request) async {
+        final cursor = request.uri.queryParameters['cursor'];
+        cursors.add(cursor);
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'instruments': [
+              {
+                'instrumentId': cursor == null ? '1' : '2',
+                'symbol': 'BTC-USD',
+                'contractType': cursor == null
+                    ? 'LINEAR_PERPETUAL'
+                    : 'INVERSE_PERPETUAL',
+              },
+            ],
+            'hasMore': cursor == null,
+            'nextCursor': cursor == null ? 'page2' : null,
+          }),
+        );
+        await request.response.close();
+      });
+      final http = HttpOverrides.runWithHttpOverrides(
+        () => HttpClient(),
+        RealHttpOverrides(),
+      );
+      addTearDown(() async {
+        http.close(force: true);
+        await server.close(force: true);
+      });
+      final api = ApiClient(
+        AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
+        httpClient: http,
+      );
+      final catalog = await api.instruments();
+      expect(catalog, hasLength(2));
+      expect(catalog.map((i) => i.mode), [
+        ProductMode.linear,
+        ProductMode.inverse,
+      ]);
+      expect(cursors, [null, 'page2']);
+    },
+  );
+
+  test(
     'wire requests use instrument ID and decode IDs back to display symbols',
     () async {
       final requests = <Map<String, dynamic>>[];
@@ -77,6 +125,14 @@ void main() {
         reduceOnly: false,
         postOnly: false,
         productLine: 'LINEAR_PERPETUAL',
+      );
+      await api.candles('BTC-USDT-PERP', '4h', productLine: 'LINEAR_PERPETUAL');
+      final range = requests.last['query'] as Map<String, String>;
+      expect(
+        DateTime.parse(
+          range['endTime']!,
+        ).difference(DateTime.parse(range['startTime']!)),
+        const Duration(hours: 1200),
       );
       expect(book.symbol, 'BTC-USDT-PERP');
       expect(requests[0]['query'], {'instrumentId': '42', 'depth': '20'});
@@ -172,10 +228,18 @@ void main() {
     expect(decimalIncrement('10', 10000), 100000);
   });
 
-  test('private position identity separates cross and isolated margin', () {
+  test('position identity matches backend risk without margin mode', () {
     expect(
       positionKey({'instrumentId': '42', 'marginMode': 'CROSS'}),
-      isNot(positionKey({'instrumentId': '42', 'marginMode': 'ISOLATED'})),
+      positionKey({'instrumentId': '42', 'marginMode': 'ISOLATED'}),
+    );
+    expect(
+      positionKey({'instrumentId': '42'}),
+      positionKey({
+        'instrumentId': '42',
+        'marginMode': 'ISOLATED',
+        'positionSide': 'NET',
+      }),
     );
   });
 

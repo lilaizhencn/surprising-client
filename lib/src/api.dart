@@ -291,13 +291,30 @@ class ApiClient {
   }
 
   Future<List<Instrument>> instruments() async {
-    final json = await get(
-      '/api/v1/gateway/instrument/list',
-      query: {'status': 'TRADING', 'includeMarketSummary': 'true'},
-    );
-    instrumentCatalog = asList(
-      json['instruments'] ?? json['items'],
-    ).map((item) => Instrument.fromJson(asMap(item))).toList();
+    final loaded = <String, Instrument>{};
+    final cursors = <String>{};
+    String? cursor;
+    while (true) {
+      final json = await get(
+        '/api/v1/gateway/instrument/list',
+        query: {
+          'status': 'TRADING',
+          'includeMarketSummary': 'true',
+          'cursor': ?cursor,
+        },
+      );
+      for (final row in asList(json['instruments'] ?? json['items'])) {
+        final instrument = Instrument.fromJson(asMap(row));
+        loaded['${instrument.mode.productLine}:${instrument.instrumentId.isEmpty ? instrument.symbol : instrument.instrumentId}'] =
+            instrument;
+      }
+      if (!asBool(json['hasMore'])) break;
+      cursor = asString(json['nextCursor']);
+      if (cursor.isEmpty || !cursors.add(cursor)) {
+        throw const FormatException('合约列表分页游标无效');
+      }
+    }
+    instrumentCatalog = loaded.values.toList();
     return instrumentCatalog;
   }
 
@@ -357,7 +374,19 @@ class ApiClient {
     String? productLine,
   }) async {
     final end = DateTime.now().toUtc();
-    final start = end.subtract(const Duration(hours: 8));
+    final interval = switch (period) {
+      '1m' => const Duration(minutes: 1),
+      '5m' => const Duration(minutes: 5),
+      '15m' => const Duration(minutes: 15),
+      '1h' => const Duration(hours: 1),
+      '4h' => const Duration(hours: 4),
+      _ => throw ArgumentError.value(
+        period,
+        'period',
+        'Unsupported candle period',
+      ),
+    };
+    final start = end.subtract(interval * 300);
     final json = await get(
       '/api/v1/gateway/candlestick/candles',
       query: {

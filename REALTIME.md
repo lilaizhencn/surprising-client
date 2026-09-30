@@ -29,3 +29,13 @@ Validation includes analyzer, unit/widget tests and a local WebSocket handshake 
 当前 REST 和 WS 以 `instrumentId` 为合约标识。App 保留 symbol 作为展示字段，通过 instrument 元数据按产品映射请求、订阅和返回事件；订阅键包含 instrumentId，防止同 channel 不同合约相互覆盖。首页和行情默认展示 U 本位永续，与当前 Web 一致；行情列表成交订阅独立于交易页的 depth/candles/mark/index/funding 订阅，产品切换会替换后者。
 
 最近成交使用 `/api/v1/gateway/candlestick/trades/recent` 快照并合并 WS trades，按 tradeId 去重、sequence 降序保留 50 条。空深度仍替换盘口，较晚返回的历史行情不覆盖更新的成交价。行情不再显示模拟涨跌幅、成交量、资金费率或倒计时。
+
+## 产品切换和私有数据复核（2026-09-30）
+
+交易页顶部六产品 Tab 可横向滚动。产品和合约选择作为一次操作更新，立即清空旧盘口、K 线和成交，替换公共订阅，再重新加载分页 instrument 元数据和当前产品的数据。异步返回按选择版本隔离；无合约的产品保留空页面，不能借用其他产品的下单参数。切换 K 线周期立即退订旧周期并清空旧图。
+
+持仓和 positionRisk 以 `instrumentId + positionSide` 匹配，与后端一致；marginMode 不是实体身份。保证金模式变化替换原持仓，零持仓同时移除风险。accountState 未携带 positionMode 时保留已知持仓模式。撤单和撤销条件单的迟到响应不能改写新产品的列表；平仓其他合约保持当前行情选择不变。退出登录清空所有产品私有快照及估值。
+
+线上公共复核脚本：`dart run tool/public_realtime_smoke.dart`。本次已验证三个已配置永续合约的真实订阅/退订确认、K 线周期切换和重连。其他五产品目前没有线上可交易 instrument，完整产品数据隔离使用本地协议回归覆盖。线上非空持仓及真实订单执行/触发事件仍须独立验证。
+
+专用账号只读复核：登录、私有认证、36 个订阅确认成功；U 本位永续返回 READY 的周期快照，持仓/活动委托/活动条件单均为零，与 REST 一致。其他产品为 INITIALIZING，账户 REST 返回 404，App 不把它们视为已同步的空账户，因此跨产品资产总览仍可能显示同步中。空闲账号本次未产生私有增量事件；非空持仓、成交、撤单和条件单触发由协议回归覆盖，未提交真实交易。断线重连后重新认证、36 个订阅和永续新快照恢复成功。复核工具 `dart run tool/private_realtime_smoke.dart` 在终端隐藏输入账号密码，不保存凭据。

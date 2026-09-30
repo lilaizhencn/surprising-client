@@ -213,6 +213,9 @@ class AppState extends ChangeNotifier {
   LoginChallenge? pendingLoginChallenge;
   List<Map<String, dynamic>> recentTrades = [];
   bool submittingOrder = false;
+  bool submittingTriggers = false;
+  int _selectionVersion = 0;
+  int _instrumentRequestVersion = 0;
   AuthSession? pendingVerificationSession;
   AuthSession? pendingBiometricSession;
   bool biometricLoginAvailable = false;
@@ -298,9 +301,11 @@ class AppState extends ChangeNotifier {
 
   int? get userId => session?.user.userId;
 
-  Instrument get selectedInstrument {
-    return _instrumentForSymbol(selectedSymbol);
-  }
+  Instrument get selectedInstrument =>
+      instruments
+          .where((i) => i.mode == mode && i.symbol == selectedSymbol)
+          .firstOrNull ??
+      Instrument.empty(mode);
 
   List<Instrument> get visibleInstruments {
     final filtered = instruments
@@ -649,22 +654,36 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshInstruments({bool silent = false}) async {
     if (offline) return;
+    final request = ++_instrumentRequestVersion;
     try {
       final loaded = await api.instruments();
-      if (loaded.isNotEmpty) {
-        instruments = loaded;
-        if (!loaded.any((i) => i.mode == mode)) mode = loaded.first.mode;
-        final candidates = visibleInstruments;
-        if (!candidates.any(
-          (instrument) => instrument.symbol == selectedSymbol,
-        )) {
-          selectedSymbol = candidates.isNotEmpty
-              ? candidates.first.symbol
-              : loaded.first.symbol;
-        }
+      if (request != _instrumentRequestVersion) {
+        api.instrumentCatalog = instruments;
+        return;
       }
+      final old = selectedInstrument;
+      instruments = loaded;
+      api.instrumentCatalog = loaded;
+      final candidates = visibleInstruments;
+      if (!candidates.any((i) => i.symbol == selectedSymbol)) {
+        selectedSymbol = candidates.firstOrNull?.symbol ?? '';
+      }
+      if (selectedSymbol != old.symbol ||
+          selectedInstrument.instrumentId != old.instrumentId ||
+          selectedInstrument.changeId != old.changeId) {
+        ++_publicRequestVersion;
+        ++_openOrdersRequestVersion;
+        orderBook = OrderBook.empty(selectedSymbol);
+        candles = [];
+        recentTrades = [];
+        latestPrices.remove(_priceKey(mode, selectedSymbol));
+        markPrices.remove(_priceKey(mode, selectedSymbol));
+        _materializePrivate();
+      }
+      _subscribePublicSelected();
       lastError = null;
     } catch (error) {
+      if (request != _instrumentRequestVersion) return;
       if (silent) {
         _recordRealtimeIssue('加载交易对失败：$error');
       } else {
@@ -1022,6 +1041,11 @@ class AppState extends ChangeNotifier {
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
     _privateRealtimeGeneration++;
+    _freshnessTimer?.cancel();
+    _privateAuthenticated = false;
+    privateViews.clear();
+    productBalances.clear();
+    assetsReady = false;
     await privateRealtime.close();
     api.setSession(null);
     await sessionStore.clear();
@@ -1052,10 +1076,39 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> selectMode(ProductMode nextMode) async {
+  Future<void> selectMode(ProductMode nextMode) {
+    final candidates = instruments.where((i) => i.mode == nextMode);
+    final symbol = candidates.any((i) => i.symbol == selectedSymbol)
+        ? selectedSymbol
+        : candidates.firstOrNull?.symbol ?? '';
+    return _selectMarket(nextMode, symbol, reconnect: true);
+  }
+
+  Future<void> selectInstrument(Instrument instrument) {
+    return _selectMarket(
+      instrument.mode,
+      instrument.symbol,
+      reconnect: mode != instrument.mode,
+    );
+  }
+
+  Future<void> selectSymbol(String symbol) {
+    if (!visibleInstruments.any((i) => i.symbol == symbol)) {
+      return Future.value();
+    }
+    return _selectMarket(mode, symbol, reconnect: false);
+  }
+
+  Future<void> _selectMarket(
+    ProductMode nextMode,
+    String symbol, {
+    required bool reconnect,
+  }) async {
+    final selection = ++_selectionVersion;
     ++_publicRequestVersion;
     ++_openOrdersRequestVersion;
     mode = nextMode;
+    selectedSymbol = symbol;
     recentTrades = [];
     accountRisk = null;
     openAlgoOrders = [];
@@ -1065,43 +1118,33 @@ class AppState extends ChangeNotifier {
     openOrders = const [];
     openTriggerOrders = const [];
     positionRisks = const [];
-    final candidates = visibleInstruments;
-    if (!candidates.any((instrument) => instrument.symbol == selectedSymbol)) {
-      selectedSymbol = candidates.firstOrNull?.symbol ?? '';
-    }
+    loadingPublic = false;
+    loadingPrivate = false;
     _materializePrivate();
-    orderBook = offline
+    orderBook = offline && selectedSymbol.isNotEmpty
         ? fallbackOrderBook(selectedInstrument)
         : OrderBook.empty(selectedSymbol);
-    candles = offline ? fallbackCandles() : const [];
-    notifyListeners();
-    await refreshPublicData(silent: true);
-    await refreshPrivateData();
-    await _reconnectRealtimeForSelectedProduct();
-  }
-
-  Future<void> selectSymbol(String symbol) async {
-    ++_publicRequestVersion;
-    ++_openOrdersRequestVersion;
-    recentTrades = [];
-    selectedSymbol = symbol;
-    _materializePrivate();
-    orderBook = offline
-        ? fallbackOrderBook(selectedInstrument)
-        : OrderBook.empty(selectedSymbol);
-    candles = offline ? fallbackCandles() : const [];
-    notifyListeners();
-    await refreshPublicData(silent: true);
-    await refreshPrivateData();
+    candles = offline && selectedSymbol.isNotEmpty
+        ? fallbackCandles()
+        : const [];
     _subscribePublicSelected();
     _subscribePrivateSelected();
+    notifyListeners();
+    await refreshInstruments(silent: true);
+    if (selection != _selectionVersion) return;
+    await refreshPublicData(silent: true);
+    if (selection != _selectionVersion) return;
+    await refreshPrivateData();
+    if (selection != _selectionVersion) return;
+    if (reconnect) await _reconnectRealtimeForSelectedProduct();
   }
 
   Future<void> selectPeriod(String nextPeriod) async {
     period = nextPeriod;
+    candles = const [];
+    _subscribePublicSelected();
     notifyListeners();
     await refreshPublicData(silent: true);
-    _subscribePublicSelected();
   }
 
   Future<void> placeOrder({
@@ -1114,11 +1157,12 @@ class AppState extends ChangeNotifier {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    Instrument? targetInstrument,
   }) async {
     if (submittingOrder) return;
     lastError = null;
     lastNotice = null;
-    final instrument = selectedInstrument;
+    final instrument = targetInstrument ?? selectedInstrument;
     if (instrument.symbol.isEmpty ||
         quantitySteps <= 0 ||
         (orderType != 'MARKET' &&
@@ -1142,7 +1186,6 @@ class AppState extends ChangeNotifier {
     submittingOrder = true;
     notifyListeners();
     try {
-      final instrument = selectedInstrument;
       final productLine = instrument.mode.productLine;
       final effectivePositionSide =
           instrument.isSpot || positionMode == 'ONE_WAY'
@@ -1152,7 +1195,7 @@ class AppState extends ChangeNotifier {
           : positionSide;
       final order = await api.placeOrder(
         userId: id,
-        symbol: selectedSymbol,
+        symbol: instrument.symbol,
         side: side,
         orderType: orderType,
         timeInForce: timeInForce,
@@ -1184,13 +1227,20 @@ class AppState extends ChangeNotifier {
   Future<void> cancelOrder(OrderModel order) async {
     final id = userId;
     if (id == null) return;
+    final product = mode;
+    final token = session?.accessToken;
     try {
       final cancelled = await api.cancelOrder(
         id,
         order.orderId,
-        productLine: _productLineForSymbol(order.symbol),
+        productLine: product.productLine,
       );
-      _upsertOrder(cancelled);
+      if (mode == product &&
+          selectedSymbol == order.symbol &&
+          session?.accessToken == token &&
+          userId == id) {
+        _upsertOrder(cancelled);
+      }
       lastNotice = '撤单已提交 #${order.orderId}';
       await refreshPrivateData();
     } catch (error) {
@@ -1266,11 +1316,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<int> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
+    if (submittingTriggers) return 0;
     lastError = null;
     lastNotice = null;
     final symbol = selectedSymbol;
     final product = mode;
     final id = userId;
+    final token = session?.accessToken;
     if (id == null) {
       lastError = '请先登录再提交止盈止损';
       notifyListeners();
@@ -1301,8 +1353,13 @@ class AppState extends ChangeNotifier {
       }
     }
     final created = <TriggerOrderModel>[];
+    submittingTriggers = true;
+    notifyListeners();
     try {
       for (final draft in validDrafts) {
+        if (userId != id || session?.accessToken != token) {
+          throw StateError('登录状态已变化，已停止后续提交');
+        }
         created.add(
           await api.placeTriggerOrder(
             userId: id,
@@ -1318,10 +1375,12 @@ class AppState extends ChangeNotifier {
             productLine: product.productLine,
           ),
         );
-      }
-      if (mode == product && selectedSymbol == symbol) {
-        for (final order in created) {
-          _upsertTriggerOrder(order);
+        if (userId == id &&
+            session?.accessToken == token &&
+            mode == product &&
+            selectedSymbol == symbol) {
+          _upsertTriggerOrder(created.last);
+          notifyListeners();
         }
       }
       lastNotice = '止盈止损已提交 ${created.length} 档';
@@ -1329,13 +1388,22 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       await refreshPrivateData();
       lastError = '已提交 ${created.length} 档，其余提交失败，请核对当前委托后重试：$error';
+    } finally {
+      submittingTriggers = false;
     }
     notifyListeners();
     return created.length;
   }
 
   bool _validTriggerDraft(TriggerOrderDraft draft) {
-    if (draft.quantitySteps <= 0) return false;
+    if (![
+          'TAKE_PROFIT',
+          'STOP_LOSS',
+          'TRAILING_STOP',
+        ].contains(draft.triggerType) ||
+        draft.quantitySteps <= 0) {
+      return false;
+    }
     if (draft.triggerType == 'TRAILING_STOP') {
       final callbackRate = draft.callbackRatePpm;
       return draft.triggerPriceTicks >= 0 &&
@@ -1351,13 +1419,20 @@ class AppState extends ChangeNotifier {
   Future<void> cancelTriggerOrder(TriggerOrderModel order) async {
     final id = userId;
     if (id == null) return;
+    final product = mode;
+    final token = session?.accessToken;
     try {
       final cancelled = await api.cancelTriggerOrder(
         id,
         order.triggerOrderId,
-        productLine: _productLineForSymbol(order.symbol),
+        productLine: product.productLine,
       );
-      _upsertTriggerOrder(cancelled);
+      if (mode == product &&
+          selectedSymbol == order.symbol &&
+          session?.accessToken == token &&
+          userId == id) {
+        _upsertTriggerOrder(cancelled);
+      }
       lastNotice = '条件单撤销已提交 #${order.triggerOrderId}';
       await refreshPrivateData();
     } catch (error) {
@@ -1389,12 +1464,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> closePosition(Position position) async {
-    final instrument = instruments.firstWhere(
-      (item) => item.symbol == position.symbol,
-      orElse: () => selectedInstrument,
-    );
-    selectedSymbol = position.symbol;
+    final instrument = instruments
+        .where((item) => item.mode == mode && item.symbol == position.symbol)
+        .firstOrNull;
+    if (instrument == null) {
+      lastError = '持仓合约信息不可用，请刷新后重试';
+      notifyListeners();
+      return;
+    }
     await placeOrder(
+      targetInstrument: instrument,
       side: position.signedQuantitySteps >= 0 ? 'SELL' : 'BUY',
       orderType: 'MARKET',
       timeInForce: 'IOC',
@@ -2506,6 +2585,10 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_selectionVersion;
+    ++_instrumentRequestVersion;
+    ++_publicRequestVersion;
+    ++_openOrdersRequestVersion;
     _freshnessTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
     _publicReconnectTimer?.cancel();

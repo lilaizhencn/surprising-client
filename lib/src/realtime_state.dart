@@ -7,7 +7,7 @@ class _Entry {
 }
 
 String positionKey(Map<String, dynamic> row) =>
-    '${row['instrumentId'] ?? row['symbol']}:${row['marginMode'] ?? 'CROSS'}:${row['positionSide'] ?? 'NET'}';
+    '${row['instrumentId'] ?? row['symbol']}:${row['positionSide'] ?? 'NET'}';
 
 /// Absolute entity updates, including tombstones, fenced by periodic full snapshots.
 class PrivateView {
@@ -90,7 +90,7 @@ class PrivateView {
     final value = asMap(data['value']);
     switch (message['channel']) {
       case 'accountState':
-        if (data['entityId'] == 'user') {
+        if (data['entityId'] == 'user' && value['positionMode'] != null) {
           put('metadata', {'positionMode': value['positionMode']});
         }
         for (final raw in asList(value['balances'])) {

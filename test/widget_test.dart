@@ -1622,6 +1622,9 @@ class _RealtimeSwitchApiClient extends ApiClient {
   _RealtimeSwitchApiClient() : super(const AppConfig());
 
   @override
+  Future<List<Instrument>> instruments() async => fallbackInstruments();
+
+  @override
   Future<OrderBook> orderBook(
     String symbol, {
     int depth = 50,

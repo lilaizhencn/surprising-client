@@ -851,9 +851,8 @@ class PublicMarketRow extends StatelessWidget {
     return InkWell(
       onTap: () async {
         final shell = context.findAncestorStateOfType<_ClientShellState>();
-        await state.selectMode(instrument.mode);
-        await state.selectSymbol(instrument.symbol);
-        if (context.mounted) shell?.openInstrument(instrument);
+        unawaited(state.selectInstrument(instrument));
+        shell?.openInstrument(instrument);
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -945,6 +944,43 @@ class _TradePageState extends State<TradePage> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final instrument = state.selectedInstrument;
+    if (instrument.symbol.isEmpty) {
+      return Column(
+        children: [
+          ProductLineTabs(
+            value: state.mode,
+            onChanged: (mode) => unawaited(state.selectMode(mode)),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await state.refreshInstruments();
+                await state.selectMode(state.mode);
+              },
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  ProductPageSelector(
+                    value: state.mode,
+                    title: '交易产品页',
+                    compact: true,
+                    onChanged: (mode) => unawaited(state.selectMode(mode)),
+                  ),
+                  const SizedBox(height: 40),
+                  Text(
+                    '${state.mode.label}暂无可交易合约',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('可切换其他产品，或下拉刷新合约列表。', textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     final latestPrice = state.latestPriceFor(instrument);
     if (state.orderBook.bids.isNotEmpty && !priceInitialized) {
       priceInitialized = true;
@@ -953,226 +989,252 @@ class _TradePageState extends State<TradePage> {
         digits: instrument.pricePrecision,
       );
     }
-    return RefreshIndicator(
-      onRefresh: () async {
-        await state.refreshPublicData();
-        await state.refreshPrivateData();
-      },
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
-        children: [
-          ProductPageSelector(
-            value: state.mode,
-            title: '交易产品页',
-            compact: true,
-            onChanged: (mode) => unawaited(state.selectMode(mode)),
-          ),
-          Divider(
-            height: 10,
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-          TradeSymbolHeader(
-            instrument: instrument,
-            latestPrice: latestPrice,
-            onRefresh: state.refreshPublicData,
-          ),
-          if (instrument.isDelivery || instrument.isOption) ...[
-            const SizedBox(height: 6),
-            ProductLifecyclePanel(
-              state: state,
-              instrument: instrument,
-              latestPrice: latestPrice,
-            ),
-          ],
-          if (instrument.isDerivative) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Wrap(
-                spacing: 16,
-                runSpacing: 6,
-                children: [
-                  Text(
-                    '最新价 ${latestPrice == null ? '--' : money(latestPrice, digits: instrument.pricePrecision)}',
-                  ),
-                  Text(
-                    '标记价 ${state.markPrices['${state.mode.productLine}:${instrument.symbol}'] == null ? '--' : money(instrument.priceFromTicks(state.markPrices['${state.mode.productLine}:${instrument.symbol}']!), digits: instrument.pricePrecision)}',
+    return Column(
+      children: [
+        ProductLineTabs(
+          value: state.mode,
+          onChanged: (mode) => unawaited(state.selectMode(mode)),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              await state.refreshPublicData();
+              await state.refreshPrivateData();
+            },
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
+              children: [
+                ProductPageSelector(
+                  value: state.mode,
+                  title: '交易产品页',
+                  compact: true,
+                  onChanged: (mode) => unawaited(state.selectMode(mode)),
+                ),
+                Divider(
+                  height: 10,
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+                TradeSymbolHeader(
+                  instrument: instrument,
+                  latestPrice: latestPrice,
+                  onRefresh: state.refreshPublicData,
+                ),
+                if (instrument.isDelivery || instrument.isOption) ...[
+                  const SizedBox(height: 6),
+                  ProductLifecyclePanel(
+                    state: state,
+                    instrument: instrument,
+                    latestPrice: latestPrice,
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            ContractQuickSettings(
-              marginMode: marginMode,
-              leverage: '${(instrument.maxLeveragePpm / 1000000).round()}x',
-              positionMode: state.positionMode,
-              onMarginMode: (value) => setState(() => marginMode = value),
-              onPositionMode: (mode) =>
-                  unawaited(state.changePositionMode(mode)),
-            ),
-          ],
-          const SizedBox(height: 6),
-          SymbolStrip(
-            instruments: state.visibleInstruments,
-            selected: state.selectedSymbol,
-            onSelected: (symbol) => unawaited(state.selectSymbol(symbol)),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 376,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 12,
-                  child: OrderTicket(
-                    side: side,
-                    orderType: orderType,
-                    timeInForce: timeInForce,
+                if (instrument.isDerivative) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Wrap(
+                      spacing: 16,
+                      runSpacing: 6,
+                      children: [
+                        Text(
+                          '最新价 ${latestPrice == null ? '--' : money(latestPrice, digits: instrument.pricePrecision)}',
+                        ),
+                        Text(
+                          '标记价 ${state.markPrices['${state.mode.productLine}:${instrument.symbol}'] == null ? '--' : money(instrument.priceFromTicks(state.markPrices['${state.mode.productLine}:${instrument.symbol}']!), digits: instrument.pricePrecision)}',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ContractQuickSettings(
                     marginMode: marginMode,
+                    leverage:
+                        '${(instrument.maxLeveragePpm / 1000000).round()}x',
                     positionMode: state.positionMode,
-                    positionSide: positionSide,
-                    reduceOnly: reduceOnly,
-                    postOnly: postOnly,
-                    priceController: priceController,
-                    quantityController: quantityController,
-                    instrument: instrument,
-                    loggedIn: state.isLoggedIn,
-                    onSide: (value) => setState(() => side = value),
-                    onOrderType: (value) => setState(() {
-                      orderType = value;
-                      if (value == 'MARKET') postOnly = false;
-                    }),
-                    onTimeInForce: (value) =>
-                        setState(() => timeInForce = value),
                     onMarginMode: (value) => setState(() => marginMode = value),
-                    onPositionSide: (value) =>
-                        setState(() => positionSide = value),
-                    onReduceOnly: (value) => setState(() => reduceOnly = value),
-                    onPostOnly: (value) => setState(() => postOnly = value),
-                    onSubmit: () {
-                      if (state.submittingOrder) return;
-                      if (!state.isLoggedIn) {
-                        showAuthSheet(context);
-                        return;
-                      }
-                      if (orderType != 'MARKET' &&
-                          decimalIncrement(
-                                priceController.text,
-                                instrument.priceTickUnits,
-                              ) ==
-                              null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('价格必须符合最小价格变动')),
-                        );
-                        return;
-                      }
-                      unawaited(
-                        state.placeOrder(
+                    onPositionMode: (mode) =>
+                        unawaited(state.changePositionMode(mode)),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                SymbolStrip(
+                  instruments: state.visibleInstruments,
+                  selected: state.selectedSymbol,
+                  onSelected: (symbol) => unawaited(state.selectSymbol(symbol)),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 376,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 12,
+                        child: OrderTicket(
                           side: side,
                           orderType: orderType,
                           timeInForce: timeInForce,
-                          price: double.tryParse(priceController.text) ?? 0,
-                          quantitySteps: instrument.isSpot
-                              ? decimalIncrement(
-                                      quantityController.text,
-                                      instrument.quantityStepUnits,
-                                    ) ??
-                                    0
-                              : int.tryParse(quantityController.text) ?? 0,
-                          marginMode: instrument.isSpot ? 'CROSS' : marginMode,
-                          positionSide:
-                              instrument.isSpot ||
-                                  state.positionMode == 'ONE_WAY'
-                              ? 'NET'
-                              : positionSide == 'NET'
-                              ? (side == 'SELL' ? 'SHORT' : 'LONG')
-                              : positionSide,
-                          reduceOnly: instrument.isSpot ? false : reduceOnly,
+                          marginMode: marginMode,
+                          positionMode: state.positionMode,
+                          positionSide: positionSide,
+                          reduceOnly: reduceOnly,
                           postOnly: postOnly,
+                          priceController: priceController,
+                          quantityController: quantityController,
+                          instrument: instrument,
+                          loggedIn: state.isLoggedIn,
+                          onSide: (value) => setState(() => side = value),
+                          onOrderType: (value) => setState(() {
+                            orderType = value;
+                            if (value == 'MARKET') postOnly = false;
+                          }),
+                          onTimeInForce: (value) =>
+                              setState(() => timeInForce = value),
+                          onMarginMode: (value) =>
+                              setState(() => marginMode = value),
+                          onPositionSide: (value) =>
+                              setState(() => positionSide = value),
+                          onReduceOnly: (value) =>
+                              setState(() => reduceOnly = value),
+                          onPostOnly: (value) =>
+                              setState(() => postOnly = value),
+                          onSubmit: () {
+                            if (state.submittingOrder) return;
+                            if (!state.isLoggedIn) {
+                              showAuthSheet(context);
+                              return;
+                            }
+                            if (orderType != 'MARKET' &&
+                                decimalIncrement(
+                                      priceController.text,
+                                      instrument.priceTickUnits,
+                                    ) ==
+                                    null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('价格必须符合最小价格变动')),
+                              );
+                              return;
+                            }
+                            unawaited(
+                              state.placeOrder(
+                                side: side,
+                                orderType: orderType,
+                                timeInForce: timeInForce,
+                                price:
+                                    double.tryParse(priceController.text) ?? 0,
+                                quantitySteps: instrument.isSpot
+                                    ? decimalIncrement(
+                                            quantityController.text,
+                                            instrument.quantityStepUnits,
+                                          ) ??
+                                          0
+                                    : int.tryParse(quantityController.text) ??
+                                          0,
+                                marginMode: instrument.isSpot
+                                    ? 'CROSS'
+                                    : marginMode,
+                                positionSide:
+                                    instrument.isSpot ||
+                                        state.positionMode == 'ONE_WAY'
+                                    ? 'NET'
+                                    : positionSide == 'NET'
+                                    ? (side == 'SELL' ? 'SHORT' : 'LONG')
+                                    : positionSide,
+                                reduceOnly: instrument.isSpot
+                                    ? false
+                                    : reduceOnly,
+                                postOnly: postOnly,
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        flex: 9,
+                        child: OrderBookPanel(
+                          instrument: instrument,
+                          orderBook: state.orderBook,
+                          latestPrice: latestPrice,
+                          onPrice: (price) {
+                            priceController.text = price;
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  flex: 9,
-                  child: OrderBookPanel(
-                    instrument: instrument,
-                    orderBook: state.orderBook,
-                    latestPrice: latestPrice,
-                    onPrice: (price) {
-                      priceController.text = price;
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (state.submittingOrder) const LinearProgressIndicator(),
-          RecentTradesPanel(state: state),
-          const SizedBox(height: 12),
-          PrivateTradingPanel(state: state),
-          if (instrument.isDerivative) ...[
-            Theme(
-              data: Theme.of(
-                context,
-              ).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 2),
-                childrenPadding: EdgeInsets.zero,
-                collapsedIconColor: Theme.of(
-                  context,
-                ).colorScheme.onSurfaceVariant,
-                iconColor: Theme.of(context).colorScheme.onSurface,
-                title: const Text(
-                  '高级委托',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                ),
-                children: [
-                  AlgoOrderPanel(state: state, marginMode: marginMode),
-                  const SizedBox(height: 6),
-                  TriggerOrderPanel(
-                    key: ValueKey(
-                      '${state.mode}-${state.selectedSymbol}-$marginMode-${state.positionMode}',
+                const SizedBox(height: 8),
+                if (state.submittingOrder) const LinearProgressIndicator(),
+                RecentTradesPanel(state: state),
+                const SizedBox(height: 12),
+                PrivateTradingPanel(state: state),
+                if (instrument.isDerivative) ...[
+                  Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 2),
+                      childrenPadding: EdgeInsets.zero,
+                      collapsedIconColor: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant,
+                      iconColor: Theme.of(context).colorScheme.onSurface,
+                      title: const Text(
+                        '高级委托',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      children: [
+                        AlgoOrderPanel(state: state, marginMode: marginMode),
+                        const SizedBox(height: 6),
+                        TriggerOrderPanel(
+                          key: ValueKey(
+                            '${state.mode}-${state.selectedSymbol}-$marginMode-${state.positionMode}',
+                          ),
+                          state: state,
+                          marginMode: marginMode,
+                        ),
+                      ],
                     ),
-                    state: state,
-                    marginMode: marginMode,
                   ),
+                  const SizedBox(height: 2),
                 ],
-              ),
-            ),
-            const SizedBox(height: 2),
-          ],
-          Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(horizontal: 2),
-              collapsedIconColor: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant,
-              iconColor: Theme.of(context).colorScheme.onSurface,
-              title: Text(
-                '${instrument.displayName.replaceAll('-', '')} ${instrument.contractLabel} K线图表',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              children: [
-                KlinePanel(
-                  candles: state.candles,
-                  period: state.period,
-                  onPeriod: (period) => unawaited(state.selectPeriod(period)),
+                Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 2),
+                    collapsedIconColor: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant,
+                    iconColor: Theme.of(context).colorScheme.onSurface,
+                    title: Text(
+                      '${instrument.displayName.replaceAll('-', '')} ${instrument.contractLabel} K线图表',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    children: [
+                      KlinePanel(
+                        candles: state.candles,
+                        period: state.period,
+                        onPeriod: (period) =>
+                            unawaited(state.selectPeriod(period)),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -4215,21 +4277,24 @@ class _KlinePanelState extends State<KlinePanel> {
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
       child: Column(
         children: [
-          Row(
-            children: [
-              const Text('K线', style: TextStyle(fontWeight: FontWeight.w700)),
-              const Spacer(),
-              for (final period in const ['1m', '5m', '15m', '1h', '4h'])
-                Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: ChoiceChip(
-                    label: Text(period),
-                    selected: widget.period == period,
-                    visualDensity: VisualDensity.compact,
-                    onSelected: (_) => widget.onPeriod(period),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const Text('K线', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(width: 12),
+                for (final period in const ['1m', '5m', '15m', '1h', '4h'])
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: ChoiceChip(
+                      label: Text(period),
+                      selected: widget.period == period,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => widget.onPeriod(period),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 6),
           SizedBox(height: 252, child: KLineView(controller: controller)),
@@ -4707,6 +4772,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   bool submitting = false;
 
   void addLevel(String triggerType) {
+    if (submitting) return;
     final defaultPrice = _defaultTriggerPrice();
     setState(() {
       levels.add(
@@ -4738,6 +4804,16 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   List<TriggerOrderDraft> _drafts() {
     final hedgeMode = widget.state.positionMode == 'HEDGE';
     return levels
+        .where(
+          (level) =>
+              level.triggerType != 'TRAILING_STOP' ||
+              level.activationPriceTicks.trim().isEmpty ||
+              decimalIncrement(
+                    level.activationPriceTicks,
+                    widget.state.selectedInstrument.priceTickUnits,
+                  ) !=
+                  null,
+        )
         .map((level) {
           final triggerPriceTicks =
               decimalIncrement(
@@ -4790,11 +4866,14 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   Future<void> submit() async {
     final drafts = _drafts();
     if (drafts.isEmpty || drafts.length != levels.length || submitting) return;
+    final submittedIds = levels.map((level) => level.id).toList();
     setState(() => submitting = true);
     final submitted = await widget.state.placeTriggerOrders(drafts);
     if (mounted) {
       setState(() {
-        levels.removeRange(0, submitted);
+        levels.removeWhere(
+          (level) => submittedIds.take(submitted).contains(level.id),
+        );
         submitting = false;
       });
     }
@@ -4875,118 +4954,122 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   }
 
   Widget _levelRow(_TriggerLevelInput level) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _line),
-        color: _panelSoft,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: SmallDropdown(
-                  value: level.triggerType,
-                  values: const ['TAKE_PROFIT', 'STOP_LOSS', 'TRAILING_STOP'],
-                  labelBuilder: triggerTypeLabel,
-                  onChanged: (value) => setState(() {
-                    level.triggerType = value;
-                    if (value == 'TRAILING_STOP') {
-                      level.triggerPriceTicks = '0';
-                      if (level.activationPriceTicks.isEmpty) {
-                        level.activationPriceTicks = _defaultTriggerPrice();
+    return AbsorbPointer(
+      absorbing: submitting,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: _line),
+          color: _panelSoft,
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: SmallDropdown(
+                    value: level.triggerType,
+                    values: const ['TAKE_PROFIT', 'STOP_LOSS', 'TRAILING_STOP'],
+                    labelBuilder: triggerTypeLabel,
+                    onChanged: (value) => setState(() {
+                      level.triggerType = value;
+                      if (value == 'TRAILING_STOP') {
+                        level.triggerPriceTicks = '0';
+                        if (level.activationPriceTicks.isEmpty) {
+                          level.activationPriceTicks = _defaultTriggerPrice();
+                        }
+                        if (level.callbackRatePpm.isEmpty) {
+                          level.callbackRatePpm = '0.1';
+                        }
+                      } else {
+                        if (level.triggerPriceTicks == '0') {
+                          level.triggerPriceTicks = _defaultTriggerPrice();
+                        }
+                        level.activationPriceTicks = '';
+                        level.callbackRatePpm = '';
                       }
-                      if (level.callbackRatePpm.isEmpty) {
-                        level.callbackRatePpm = '0.1';
-                      }
-                    } else {
-                      if (level.triggerPriceTicks == '0') {
-                        level.triggerPriceTicks = _defaultTriggerPrice();
-                      }
-                      level.activationPriceTicks = '';
-                      level.callbackRatePpm = '';
-                    }
-                  }),
+                    }),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: SmallDropdown(
-                  value: level.closeTarget,
-                  values: const ['LONG', 'SHORT'],
-                  labelBuilder: (value) => value == 'LONG' ? '平多' : '平空',
-                  onChanged: (value) =>
-                      setState(() => level.closeTarget = value),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: SmallDropdown(
+                    value: level.closeTarget,
+                    values: const ['LONG', 'SHORT'],
+                    labelBuilder: (value) => value == 'LONG' ? '平多' : '平空',
+                    onChanged: (value) =>
+                        setState(() => level.closeTarget = value),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              IconButton.filledTonal(
-                tooltip: '删除',
-                onPressed: () => setState(() => levels.remove(level)),
-                icon: const Icon(Icons.delete_outline, size: 18),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            level.triggerType == 'TRAILING_STOP'
-                ? '激活后按回调比例触发平仓'
-                : '标记价格 ${(level.triggerType == 'TAKE_PROFIT') == (level.closeTarget == 'LONG') ? '≥' : '≤'} 触发价时市价平仓',
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: AppTextField(
-                  key: ValueKey('${level.id}-price'),
-                  initialValue: level.triggerPriceTicks,
-                  label: '触发价 (${widget.state.selectedInstrument.quoteAsset})',
-                  onChanged: (value) =>
-                      setState(() => level.triggerPriceTicks = value),
+                const SizedBox(width: 6),
+                IconButton.filledTonal(
+                  tooltip: '删除',
+                  onPressed: () => setState(() => levels.remove(level)),
+                  icon: const Icon(Icons.delete_outline, size: 18),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: AppTextField(
-                  key: ValueKey('${level.id}-quantity'),
-                  initialValue: level.quantitySteps,
-                  label: '平仓数量（张）',
-                  onChanged: (value) =>
-                      setState(() => level.quantitySteps = value),
-                ),
-              ),
-            ],
-          ),
-          if (level.triggerType == 'TRAILING_STOP') ...[
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              level.triggerType == 'TRAILING_STOP'
+                  ? '激活后按回调比例触发平仓'
+                  : '标记价格 ${(level.triggerType == 'TAKE_PROFIT') == (level.closeTarget == 'LONG') ? '≥' : '≤'} 触发价时市价平仓',
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: AppTextField(
-                    key: ValueKey('${level.id}-activation'),
-                    initialValue: level.activationPriceTicks,
-                    label: '激活价格',
+                    key: ValueKey('${level.id}-price'),
+                    initialValue: level.triggerPriceTicks,
+                    label:
+                        '触发价 (${widget.state.selectedInstrument.quoteAsset})',
                     onChanged: (value) =>
-                        setState(() => level.activationPriceTicks = value),
+                        setState(() => level.triggerPriceTicks = value),
                   ),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: AppTextField(
-                    key: ValueKey('${level.id}-callback'),
-                    initialValue: level.callbackRatePpm,
-                    label: '回调比例 (%)',
+                    key: ValueKey('${level.id}-quantity'),
+                    initialValue: level.quantitySteps,
+                    label: '平仓数量（张）',
                     onChanged: (value) =>
-                        setState(() => level.callbackRatePpm = value),
+                        setState(() => level.quantitySteps = value),
                   ),
                 ),
               ],
             ),
+            if (level.triggerType == 'TRAILING_STOP') ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppTextField(
+                      key: ValueKey('${level.id}-activation'),
+                      initialValue: level.activationPriceTicks,
+                      label: '激活价格',
+                      onChanged: (value) =>
+                          setState(() => level.activationPriceTicks = value),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: AppTextField(
+                      key: ValueKey('${level.id}-callback'),
+                      initialValue: level.callbackRatePpm,
+                      label: '回调比例 (%)',
+                      onChanged: (value) =>
+                          setState(() => level.callbackRatePpm = value),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -5104,7 +5187,17 @@ class OrderBookPanel extends StatelessWidget {
           const Spacer(),
           OrderBookRatioBar(buyRatio: buyRatio),
           const SizedBox(height: 6),
-          const OrderBookToolbar(),
+          TextButton(
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => AppScope(
+                notifier: AppScope.of(context),
+                child: const FullOrderBookSheet(),
+              ),
+            ),
+            child: const Text('查看20档', style: TextStyle(fontSize: 11)),
+          ),
         ],
       ),
     );
@@ -5175,54 +5268,6 @@ class OrderBookRatioBar extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-      ],
-    );
-  }
-}
-
-class OrderBookToolbar extends StatelessWidget {
-  const OrderBookToolbar({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '0.01',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  size: 16,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        const OrderBookLayoutIcon(),
       ],
     );
   }
@@ -5588,6 +5633,7 @@ class _AuthSheetState extends State<AuthSheet> {
       message = null;
     });
     var close = false;
+    var clearCredentials = false;
     var next = mode;
     if (challenge != null) {
       await state.verifyLogin({
@@ -5609,8 +5655,7 @@ class _AuthSheetState extends State<AuthSheet> {
         newPassword: password.text,
       )) {
         next = 'login';
-        password.clear();
-        code.clear();
+        clearCredentials = true;
       }
     } else if (mode == 'verify') {
       close = await state.verifyPendingEmail(code.text);
@@ -5621,10 +5666,14 @@ class _AuthSheetState extends State<AuthSheet> {
         await state.login(identifier.text, password.text);
       }
       if (state.pendingVerificationSession != null) next = 'verify';
-      if (state.pendingLoginChallenge != null) password.clear();
+      if (state.pendingLoginChallenge != null) clearCredentials = true;
       close = state.isLoggedIn;
     }
     if (!mounted) return;
+    if (clearCredentials) {
+      password.clear();
+      code.clear();
+    }
     setState(() {
       busy = false;
       mode = next;
@@ -8519,7 +8568,7 @@ class PositionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final instrument = state.instruments.firstWhere(
-      (item) => item.symbol == position.symbol,
+      (item) => item.mode == state.mode && item.symbol == position.symbol,
       orElse: () => state.selectedInstrument,
     );
     final matchingRisks = state.positionRisks.where(
@@ -8533,7 +8582,10 @@ class PositionRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 '${position.symbol} ${positionSideLabel(position.positionSide)}',
@@ -8544,14 +8596,12 @@ class PositionRow extends StatelessWidget {
                       : Theme.of(context).colorScheme.error,
                 ),
               ),
-              const SizedBox(width: 8),
               Chip(
                 label: Text(
                   '${position.marginMode} ${positionSideLabel(position.positionSide)}',
                 ),
                 visualDensity: VisualDensity.compact,
               ),
-              const Spacer(),
               TextButton.icon(
                 onPressed: () => unawaited(state.closePosition(position)),
                 icon: const Icon(Icons.logout, size: 16),
@@ -9383,4 +9433,171 @@ String _fundingLabel(AppState state) {
       state.marketMetrics['${state.mode.productLine}:${state.selectedSymbol}'];
   final rate = metrics?['fundingRatePpm'];
   return '资金费率\n${rate == null ? '--' : '${(asInt(rate) / 10000).toStringAsFixed(4)}%'}';
+}
+
+class FullOrderBookSheet extends StatelessWidget {
+  const FullOrderBookSheet({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final instrument = state.selectedInstrument;
+    final book = state.orderBook;
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * .7,
+      child: Column(
+        children: [
+          ListTile(
+            title: Text('${instrument.displayName} · 20档盘口'),
+            subtitle: Text(
+              '价格单位 ${instrument.quoteAsset} · 最小变动 ${instrument.priceFromTicks(1)}',
+            ),
+            trailing: IconButton(
+              tooltip: '关闭',
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (book.bids.isEmpty && book.asks.isEmpty) const Text('暂无盘口'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '买盘',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.tertiary,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '卖盘',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                for (
+                  var index = 0;
+                  index <
+                      math.max(book.bids.length, book.asks.length).clamp(0, 20);
+                  index++
+                )
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _levelText(
+                            instrument,
+                            index < book.bids.length ? book.bids[index] : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _levelText(
+                            instrument,
+                            index < book.asks.length ? book.asks[index] : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _levelText(Instrument instrument, OrderBookLevel? level) {
+    if (level == null) return const Text('--');
+    final quantity = instrument.isSpot
+        ? '${money(level.quantitySteps * instrument.quantityStepUnits / 100000000, digits: instrument.quantityPrecision)} ${instrument.baseAsset}'
+        : '${level.quantitySteps} 张';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          money(
+            instrument.priceFromTicks(level.priceTicks),
+            digits: instrument.pricePrecision,
+          ),
+        ),
+        Text(quantity),
+      ],
+    );
+  }
+}
+
+/// Product selection remains visible while a trading page scrolls. Each tab
+/// selects a complete product context, rather than sharing a symbol-only view.
+class ProductLineTabs extends StatefulWidget {
+  const ProductLineTabs({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+  final ProductMode value;
+  final ValueChanged<ProductMode> onChanged;
+  @override
+  State<ProductLineTabs> createState() => _ProductLineTabsState();
+}
+
+class _ProductLineTabsState extends State<ProductLineTabs> {
+  final anchors = {for (final mode in ProductMode.values) mode: GlobalKey()};
+  @override
+  void initState() {
+    super.initState();
+    _revealSelected();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductLineTabs oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value) _revealSelected();
+  }
+
+  void _revealSelected() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = anchors[widget.value]?.currentContext;
+      if (target != null) Scrollable.ensureVisible(target, alignment: .5);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: SingleChildScrollView(
+        key: const ValueKey('product-line-tabs'),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            for (final mode in ProductMode.values)
+              Padding(
+                key: anchors[mode],
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  key: ValueKey('product-tab-${mode.name}'),
+                  label: Text(mode.label),
+                  selected: widget.value == mode,
+                  onSelected: (_) {
+                    if (mode != widget.value) widget.onChanged(mode);
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:kline_chart/kline_chart.dart';
 
 import 'app_state.dart';
+import 'asset_overview.dart';
 import 'api.dart';
 import 'models.dart';
 
@@ -1247,6 +1248,21 @@ class WalletPage extends StatefulWidget {
 }
 
 class _WalletPageState extends State<WalletPage> {
+  final toolsController = ExpansibleController();
+  final toolsKey = GlobalKey();
+
+  void _openTools(AppState state) {
+    if (!state.isLoggedIn) {
+      showAuthSheet(context);
+      return;
+    }
+    toolsController.expand();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = toolsKey.currentContext;
+      if (mounted && target != null) Scrollable.ensureVisible(target);
+    });
+  }
+
   final amountController = TextEditingController(text: '10');
   final transferEmailCodeController = TextEditingController();
   final transferTotpCodeController = TextEditingController();
@@ -1258,6 +1274,7 @@ class _WalletPageState extends State<WalletPage> {
 
   @override
   void dispose() {
+    toolsController.dispose();
     amountController.dispose();
     transferEmailCodeController.dispose();
     transferTotpCodeController.dispose();
@@ -1267,20 +1284,6 @@ class _WalletPageState extends State<WalletPage> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final displayPortfolio =
-        state.walletPortfolio.assets.isEmpty && state.offline
-        ? fallbackWalletPortfolio()
-        : state.walletPortfolio;
-    final walletTotalUsdt = state.offline
-        ? null
-        : state.walletPortfolioUsdt(displayPortfolio);
-    final tradingTotalUsdt = state.offline ? null : state.productBalancesUsdt();
-    final totalUsdt = walletTotalUsdt != null && tradingTotalUsdt != null
-        ? walletTotalUsdt + tradingTotalUsdt
-        : null;
-    final totalValue = state.valuationAmount(totalUsdt);
-    final walletTotal = state.valuationAmount(walletTotalUsdt);
-    final tradingTotalValue = state.valuationAmount(tradingTotalUsdt);
     final symbols = _walletSymbols(state);
     final selectedSymbol = symbols.contains(walletSymbol)
         ? walletSymbol
@@ -1297,301 +1300,21 @@ class _WalletPageState extends State<WalletPage> {
     return Material(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: RefreshIndicator(
-        onRefresh: state.refreshPrivateData,
+        onRefresh: () async {
+          await Future.wait([
+            state.refreshPrivateData(),
+            state.refreshValuation(),
+          ]);
+        },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
           children: [
-            Row(
-              children: [
-                Text(
-                  '总资产估值',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.visibility_outlined,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  size: 16,
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: '资金记录',
-                  onPressed: state.isLoggedIn
-                      ? () => unawaited(state.refreshWallet())
-                      : () => showAuthSheet(context),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide.none,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 34,
-                    height: 34,
-                  ),
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.receipt_long_outlined, size: 21),
-                ),
-              ],
+            AssetOverview(
+              state: state,
+              onDeposit: () => _openRechargeFlow(context, state),
+              onWithdraw: () => _openWithdrawalFlow(context, state),
+              onTools: () => _openTools(state),
             ),
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Text(
-                    totalValue == null ? '—' : money(totalValue, digits: 2),
-                    style: const TextStyle(
-                      fontSize: 30,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: Text(
-                    state.valuationCurrency.code,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 3, bottom: 8),
-                  child: PopupMenuButton<ValuationCurrency>(
-                    tooltip: '估值货币',
-                    initialValue: state.valuationCurrency,
-                    onSelected: (next) =>
-                        unawaited(state.selectValuationCurrency(next)),
-                    itemBuilder: (context) => ValuationCurrency.values
-                        .map(
-                          (currency) => PopupMenuItem(
-                            value: currency,
-                            child: Text(currency.code),
-                          ),
-                        )
-                        .toList(),
-                    icon: Icon(
-                      Icons.arrow_drop_down,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '今日收益 —（等待真实账务收益数据）',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 3),
-                Icon(
-                  Icons.chevron_right,
-                  color: Theme.of(context).colorScheme.onSurface,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                const SizedBox(width: 78, height: 36, child: AssetSparkline()),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                WalletAction(
-                  icon: Icons.file_download_outlined,
-                  label: '充币',
-                  onTap: () => _openRechargeFlow(context, state),
-                ),
-                WalletAction(
-                  icon: Icons.file_upload_outlined,
-                  label: '提币',
-                  onTap: () => _openWithdrawalFlow(context, state),
-                ),
-                WalletAction(
-                  icon: Icons.swap_horiz,
-                  label: '划转',
-                  onTap: state.isLoggedIn
-                      ? state.refreshPrivateData
-                      : () => showAuthSheet(context),
-                ),
-                WalletAction(
-                  icon: Icons.link,
-                  label: '赚币',
-                  onTap: state.isLoggedIn
-                      ? state.refreshWallet
-                      : () => showAuthSheet(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
-              decoration: BoxDecoration(
-                color: const Color(0xFF202124),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '启用 DEX 交易功能',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '在交易所交易 DEX 代币',
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: _lime.withValues(alpha: .12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_wallet,
-                      color: _lime,
-                      size: 22,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Text(
-                  '资产组合',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: '筛选',
-                  onPressed: state.refreshPrivateData,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide.none,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  constraints: const BoxConstraints.tightFor(
-                    width: 34,
-                    height: 34,
-                  ),
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.tune, size: 20),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 96,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  AssetPortfolioCard(
-                    icon: Icons.savings_outlined,
-                    title: '资金账户',
-                    amount: formatValuation(
-                      walletTotal,
-                      state.valuationCurrency,
-                    ),
-                  ),
-                  AssetPortfolioCard(
-                    icon: Icons.swap_vert,
-                    title: '交易账户',
-                    amount: formatValuation(
-                      tradingTotalValue,
-                      state.valuationCurrency,
-                    ),
-                  ),
-                  const AssetPortfolioCard(
-                    icon: Icons.link,
-                    title: '赚币',
-                    amount: '¥0',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Text(
-                  '代币',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                Spacer(),
-                Icon(
-                  Icons.keyboard_arrow_up,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  '名称/数量',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-                Spacer(),
-                Text(
-                  '价值/现货收益',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (displayPortfolio.assets.isNotEmpty)
-              ...displayPortfolio.assets.map(
-                (walletAsset) => WalletTokenRow(
-                  asset: walletAsset,
-                  priceUsdt: state
-                      .walletAssetPricesUsdt[walletAsset.symbol.toUpperCase()],
-                  currency: state.valuationCurrency,
-                  valuationRate: state.valuationRate,
-                ),
-              ),
             if (!state.isLoggedIn)
               PrimaryAction(
                 label: '登录 / 注册',
@@ -1606,6 +1329,8 @@ class _WalletPageState extends State<WalletPage> {
                   highlightColor: Colors.transparent,
                 ),
                 child: ExpansionTile(
+                  key: toolsKey,
+                  controller: toolsController,
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: EdgeInsets.zero,
                   collapsedIconColor: Theme.of(context).colorScheme.onSurface,
@@ -1869,47 +1594,21 @@ class _WalletPageState extends State<WalletPage> {
                         icon: const Icon(Icons.refresh),
                       ),
                     ),
-                    ...state.walletPortfolio.assets.map(
-                      (walletAsset) => WalletAssetRow(asset: walletAsset),
-                    ),
-                    if (state.walletPortfolio.assets.isEmpty)
-                      const EmptyState(text: '暂无链上资产数据'),
+
                     const SectionTitle(title: '资金记录'),
+                    if (state.walletError != null ||
+                        state.walletOrdersError != null)
+                      Text(state.walletError ?? state.walletOrdersError!),
                     ...state.walletOrders.map(
                       (record) => WalletOrderRecordRow(record: record),
                     ),
-                    if (state.walletOrders.isEmpty)
+                    if (state.walletReady &&
+                        state.walletOrdersError == null &&
+                        state.walletOrders.isEmpty)
                       const EmptyState(text: '暂无资金记录'),
                   ],
                 ),
               ),
-            const SizedBox(height: 12),
-            Theme(
-              data: Theme.of(context).copyWith(
-                dividerColor: Colors.transparent,
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-              ),
-              child: ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: EdgeInsets.zero,
-                collapsedIconColor: Theme.of(context).colorScheme.onSurface,
-                iconColor: Theme.of(context).colorScheme.onSurface,
-                title: const Text(
-                  '交易账户资产',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                children: [
-                  if (!state.assetsReady) const Text('资产同步中 / Syncing assets'),
-                  if (state.assetsReady)
-                    ...state.allProductBalances.map(
-                      (balance) => BalanceRow(balance: balance),
-                    ),
-                  if (state.assetsReady && state.allProductBalances.isEmpty)
-                    const EmptyState(text: '暂无资产数据'),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -3271,17 +2970,22 @@ class ProfilePage extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Panel(
-          child: Column(
-            children: [
-              InfoLine(label: 'REST', value: state.config.gatewayBaseUrl),
-              InfoLine(label: 'WebSocket', value: state.config.websocketUrl),
-              InfoLine(
-                label: 'WS本地回退',
-                value: state.config.localWebSocketUserFallback
-                    ? 'userId query'
-                    : 'JWT token',
+          child: Material(
+            color: Colors.transparent,
+            child: ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: const Text('资产概览'),
+              subtitle: const Text('资金账户与各交易账户'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('资产')),
+                    body: const WalletPage(),
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -3385,20 +3089,6 @@ class ProfilePage extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
-        const SectionTitle(title: '实时事件'),
-        if (state.realtimeLog.isEmpty)
-          const EmptyState(text: '暂无 WebSocket 事件'),
-        ...state.realtimeLog.map(
-          (line) => Panel(
-            child: Text(
-              line,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -3465,10 +3155,53 @@ class _SecuritySheetState extends State<SecuritySheet> {
   String? error;
   String? notice;
 
+  String? loadedToken;
+  String? operationToken;
+  bool get operationCurrent => mounted && operationToken == loadedToken;
+  bool loading = true;
+  bool mfaLoaded = false;
+  bool kycLoaded = false;
+  int loadVersion = 0;
+  final Map<String, String> loadErrors = {};
+  List<Map<String, dynamic>> methods = const [];
+  Map<String, dynamic> sessionsPage = const {};
+  Map<String, dynamic> historyPage = const {};
+
   @override
-  void initState() {
-    super.initState();
-    _load();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final token = AppScope.of(context).session?.accessToken;
+    if (token == loadedToken) return;
+    loadedToken = token;
+    ++loadVersion;
+    mfa = {};
+    enrollment = {};
+    scenes = [];
+    keys = [];
+    kyc = {};
+    methods = [];
+    sessionsPage = {};
+    historyPage = {};
+    kycDocumentRecords = [];
+    mfaLoaded = false;
+    kycLoaded = false;
+    loading = true;
+    error = null;
+    notice = null;
+    loadErrors.clear();
+    totp.clear();
+    emailCode.clear();
+    securityEmailCode.clear();
+    apiTotp.clear();
+    currentPassword.clear();
+    newPassword.clear();
+    changePasswordEmailCode.clear();
+    changePasswordTotpCode.clear();
+    apiLabel.clear();
+    kycCountry.clear();
+    kycProviderReference.clear();
+    kycFile = null;
+    if (token != null) unawaited(_load());
   }
 
   @override
@@ -3490,27 +3223,87 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Future<void> _load() async {
     final state = AppScope.of(context);
     if (!state.isLoggedIn) return;
-    try {
-      final result = await Future.wait([
-        state.api.mfaStatus(),
-        state.api.securityScenes(),
-        state.api.apiKeys(),
-        state.api.kycStatus(),
-        state.api.kycDocuments(),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        mfa = result[0] as Map<String, dynamic>;
-        scenes = result[1] as List<Map<String, dynamic>>;
-        keys = result[2] as List<Map<String, dynamic>>;
-        kyc = result[3] as Map<String, dynamic>;
-        kycDocumentRecords = result[4] as List<Map<String, dynamic>>;
-        _applyKyc(kyc);
-        error = null;
-      });
-    } catch (cause) {
-      if (mounted) setState(() => error = '$cause');
+    final token = state.session!.accessToken;
+    final version = ++loadVersion;
+    loading = true;
+    mfaLoaded = false;
+    kycLoaded = false;
+    methods = [];
+    sessionsPage = {};
+    historyPage = {};
+    mfa = {};
+    kyc = {};
+    scenes = [];
+    keys = [];
+    kycDocumentRecords = [];
+    loadErrors.clear();
+    bool current() =>
+        mounted &&
+        version == loadVersion &&
+        state.session?.accessToken == token;
+    Future<void> read<T>(
+      String label,
+      Future<T> Function() request,
+      void Function(T) apply,
+    ) async {
+      try {
+        final value = await request();
+        if (current()) setState(() => apply(value));
+      } catch (_) {
+        if (current()) setState(() => loadErrors[label] = '$label加载失败，请重试');
+      }
     }
+
+    await Future.wait([
+      read('2FA', state.api.mfaStatus, (value) {
+        mfa = value;
+        mfaLoaded = true;
+      }),
+      read('敏感场景', state.api.securityScenes, (value) => scenes = value),
+      read('API 密钥', state.api.apiKeys, (value) => keys = value),
+      read('身份认证', state.api.kycStatus, (value) {
+        kyc = value;
+        kycLoaded = true;
+        _applyKyc(kyc);
+      }),
+      read(
+        '认证材料',
+        state.api.kycDocuments,
+        (value) => kycDocumentRecords = value,
+      ),
+      read(
+        '登录验证方式',
+        state.api.loginVerificationMethods,
+        (value) => methods = value,
+      ),
+      read('活跃会话', state.api.userSessions, (value) => sessionsPage = value),
+      read('登录历史', state.api.loginHistory, (value) => historyPage = value),
+    ]);
+    if (current()) setState(() => loading = false);
+  }
+
+  Future<void> _loadMoreSecurity(bool history) async {
+    final state = AppScope.of(context);
+    final token = state.session?.accessToken;
+    final page = history ? historyPage : sessionsPage;
+    final cursor = nullableString(page['nextCursor']);
+    if (cursor == null) return;
+    final next = history
+        ? await state.api.loginHistory(cursor: cursor)
+        : await state.api.userSessions(cursor: cursor);
+    if (!mounted || state.session?.accessToken != token) return;
+    final field = history ? 'logs' : 'sessions';
+    setState(() {
+      final merged = {
+        ...next,
+        field: [...asList(page[field]), ...asList(next[field])],
+      };
+      if (history) {
+        historyPage = merged;
+      } else {
+        sessionsPage = merged;
+      }
+    });
   }
 
   void _applyKyc(Map<String, dynamic> profile) {
@@ -3575,7 +3368,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
           .map((document) => asInt(document['documentId']))
           .toList(),
     );
-    if (!mounted) return;
+    if (!operationCurrent) return;
     setState(() {
       kyc = next;
       _applyKyc(next);
@@ -3592,7 +3385,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
       emailCode: changePasswordEmailCode.text,
       totpCode: changePasswordTotpCode.text,
     );
-    if (!mounted) return;
+    if (!operationCurrent) return;
     setState(() {
       currentPassword.clear();
       newPassword.clear();
@@ -3613,7 +3406,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
         emailCode: securityEmailCode.text.trim(),
         totpCode: totp.text.trim(),
       );
-      if (mounted) {
+      if (operationCurrent) {
         setState(
           () => scenes = scenes
               .map((item) => asString(item['sceneCode']) == code ? saved : item)
@@ -3626,7 +3419,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
       final challenge = await state.api.issueSecurityChallenge(
         'SECURITY_SETTINGS',
       );
-      if (mounted) {
+      if (operationCurrent) {
         setState(
           () =>
               notice = '安全设置需要验证，验证码已发送至 ${asString(challenge['destination'])}',
@@ -3641,7 +3434,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
       allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
       withData: true,
     );
-    if (!mounted || result == null || result.files.isEmpty) return;
+    if (!operationCurrent || result == null || result.files.isEmpty) return;
     final picked = result.files.single;
     final bytes = picked.bytes;
     if (bytes == null || bytes.isEmpty) {
@@ -3661,7 +3454,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
       fileName: file.name,
       bytes: bytes,
     );
-    if (!mounted) return;
+    if (!operationCurrent) return;
     setState(() {
       kycDocumentRecords = [uploaded, ...kycDocumentRecords];
       kycFile = null;
@@ -3670,6 +3463,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
 
   Future<void> _run(Future<void> Function() action, String message) async {
     if (busy) return;
+    operationToken = loadedToken;
     setState(() {
       busy = true;
       error = null;
@@ -3677,9 +3471,9 @@ class _SecuritySheetState extends State<SecuritySheet> {
     });
     try {
       await action();
-      if (mounted && notice == null) setState(() => notice = message);
+      if (operationCurrent && notice == null) setState(() => notice = message);
     } catch (cause) {
-      if (mounted) setState(() => error = '$cause');
+      if (operationCurrent) setState(() => error = '$cause');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -3688,7 +3482,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final mfaEnabled = mfa['enabled'] == true;
+    if (!state.isLoggedIn) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('登录已失效，请重新登录'),
+      );
+    }
+    final mfaEnabled = mfa['enabled'] == true || mfa['enrolled'] == true;
+    final actionsBlocked =
+        busy || loading || !mfaLoaded || loadErrors.isNotEmpty;
     final enrollmentSecret = asString(enrollment['secret']);
     final selectedKycFile = kycFile;
     return Padding(
@@ -3725,16 +3527,98 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            SectionTitle(title: mfaEnabled ? '2FA 已启用' : '绑定 2FA'),
+            if (loading) const LinearProgressIndicator(),
+            for (final message in loadErrors.values) Text(message),
+            TextButton.icon(
+              onPressed: loading || busy
+                  ? null
+                  : () {
+                      setState(() => loading = true);
+                      unawaited(_load());
+                    },
+              icon: const Icon(Icons.refresh),
+              label: const Text('刷新安全状态'),
+            ),
+            const SectionTitle(title: '登录验证方式'),
+            ...methods.map(
+              (method) => InfoLine(
+                label: switch (method['type']) {
+                  'EMAIL' => '邮箱',
+                  'PHONE' => '手机',
+                  _ => '验证器',
+                },
+                value:
+                    '${method['bound'] == true ? asString(method['destination'], fallback: '已绑定') : '未绑定'} · ${method['enabled'] == true ? '已启用' : '未启用'}',
+              ),
+            ),
+            if (methods.isNotEmpty) const Text('邮箱与手机验证方式的绑定和修改请在 Web 安全中心完成。'),
+            ExpansionTile(
+              title: const Text('活跃会话'),
+              children: [
+                for (final item in asList(sessionsPage['sessions']))
+                  ListTile(
+                    title: Text(
+                      asString(asMap(item)['userAgent'], fallback: '未知设备'),
+                    ),
+                    subtitle: Text(
+                      '${asMap(item)['ipAddress'] ?? '—'}\n登录 ${asMap(item)['createdAt'] ?? '—'}\n到期 ${asMap(item)['expiresAt'] ?? '—'}',
+                    ),
+                  ),
+                if (!loading &&
+                    !loadErrors.containsKey('活跃会话') &&
+                    asList(sessionsPage['sessions']).isEmpty)
+                  const Text('暂无活跃会话'),
+                if (sessionsPage['hasMore'] == true)
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => _run(() => _loadMoreSecurity(false), '已加载更多会话'),
+                    child: const Text('加载更多会话'),
+                  ),
+              ],
+            ),
+            ExpansionTile(
+              title: const Text('登录历史'),
+              children: [
+                for (final item in asList(historyPage['logs']))
+                  ListTile(
+                    title: Text(
+                      '${asMap(item)['result'] ?? '—'} · ${asMap(item)['ipAddress'] ?? '—'}',
+                    ),
+                    subtitle: Text(
+                      '${asMap(item)['createdAt'] ?? '—'}\n${asMap(item)['userAgent'] ?? '—'}\n${asMap(item)['reason'] ?? ''}',
+                    ),
+                  ),
+                if (!loading &&
+                    !loadErrors.containsKey('登录历史') &&
+                    asList(historyPage['logs']).isEmpty)
+                  const Text('暂无登录记录'),
+                if (historyPage['hasMore'] == true)
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () =>
+                              _run(() => _loadMoreSecurity(true), '已加载更多登录记录'),
+                    child: const Text('加载更多登录记录'),
+                  ),
+              ],
+            ),
+            SectionTitle(
+              title: !mfaLoaded
+                  ? '2FA 状态未获取'
+                  : mfaEnabled
+                  ? '2FA 已启用'
+                  : '绑定 2FA',
+            ),
             if (!mfaEnabled && enrollmentSecret.isEmpty)
               PrimaryAction(
                 label: '生成绑定信息',
                 icon: Icons.qr_code_2,
-                onPressed: busy
+                onPressed: actionsBlocked
                     ? null
                     : () => _run(() async {
                         final next = await state.api.enrollMfa();
-                        if (mounted) setState(() => enrollment = next);
+                        if (operationCurrent) setState(() => enrollment = next);
                       }, '请在验证器中完成绑定'),
               ),
             if (!mfaEnabled && enrollmentSecret.isNotEmpty) ...[
@@ -3747,13 +3631,13 @@ class _SecuritySheetState extends State<SecuritySheet> {
               PrimaryAction(
                 label: '确认绑定',
                 icon: Icons.verified_user,
-                onPressed: busy
+                onPressed: actionsBlocked
                     ? null
                     : () => _run(() async {
                         final next = await state.api.confirmMfa(
                           totp.text.trim(),
                         );
-                        if (mounted) {
+                        if (operationCurrent) {
                           setState(() {
                             mfa = next;
                             enrollment = const {};
@@ -3766,13 +3650,13 @@ class _SecuritySheetState extends State<SecuritySheet> {
             if (mfaEnabled) ...[
               AppTextField(controller: totp, label: '关闭 2FA 的验证码'),
               TextButton(
-                onPressed: busy
+                onPressed: actionsBlocked
                     ? null
                     : () => _run(() async {
                         final next = await state.api.disableMfa(
                           totp.text.trim(),
                         );
-                        if (mounted) {
+                        if (operationCurrent) {
                           setState(() {
                             mfa = next;
                             totp.clear();
@@ -3791,7 +3675,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 title: Text(asString(scene['label'], fallback: code)),
                 subtitle: Text(code),
                 value: enabled,
-                onChanged: busy
+                onChanged: actionsBlocked
                     ? null
                     : (next) => _run(() async {
                         await _updateSecurityScene(state, code, next);
@@ -3847,7 +3731,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
               children: [
                 Expanded(
                   child: TextButton.icon(
-                    onPressed: busy
+                    onPressed: actionsBlocked
                         ? null
                         : () => _run(
                             () => state.api.issueSecurityChallenge(
@@ -3864,7 +3748,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: PrimaryAction(
                     label: '确认修改',
                     icon: Icons.password,
-                    onPressed: busy
+                    onPressed: actionsBlocked
                         ? null
                         : () => _run(
                             () => _changePassword(state),
@@ -3875,7 +3759,8 @@ class _SecuritySheetState extends State<SecuritySheet> {
               ],
             ),
             SectionTitle(
-              title: '身份认证 KYC · ${asString(kyc['status'], fallback: '未提交')}',
+              title:
+                  '身份认证 KYC · ${kycLoaded ? asString(kyc['status'], fallback: '未提交') : '状态未获取'}',
             ),
             Text(
               '提币前必须完成认证。材料会存入对象存储，审核只读取已上传的材料元数据和原件。',
@@ -4028,7 +3913,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                         ? '选择材料'
                         : '上传 ${selectedKycFile.name}',
                     icon: Icons.upload_file,
-                    onPressed: busy
+                    onPressed: actionsBlocked
                         ? null
                         : () => _run(_pickKycDocument, '已选择材料'),
                   ),
@@ -4040,7 +3925,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
               PrimaryAction(
                 label: '确认上传 ${selectedKycFile.name}',
                 icon: Icons.cloud_upload_outlined,
-                onPressed: busy
+                onPressed: actionsBlocked
                     ? null
                     : () => _run(() => _uploadKycDocument(state), '材料已上传'),
               ),
@@ -4092,7 +3977,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: PrimaryAction(
                     label: '提交认证',
                     icon: Icons.verified_user,
-                    onPressed: busy
+                    onPressed: actionsBlocked
                         ? null
                         : () => _run(() => _submitKyc(state), 'KYC 已提交，等待审核'),
                   ),
@@ -4106,7 +3991,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
               title: const Text('允许提币'),
               subtitle: const Text('仅在确有自动化提币需求时开启，并妥善保管 Secret'),
               value: apiWithdrawEnabled,
-              onChanged: busy
+              onChanged: actionsBlocked
                   ? null
                   : (enabled) => setState(() => apiWithdrawEnabled = enabled),
             ),
@@ -4116,7 +4001,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
               children: [
                 Expanded(
                   child: TextButton(
-                    onPressed: busy
+                    onPressed: actionsBlocked
                         ? null
                         : () => _run(() async {
                             await state.api.issueSecurityChallenge(
@@ -4130,7 +4015,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: PrimaryAction(
                     label: '创建 API Key',
                     icon: Icons.key,
-                    onPressed: busy
+                    onPressed: actionsBlocked
                         ? null
                         : () => _run(() async {
                             final created = await state.api.createApiKey(
@@ -4142,7 +4027,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                               emailCode: emailCode.text.trim(),
                               totpCode: apiTotp.text.trim(),
                             );
-                            if (mounted) {
+                            if (operationCurrent) {
                               setState(() {
                                 keys = [...keys, asMap(created['apiKey'])];
                                 apiLabel.clear();
@@ -4164,7 +4049,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   '${asString(apiKey['apiKey'])} · ${asString(apiKey['permissions'])}',
                 ),
                 trailing: TextButton(
-                  onPressed: busy
+                  onPressed: actionsBlocked
                       ? null
                       : () => _run(() async {
                           await state.api.revokeApiKey(

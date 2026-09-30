@@ -116,6 +116,20 @@ class ApiClient {
     return json['accepted'] == true || json.isEmpty;
   }
 
+  Future<List<Map<String, dynamic>>> loginVerificationMethods() async => asList(
+    await _send('GET', '/api/v1/security/login-verification'),
+  ).map(asMap).toList();
+
+  Future<Map<String, dynamic>> userSessions({String? cursor}) => get(
+    '/api/v1/security/sessions',
+    query: {'active': 'true', 'limit': '100', 'cursor': ?cursor},
+  );
+
+  Future<Map<String, dynamic>> loginHistory({String? cursor}) => get(
+    '/api/v1/security/login-history',
+    query: {'limit': '100', 'cursor': ?cursor},
+  );
+
   Future<Map<String, dynamic>> mfaStatus() => get('/api/v1/security/mfa');
 
   Future<Map<String, dynamic>> enrollMfa() =>

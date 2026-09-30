@@ -239,6 +239,13 @@ class AppState extends ChangeNotifier {
   List<PositionRisk> positionRisks = const [];
   List<LiquidationOrder> liquidationOrders = const [];
   WalletPortfolio walletPortfolio = WalletPortfolio.empty();
+  bool walletReady = false;
+  String? walletError;
+  String? walletOrdersError;
+  int _walletVersion = 0;
+  int _walletPricesVersion = 0;
+  int _valuationVersion = 0;
+  final Set<ProductMode> valuedProducts = {};
   List<WalletOrderRecord> walletOrders = const [];
   WalletDepositAddress? walletDepositAddress;
   AccountRisk? accountRisk;
@@ -389,17 +396,28 @@ class AppState extends ChangeNotifier {
     var total = 0.0;
     for (final asset in portfolio.assets) {
       if (asset.totalBalance == 0) continue;
-      final price = walletAssetPricesUsdt[asset.symbol.toUpperCase()];
+      final price = asset.symbol.toUpperCase() == 'USDT'
+          ? 1.0
+          : walletAssetPricesUsdt[asset.symbol.toUpperCase()];
       if (price == null || !price.isFinite || price <= 0) return null;
       total += asset.totalBalance * price;
     }
     return total;
   }
 
-  double? productBalancesUsdt() {
+  double? productBalancesUsdt({ProductMode? product}) {
     var total = 0.0;
-    if (!assetsReady) return null;
-    for (final balance in allProductBalances) {
+    if (!isLoggedIn ||
+        (product == null
+            ? !assetsReady
+            : !valuedProducts.contains(product) ||
+                  privateViews[product]?.ready != true)) {
+      return null;
+    }
+    for (final balance
+        in product == null
+            ? allProductBalances
+            : (productBalances[product] ?? <ProductBalance>[])) {
       if (balance.equity == 0) continue;
       final asset = balance.asset.toUpperCase();
       final price = asset == 'USDT' ? 1.0 : walletAssetPricesUsdt[asset];
@@ -420,36 +438,38 @@ class AppState extends ChangeNotifier {
   Future<void> selectValuationCurrency(ValuationCurrency next) async {
     valuationCurrency = next;
     _persistSettings();
-    await refreshValuation(silent: true);
     notifyListeners();
+    await refreshValuation(silent: true);
   }
 
   Future<void> refreshValuation({bool silent = false}) async {
     if (offline) return;
+    final version = ++_valuationVersion;
     valuationLoading = true;
     notifyListeners();
-    try {
-      final results = await Future.wait([
-        api.exchangeRateConversion(
-          fromCurrency: 'USDT',
-          toCurrency: ValuationCurrency.usd.code,
-        ),
-        api.exchangeRateConversion(
-          fromCurrency: 'USDT',
-          toCurrency: ValuationCurrency.cny.code,
-        ),
-      ]);
-      valuationRates
-        ..[ValuationCurrency.usdt] = 1
-        ..[ValuationCurrency.usd] = results[0]
-        ..[ValuationCurrency.cny] = results[1];
-      lastError = null;
-    } catch (error) {
-      if (!silent) lastError = '加载估值汇率失败：$error';
-    } finally {
-      valuationLoading = false;
-      notifyListeners();
+    final results = await Future.wait(
+      [ValuationCurrency.usd, ValuationCurrency.cny].map((currency) async {
+        try {
+          final rate = await api.exchangeRateConversion(
+            fromCurrency: 'USDT',
+            toCurrency: currency.code,
+          );
+          return MapEntry(currency, rate.isFinite && rate > 0 ? rate : null);
+        } catch (_) {
+          return MapEntry<ValuationCurrency, double?>(currency, null);
+        }
+      }),
+    );
+    if (version != _valuationVersion) return;
+    for (final result in results) {
+      if (result.value == null) {
+        valuationRates.remove(result.key);
+      } else {
+        valuationRates[result.key] = result.value!;
+      }
     }
+    valuationLoading = false;
+    notifyListeners();
   }
 
   Future<void> bootstrap() async {
@@ -583,6 +603,7 @@ class AppState extends ChangeNotifier {
     AuthSession next, {
     required bool persist,
   }) async {
+    if (userId != next.user.userId) _clearWalletData();
     await _matchWithdrawalIntentOwner(next.user.userId);
     session = next;
     pendingBiometricSession = null;
@@ -679,7 +700,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _clearWalletData() {
+    ++_walletVersion;
+    ++_walletPricesVersion;
+    walletReady = false;
+    walletError = null;
+    walletOrdersError = null;
+    walletPortfolio = WalletPortfolio.empty();
+    walletOrders = const [];
+    walletAssetPricesUsdt.clear();
+    walletDepositAddress = null;
+    withdrawalRules = const [];
+    withdrawalRulesReady = false;
+  }
+
   Future<void> _clearExpiredSession() async {
+    _clearWalletData();
+    ++_openOrdersRequestVersion;
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
     _privateRealtimeGeneration++;
@@ -692,6 +729,7 @@ class AppState extends ChangeNotifier {
     queriedPositionRisks = [];
     ++_riskDetailsVersion;
     productBalances.clear();
+    valuedProducts.clear();
     assetsReady = false;
     balances = const [];
     positions = const [];
@@ -830,6 +868,7 @@ class AppState extends ChangeNotifier {
     final selectedMode = mode;
     loadingPrivate = true;
     notifyListeners();
+    final walletRefresh = refreshWallet();
     try {
       final results = await Future.wait([
         selectedMode.isDerivative
@@ -839,8 +878,6 @@ class AppState extends ChangeNotifier {
                 productLine: selectedMode.productLine,
               )
             : Future<List<AlgoOrderModel>>.value(const []),
-        api.walletPortfolio(id),
-        api.walletOrders(id),
         selectedMode.isDerivative
             ? api.liquidationOrders(id, productLine: selectedMode.productLine)
             : Future<List<LiquidationOrder>>.value(const []),
@@ -851,14 +888,12 @@ class AppState extends ChangeNotifier {
         return;
       }
       openAlgoOrders = results[0] as List<AlgoOrderModel>;
-      walletPortfolio = results[1] as WalletPortfolio;
-      walletOrders = results[2] as List<WalletOrderRecord>;
-      liquidationOrders = results[3] as List<LiquidationOrder>;
-      await refreshWalletAssetPrices();
+      liquidationOrders = results[1] as List<LiquidationOrder>;
       lastError = null;
     } catch (error) {
       if (generation == _openOrdersRequestVersion) lastError = '加载账户失败：$error';
     } finally {
+      await walletRefresh;
       if (generation == _openOrdersRequestVersion) {
         loadingPrivate = false;
         notifyListeners();
@@ -1089,6 +1124,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _clearWalletData();
     _privateReconnectTimer?.cancel();
     _privateReconnectTimer = null;
     _privateRealtimeGeneration++;
@@ -1101,6 +1137,7 @@ class AppState extends ChangeNotifier {
     queriedPositionRisks = [];
     ++_riskDetailsVersion;
     productBalances.clear();
+    valuedProducts.clear();
     assetsReady = false;
     await privateRealtime.close();
     api.setSession(null);
@@ -1634,38 +1671,46 @@ class AppState extends ChangeNotifier {
   Future<void> refreshWallet() async {
     final id = userId;
     if (offline || id == null) return;
-    loadingPrivate = true;
+    final version = ++_walletVersion;
+    bool current() => version == _walletVersion && id == userId;
+    walletReady = false;
+    walletError = null;
+    walletOrdersError = null;
     notifyListeners();
     try {
       final results = await Future.wait([
         api.walletPortfolio(id),
-        api.walletOrders(id),
+        api
+            .walletOrders(id)
+            .then<List<WalletOrderRecord>?>((rows) => rows)
+            .catchError((_) => null),
       ]);
+      if (!current()) return;
       walletPortfolio = results[0] as WalletPortfolio;
-      walletOrders = results[1] as List<WalletOrderRecord>;
-      try {
-        withdrawalRules = _withdrawalRulesFrom(await api.walletChains(id));
-        withdrawalRulesReady = true;
-      } catch (_) {
-        withdrawalRules = const [];
-        withdrawalRulesReady = false;
-      }
+      walletOrders = results[1] as List<WalletOrderRecord>? ?? const [];
+      walletOrdersError = results[1] == null ? '资金记录加载失败，请重试' : null;
       await refreshWalletAssetPrices();
-      lastError = null;
-    } catch (error) {
-      lastError = '加载钱包失败：$error';
+      if (!current()) return;
+      walletReady = true;
+    } catch (_) {
+      if (current()) walletError = '资金账户加载失败，请重试';
     } finally {
-      loadingPrivate = false;
-      notifyListeners();
+      if (current()) notifyListeners();
     }
   }
 
   Future<void> refreshWalletAssetPrices() async {
     if (offline) return;
-    final assets = walletPortfolio.assets
-        .where((asset) => asset.totalBalance != 0)
-        .map((asset) => asset.symbol.toUpperCase())
-        .toSet();
+    final version = ++_walletPricesVersion;
+    final id = userId;
+    final assets = {
+      ...walletPortfolio.assets
+          .where((asset) => asset.totalBalance != 0)
+          .map((asset) => asset.symbol.toUpperCase()),
+      ...allProductBalances
+          .where((balance) => balance.equity != 0)
+          .map((balance) => balance.asset.toUpperCase()),
+    };
     if (assets.isEmpty) {
       walletAssetPricesUsdt.clear();
       return;
@@ -1673,6 +1718,7 @@ class AppState extends ChangeNotifier {
     final prices = await Future.wait(
       assets.map((asset) => _loadWalletAssetPrice(asset)),
     );
+    if (version != _walletPricesVersion || id != userId) return;
     walletAssetPricesUsdt
       ..clear()
       ..addEntries(prices.whereType<MapEntry<String, double>>());
@@ -2112,6 +2158,7 @@ class AppState extends ChangeNotifier {
     queriedPositionRisks = [];
     ++_riskDetailsVersion;
     productBalances.clear();
+    valuedProducts.clear();
     assetsReady = false;
     balances = const [];
     positions = const [];
@@ -2297,6 +2344,7 @@ class AppState extends ChangeNotifier {
   void _materializePrivate() {
     if (!isLoggedIn) return;
     var complete = _privateAuthenticated;
+    valuedProducts.clear();
     positionPnlUnits.clear();
     for (final product in ProductMode.values) {
       final view = privateViews[product];
@@ -2304,7 +2352,7 @@ class AppState extends ChangeNotifier {
         complete = false;
         continue;
       }
-      complete = complete && view.ready;
+      var productComplete = view.ready;
       final cash = view.rows('balance');
       final equity = <String, int>{
         for (final b in cash)
@@ -2352,15 +2400,17 @@ class AppState extends ChangeNotifier {
                 ? asNullableInt(risk['unrealizedPnlUnits'])
                 : null);
         if (contribution == null) {
-          complete = false;
+          productComplete = false;
         } else {
           final asset = asString(p['marginAsset']);
           equity[asset] = (equity[asset] ?? 0) + contribution;
         }
       }
       if (equity.keys.any((asset) => !cash.any((b) => b['asset'] == asset))) {
-        complete = false;
+        productComplete = false;
       }
+      if (productComplete && _privateAuthenticated) valuedProducts.add(product);
+      complete = complete && productComplete;
       productBalances[product] = cash
           .map(
             (b) => ProductBalance(
@@ -2691,6 +2741,9 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_walletVersion;
+    ++_walletPricesVersion;
+    ++_valuationVersion;
     ++_riskDetailsVersion;
     ++_selectionVersion;
     ++_instrumentRequestVersion;

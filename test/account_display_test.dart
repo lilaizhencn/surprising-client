@@ -157,6 +157,29 @@ void main() {
     );
   }
 
+  testWidgets('identity verification opens without unrelated security forms', (
+    tester,
+  ) async {
+    final api = AccountApi()..failKyc = false;
+    final state = AppState(offline: true, apiClient: api)..session = session;
+    addTearDown(state.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        notifier: state,
+        child: const MaterialApp(
+          home: Scaffold(body: SecuritySheet(kycOnly: true)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('身份认证'), findsOneWidget);
+    expect(find.textContaining('身份认证 KYC'), findsOneWidget);
+    expect(find.text('登录验证方式'), findsNothing);
+    expect(find.text('修改密码'), findsNothing);
+    expect(find.text('API Key'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'security loads outside initState, preserves MFA when KYC fails, retries',
     (tester) async {

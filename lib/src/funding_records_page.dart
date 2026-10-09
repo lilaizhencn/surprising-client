@@ -1,0 +1,424 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'account_records.dart';
+import 'app_state.dart';
+import 'models.dart';
+
+class FundingRecordsPage extends StatefulWidget {
+  const FundingRecordsPage({required this.state, super.key});
+  final AppState state;
+  @override
+  State<FundingRecordsPage> createState() => _FundingRecordsPageState();
+}
+
+class _FundingRecordsPageState extends State<FundingRecordsPage> {
+  static const categories = {
+    'funding-ledger': '资金账户流水',
+    'product-ledger': '交易账户流水',
+    'transfer': '账户划转',
+    'funding-payment': '资金费',
+    'deposit': '充值记录',
+    'withdrawal': '提现记录',
+    'external-transfer': '外部充提记录',
+    'trade': '成交记录',
+    'order': '历史委托',
+  };
+  String category = 'funding-ledger';
+  ProductMode product = ProductMode.linear;
+  final asset = TextEditingController(), reference = TextEditingController();
+  final instrument = TextEditingController(), status = TextEditingController();
+  DateTime? from, to;
+  String? cursor, token, error;
+  Map<String, String> scales = {};
+  List<Map<String, dynamic>> rows = [];
+  bool loading = false;
+  int generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.addListener(_identityChanged);
+    _identityChanged();
+  }
+
+  void _identityChanged() {
+    final next = widget.state.session?.accessToken;
+    if (next == token) return;
+    token = next;
+    generation++;
+    setState(() {
+      rows = [];
+      cursor = null;
+      scales = {};
+    });
+    if (next != null) _load();
+  }
+
+  Future<void> _load({bool more = false}) async {
+    final identity = token, id = widget.state.userId;
+    if (identity == null ||
+        id == null ||
+        (more && (cursor == null || loading))) {
+      return;
+    }
+    final version = ++generation;
+    setState(() {
+      loading = true;
+      error = null;
+      if (!more) {
+        rows = [];
+        cursor = null;
+      }
+    });
+    try {
+      final loadedScales = scales.isEmpty
+          ? await widget.state.api.assetScales()
+          : scales;
+      if (!mounted ||
+          version != generation ||
+          identity != widget.state.session?.accessToken) {
+        return;
+      }
+      scales = loadedScales;
+      final page = await widget.state.api.accountRecords(
+        category: category,
+        userId: id,
+        product: product,
+        asset: asset.text,
+        referenceType: reference.text,
+        instrumentId: instrument.text.trim(),
+        status: status.text,
+        from: from,
+        to: to == null
+            ? null
+            : DateTime(
+                to!.year,
+                to!.month,
+                to!.day + 1,
+              ).subtract(const Duration(milliseconds: 1)),
+        cursor: more ? cursor : null,
+      );
+      if (!mounted ||
+          version != generation ||
+          identity != widget.state.session?.accessToken) {
+        return;
+      }
+      setState(() {
+        final seen = <String>{};
+        rows = [
+          if (more) ...rows,
+          ...page.rows,
+        ].where((r) => seen.add(jsonEncode(r))).toList();
+        cursor = page.hasMore ? page.nextCursor : null;
+      });
+    } catch (_) {
+      if (mounted && version == generation) {
+        setState(() => error = '记录暂时无法加载，请重试');
+      }
+    } finally {
+      if (mounted && version == generation) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _date(bool start) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (start ? from : to) ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      if (start) {
+        from = picked;
+      } else {
+        to = picked;
+      }
+    });
+  }
+
+  bool _visible(Map<String, dynamic> row) {
+    final wantedAsset = asset.text.trim().toUpperCase();
+    if (wantedAsset.isNotEmpty &&
+        asString(
+              row['asset'] ?? row['assetSymbol'] ?? row['currency'],
+            ).toUpperCase() !=
+            wantedAsset) {
+      return false;
+    }
+    if (reference.text.trim().isNotEmpty &&
+        asString(row['referenceType']).toUpperCase() !=
+            reference.text.trim().toUpperCase()) {
+      return false;
+    }
+    if (instrument.text.trim().isNotEmpty &&
+        asString(row['instrumentId']) != instrument.text.trim()) {
+      return false;
+    }
+    final wantedStatus = status.text.trim().toUpperCase();
+    if (wantedStatus.isNotEmpty &&
+        asString(row['status']).toUpperCase() != wantedStatus) {
+      return false;
+    }
+    final date = DateTime.tryParse(
+      asString(
+        row['createdAt'] ??
+            row['updatedAt'] ??
+            row['eventTime'] ??
+            row['tradeTime'],
+      ),
+    );
+    if (from != null && (date == null || date.isBefore(from!))) return false;
+    if (to != null &&
+        (date == null ||
+            !date.isBefore(DateTime(to!.year, to!.month, to!.day + 1)))) {
+      return false;
+    }
+    return true;
+  }
+
+  Widget _record(Map<String, dynamic> row) {
+    final contract = widget.state.instruments
+        .where(
+          (i) =>
+              i.instrumentId == asString(row['instrumentId']) &&
+              i.mode == product,
+        )
+        .firstOrNull;
+    final currency = asString(
+      row['asset'] ??
+          row['assetSymbol'] ??
+          row['currency'] ??
+          row['settleAsset'],
+    );
+    String amount;
+    if (row['amountUnits'] != null ||
+        row['paymentUnits'] != null ||
+        row['deltaUnits'] != null) {
+      amount = formatAccountUnits(
+        row['amountUnits'] ?? row['paymentUnits'] ?? row['deltaUnits'],
+        scales[currency.toUpperCase()],
+      );
+    } else {
+      amount = asString(row['amount'] ?? row['quantity'], fallback: '—');
+    }
+    final created =
+        row['createdAt'] ??
+        row['eventTime'] ??
+        row['tradeTime'] ??
+        row['updatedAt'] ??
+        '—';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '$currency $amount',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              '${row['status'] ?? row['referenceType'] ?? row['side'] ?? '—'} · $created',
+            ),
+            if (row['sourceAccountType'] != null)
+              Text(
+                '${productAccountLabel(asString(row['sourceAccountType']))} → ${productAccountLabel(asString(row['targetAccountType']))}',
+              ),
+            if (row['instrumentId'] != null)
+              Text(contract?.symbol ?? '合约 ${row['instrumentId']}'),
+            if (row['quantitySteps'] != null)
+              Text(
+                contract == null
+                    ? '数量：—'
+                    : contract.isSpot
+                    ? '数量：${formatAccountUnits(BigInt.from(asInt(row['quantitySteps'])) * BigInt.from(contract.quantityStepUnits), '100000000')} ${contract.baseAsset}'
+                    : '数量：${row['quantitySteps']} 张',
+              ),
+            if (row['priceTicks'] != null)
+              Text(
+                '价格：${contract == null ? '—' : formatAccountUnits(BigInt.from(asInt(row['priceTicks'])) * BigInt.from(contract.priceTickUnits), '100000000')}',
+              ),
+            for (final pair in {
+              'availableDeltaUnits': '可用余额变动',
+              'lockedDeltaUnits': '冻结余额变动',
+              'feeUnits': '手续费',
+            }.entries)
+              if (row[pair.key] != null)
+                Text(
+                  '${pair.value}：${formatAccountUnits(row[pair.key], scales[asString(row['feeAsset'] ?? currency).toUpperCase()])} ${row['feeAsset'] ?? currency}',
+                ),
+            for (final pair in <String, String>{
+              'referenceId': '参考号',
+              'transferId': '流水号',
+              'orderId': '订单号',
+              'transactionHash': '链上交易',
+              'txHash': '链上交易',
+              'toAddress': '收款地址',
+            }.entries)
+              if (row[pair.key] != null)
+                SelectableText('${pair.value}：${row[pair.key]}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    generation++;
+    widget.state.removeListener(_identityChanged);
+    asset.dispose();
+    reference.dispose();
+    instrument.dispose();
+    status.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('资金与交易记录')),
+    body: !widget.state.isLoggedIn
+        ? const Center(child: Text('请先登录查看记录'))
+        : RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: category,
+                  decoration: const InputDecoration(labelText: '记录类型'),
+                  items: categories.entries
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e.key,
+                          child: Text(e.value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      category = v;
+                      reference.clear();
+                      status.clear();
+                      instrument.clear();
+                      if (v == 'funding-payment' && !product.isPerpetual) {
+                        product = ProductMode.linear;
+                      }
+                    });
+                    _load();
+                  },
+                ),
+                const SizedBox(height: 12),
+                if ([
+                  'product-ledger',
+                  'transfer',
+                  'funding-payment',
+                  'trade',
+                  'order',
+                ].contains(category))
+                  DropdownButtonFormField<ProductMode>(
+                    key: ValueKey('$category:$product'),
+                    initialValue: product,
+                    decoration: const InputDecoration(labelText: '产品线'),
+                    items: ProductMode.values
+                        .where(
+                          (p) => category != 'funding-payment' || p.isPerpetual,
+                        )
+                        .map(
+                          (p) =>
+                              DropdownMenuItem(value: p, child: Text(p.label)),
+                        )
+                        .toList(),
+                    onChanged: (p) {
+                      if (p != null) {
+                        setState(() => product = p);
+                        _load();
+                      }
+                    },
+                  ),
+                TextField(
+                  controller: asset,
+                  decoration: const InputDecoration(labelText: '币种（可留空）'),
+                ),
+                if (category.endsWith('ledger'))
+                  TextField(
+                    controller: reference,
+                    decoration: const InputDecoration(labelText: '流水类型（可留空）'),
+                  ),
+                if (['funding-payment', 'trade', 'order'].contains(category))
+                  TextField(
+                    controller: instrument,
+                    decoration: const InputDecoration(labelText: '合约 ID（可留空）'),
+                  ),
+                TextField(
+                  controller: status,
+                  decoration: const InputDecoration(labelText: '状态（可留空）'),
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () => _date(true),
+                      child: Text(
+                        from == null
+                            ? '开始日期'
+                            : '${from!.year}-${from!.month}-${from!.day}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _date(false),
+                      child: Text(
+                        to == null
+                            ? '结束日期'
+                            : '${to!.year}-${to!.month}-${to!.day}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          from = null;
+                          to = null;
+                        });
+                      },
+                      child: const Text('清除日期'),
+                    ),
+                  ],
+                ),
+                FilledButton(
+                  onPressed: loading
+                      ? null
+                      : () {
+                          if (from != null &&
+                              to != null &&
+                              from!.isAfter(to!)) {
+                            setState(() => error = '开始日期不能晚于结束日期');
+                            return;
+                          }
+                          _load();
+                        },
+                  child: const Text('筛选 / 刷新'),
+                ),
+                if (loading) const LinearProgressIndicator(),
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(error!),
+                  ),
+                if (!loading && error == null && rows.where(_visible).isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('暂无相关记录'),
+                  ),
+                ...rows.where(_visible).map(_record),
+                if (cursor != null)
+                  OutlinedButton(
+                    onPressed: loading ? null : () => _load(more: true),
+                    child: const Text('加载更多'),
+                  ),
+              ],
+            ),
+          ),
+  );
+}

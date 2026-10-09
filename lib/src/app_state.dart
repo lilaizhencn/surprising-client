@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'api.dart';
 import 'models.dart';
 import 'realtime_state.dart';
+import 'account_records.dart';
 import 'session_store.dart';
 
 class WithdrawalAssetRule {
@@ -240,6 +242,8 @@ class AppState extends ChangeNotifier {
   String? walletError;
   String? walletOrdersError;
   int _walletVersion = 0;
+  int _walletSessionVersion = 0;
+  int _depositAddressRequestVersion = 0;
   int _walletPricesVersion = 0;
   int _valuationVersion = 0;
   final Set<ProductMode> valuedProducts = {};
@@ -302,6 +306,7 @@ class AppState extends ChangeNotifier {
 
   bool _privateAuthenticated = false;
   Timer? _freshnessTimer;
+  Timer? _announcementRefreshTimer;
   int _publicRequestVersion = 0;
   String _priceKey(ProductMode product, String symbol) =>
       '${product.productLine}:$symbol';
@@ -316,6 +321,14 @@ class AppState extends ChangeNotifier {
   };
   ClientTheme clientTheme = ClientTheme.dark;
   ClientLanguage language = ClientLanguage.zhHans;
+  List<Map<String, dynamic>> announcements = const [];
+  List<Map<String, dynamic>> announcementBanners = const [];
+  List<Map<String, dynamic>> announcementModals = const [];
+  int unreadAnnouncementCount = 0;
+  int announcementOffset = 0;
+  bool announcementsHasMore = false;
+  String? announcementError;
+  bool announcementsLoading = false;
   bool valuationLoading = false;
   bool loadingPublic = false;
   bool loadingPrivate = false;
@@ -343,6 +356,7 @@ class AppState extends ChangeNotifier {
   final _publicSubscriptions = <String, Map<String, String>>{};
   final _privateSubscriptions = <String, Map<String, String>>{};
   int _openOrdersRequestVersion = 0;
+  int _announcementsRequestVersion = 0;
   final Map<int, int> _triggerOrderEventVersions = {};
   String? _transferIdempotencyKey;
   String? _withdrawalIdempotencyKey;
@@ -477,7 +491,12 @@ class AppState extends ChangeNotifier {
     await refreshInstruments(silent: true);
     await refreshValuation(silent: true);
     await refreshPublicData(silent: true);
+    await refreshAnnouncements();
     await _connectPublicRealtime();
+    _announcementRefreshTimer ??= Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => unawaited(refreshAnnouncements()),
+    );
   }
 
   Future<void> _restoreSettings() async {
@@ -558,7 +577,148 @@ class AppState extends ChangeNotifier {
   void selectLanguage(ClientLanguage next) {
     language = next;
     _persistSettings();
+    unawaited(refreshAnnouncements());
     notifyListeners();
+  }
+
+  Future<void> refreshAnnouncements() async {
+    if (offline) return;
+    final requestVersion = ++_announcementsRequestVersion;
+    announcementsLoading = true;
+    try {
+      final locale = language == ClientLanguage.zhHans ? 'zh-CN' : 'en-US';
+      final platform = defaultTargetPlatform == TargetPlatform.iOS
+          ? 'IOS'
+          : 'ANDROID';
+      final responses = await Future.wait([
+        api.announcements(
+          locale: locale,
+          productLine: 'ALL',
+          platform: platform,
+          placement: 'CENTER',
+        ),
+        api.announcements(
+          locale: locale,
+          productLine: 'ALL',
+          platform: platform,
+          placement: 'BANNER',
+          limit: 10,
+        ),
+        api.announcements(
+          locale: locale,
+          productLine: 'ALL',
+          platform: platform,
+          placement: 'MODAL',
+          limit: 20,
+        ),
+      ]);
+      if (requestVersion != _announcementsRequestVersion) return;
+      announcements = asList(responses[0]['announcements']).map(asMap).toList();
+      announcementOffset = asInt(responses[0]['offset']);
+      announcementsHasMore = responses[0]['hasMore'] == true;
+      announcementBanners = asList(
+        responses[1]['announcements'],
+      ).map(asMap).toList();
+      announcementModals = asList(
+        responses[2]['announcements'],
+      ).map(asMap).toList();
+      unreadAnnouncementCount = asInt(responses[0]['unreadCount']);
+      announcementError = null;
+    } catch (error) {
+      if (requestVersion != _announcementsRequestVersion) return;
+      announcementError = language == ClientLanguage.en
+          ? 'Announcements are temporarily unavailable: ${clientErrorMessage(error)}'
+          : '公告暂时无法加载：${clientErrorMessage(error)}';
+    } finally {
+      if (requestVersion == _announcementsRequestVersion) {
+        announcementsLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> loadMoreAnnouncements() async {
+    if (offline || announcementsLoading || !announcementsHasMore) return;
+    announcementsLoading = true;
+    final requestVersion = ++_announcementsRequestVersion;
+    try {
+      final locale = language == ClientLanguage.zhHans ? 'zh-CN' : 'en-US';
+      final platform = defaultTargetPlatform == TargetPlatform.iOS
+          ? 'IOS'
+          : 'ANDROID';
+      final response = await api.announcements(
+        locale: locale,
+        productLine: 'ALL',
+        platform: platform,
+        placement: 'CENTER',
+        offset: announcementOffset + 50,
+        limit: 50,
+      );
+      if (requestVersion != _announcementsRequestVersion) return;
+      announcements = [
+        ...announcements,
+        ...asList(response['announcements']).map(asMap),
+      ];
+      announcementOffset = asInt(response['offset']);
+      announcementsHasMore = response['hasMore'] == true;
+      announcementError = null;
+    } catch (error) {
+      if (requestVersion == _announcementsRequestVersion) {
+        announcementError = language == ClientLanguage.en
+            ? 'Announcements are temporarily unavailable: ${clientErrorMessage(error)}'
+            : '公告暂时无法加载：${clientErrorMessage(error)}';
+      }
+    } finally {
+      if (requestVersion == _announcementsRequestVersion) {
+        announcementsLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<bool> markAnnouncementRead(
+    int announcementId, {
+    String placement = 'CENTER',
+  }) async {
+    final platform = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'IOS'
+        : 'ANDROID';
+    try {
+      await api.markAnnouncementRead(
+        announcementId: announcementId,
+        productLine: 'ALL',
+        platform: platform,
+        placement: placement,
+      );
+      await refreshAnnouncements();
+      return true;
+    } catch (error) {
+      announcementError = language == ClientLanguage.en
+          ? 'Could not update announcement read status: ${clientErrorMessage(error)}'
+          : '公告已读状态更新失败：${clientErrorMessage(error)}';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> markAllAnnouncementsRead() async {
+    final platform = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'IOS'
+        : 'ANDROID';
+    try {
+      await api.markAllAnnouncementsRead(
+        productLine: 'ALL',
+        platform: platform,
+      );
+      await refreshAnnouncements();
+      return true;
+    } catch (error) {
+      announcementError = language == ClientLanguage.en
+          ? 'Could not update announcement read status: ${clientErrorMessage(error)}'
+          : '公告已读状态更新失败：${clientErrorMessage(error)}';
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> _restoreSession() async {
@@ -609,6 +769,7 @@ class AppState extends ChangeNotifier {
     if (persist) await sessionStore.saveSession(next);
     await _connectRealtime(forceReconnect: true);
     await refreshPrivateData();
+    await refreshAnnouncements();
   }
 
   Future<bool> unlockBiometricSession() async {
@@ -627,7 +788,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '生物识别解锁失败：$error';
+      lastError = '生物识别解锁失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     }
@@ -646,7 +807,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '启用生物识别失败：$error';
+      lastError = '启用生物识别失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     } finally {
@@ -677,7 +838,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         // Keep the last known state if secure storage cannot be read.
       }
-      lastError = '关闭生物识别失败：$error';
+      lastError = '关闭生物识别失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     } finally {
@@ -697,7 +858,9 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearWalletData() {
+    ++_walletSessionVersion;
     ++_walletVersion;
+    withdrawalRulesLoading = false;
     ++_walletPricesVersion;
     walletReady = false;
     walletError = null;
@@ -722,6 +885,7 @@ class AppState extends ChangeNotifier {
     session = null;
     api.setSession(null);
     await _connectRealtime();
+    await refreshAnnouncements();
     privateViews.clear();
     _riskInputKey = '';
     positionPnlUnits.clear();
@@ -772,9 +936,9 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       if (request != _instrumentRequestVersion) return;
       if (silent) {
-        _recordRealtimeIssue('加载交易对失败：$error');
+        _recordRealtimeIssue('加载交易对失败：${clientErrorMessage(error)}');
       } else {
-        lastError = '加载交易对失败：$error';
+        lastError = '加载交易对失败：${clientErrorMessage(error)}';
       }
     }
     _scheduleRealtimeNotify();
@@ -807,7 +971,7 @@ class AppState extends ChangeNotifier {
         api.recentTrades(symbol, productLine: productLine).catchError((
           Object error,
         ) {
-          _recordRealtimeIssue('加载最新成交失败：$error');
+          _recordRealtimeIssue('加载最新成交失败：${clientErrorMessage(error)}');
           return <Map<String, dynamic>>[];
         }),
       ]);
@@ -847,9 +1011,9 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       if (requestVersion != _publicRequestVersion) return;
       if (silent) {
-        _recordRealtimeIssue('加载行情失败：$error');
+        _recordRealtimeIssue('加载行情失败：${clientErrorMessage(error)}');
       } else {
-        lastError = '加载行情失败：$error';
+        lastError = '加载行情失败：${clientErrorMessage(error)}';
       }
     } finally {
       if (requestVersion == _publicRequestVersion) {
@@ -889,7 +1053,9 @@ class AppState extends ChangeNotifier {
       liquidationOrders = results[1] as List<LiquidationOrder>;
       lastError = null;
     } catch (error) {
-      if (generation == _openOrdersRequestVersion) lastError = '加载账户失败：$error';
+      if (generation == _openOrdersRequestVersion) {
+        lastError = '加载账户失败：${clientErrorMessage(error)}';
+      }
     } finally {
       await walletRefresh;
       if (generation == _openOrdersRequestVersion) {
@@ -933,7 +1099,7 @@ class AppState extends ChangeNotifier {
       lastError = null;
     } catch (error) {
       if (openOrdersRequestVersion == _openOrdersRequestVersion) {
-        lastError = '加载更多委托失败：$error';
+        lastError = '加载更多委托失败：${clientErrorMessage(error)}';
       }
     } finally {
       if (openOrdersRequestVersion == _openOrdersRequestVersion) {
@@ -962,7 +1128,7 @@ class AppState extends ChangeNotifier {
       pendingLoginChallenge = challenge;
       return null;
     } catch (error) {
-      lastError = '登录失败：$error';
+      lastError = '登录失败：${clientErrorMessage(error)}';
       return null;
     } finally {
       loadingPrivate = false;
@@ -997,7 +1163,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '安全验证失败：$error';
+      lastError = '安全验证失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     }
@@ -1029,7 +1195,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '注册成功';
       return session;
     } catch (error) {
-      lastError = '注册失败：$error';
+      lastError = '注册失败：${clientErrorMessage(error)}';
       return null;
     } finally {
       loadingPrivate = false;
@@ -1057,7 +1223,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '邮箱验证成功';
       return true;
     } catch (error) {
-      lastError = '邮箱验证失败：$error';
+      lastError = '邮箱验证失败：${clientErrorMessage(error)}';
       return false;
     } finally {
       loadingPrivate = false;
@@ -1079,7 +1245,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '验证码发送失败：$error';
+      lastError = '验证码发送失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     }
@@ -1093,7 +1259,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '验证码发送失败：$error';
+      lastError = '验证码发送失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     }
@@ -1115,7 +1281,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '密码更新失败：$error';
+      lastError = '密码更新失败：${clientErrorMessage(error)}';
       notifyListeners();
       return false;
     }
@@ -1143,6 +1309,7 @@ class AppState extends ChangeNotifier {
     await sessionStore.clear();
     session = null;
     await _connectRealtime();
+    await refreshAnnouncements();
     _openOrdersRequestVersion++;
     pendingVerificationSession = null;
     pendingBiometricSession = null;
@@ -1313,7 +1480,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '订单已提交 #${order.orderId}';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '下单失败：$error';
+      lastError = '下单失败：${clientErrorMessage(error)}';
     } finally {
       submittingOrder = false;
     }
@@ -1340,7 +1507,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '撤单已提交 #${order.orderId}';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '撤单失败：$error';
+      lastError = '撤单失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
   }
@@ -1378,7 +1545,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '算法单已提交 #${order.algoOrderId}';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '提交算法单失败：$error';
+      lastError = '提交算法单失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
   }
@@ -1406,7 +1573,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '算法单撤销已提交 #${order.algoOrderId}';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '撤销算法单失败：$error';
+      lastError = '撤销算法单失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
   }
@@ -1483,7 +1650,8 @@ class AppState extends ChangeNotifier {
       await refreshPrivateData();
     } catch (error) {
       await refreshPrivateData();
-      lastError = '已提交 ${created.length} 档，其余提交失败，请核对当前委托后重试：$error';
+      lastError =
+          '已提交 ${created.length} 档，其余提交失败，请核对当前委托后重试：${clientErrorMessage(error)}';
     } finally {
       submittingTriggers = false;
     }
@@ -1532,7 +1700,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '条件单撤销已提交 #${order.triggerOrderId}';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '撤销条件单失败：$error';
+      lastError = '撤销条件单失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
   }
@@ -1554,7 +1722,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '持仓模式已切换为${positionModeLabel(positionMode)}';
       await refreshPrivateData();
     } catch (error) {
-      lastError = '切换持仓模式失败：$error';
+      lastError = '切换持仓模式失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
   }
@@ -1589,16 +1757,53 @@ class AppState extends ChangeNotifier {
     required String targetAccountType,
     required String asset,
     required double amount,
+    String? amountText,
     String? emailCode,
     String? totpCode,
   }) async {
     final id = userId;
+    final epoch = _walletSessionVersion;
+    bool current() => id == userId && epoch == _walletSessionVersion;
     if (id == null) {
       lastError = '请先登录再划转';
       notifyListeners();
       return;
     }
     if (transferSubmitting || transferOutcomeLocked) return;
+    if (sourceAccountType == targetAccountType ||
+        !productAccountTypes.contains(sourceAccountType) ||
+        !productAccountTypes.contains(targetAccountType)) {
+      lastError = '请选择不同的划出和划入账户';
+      notifyListeners();
+      return;
+    }
+    transferSubmitting = true;
+    notifyListeners();
+    late int amountUnits;
+    try {
+      final scales = await api.assetScales();
+      if (!current()) {
+        transferSubmitting = false;
+        return;
+      }
+      amountUnits = exactAmountUnits(
+        amountText ?? '$amount',
+        scales[asset.toUpperCase()] ?? '',
+      );
+    } catch (error) {
+      if (!current()) {
+        transferSubmitting = false;
+        return;
+      }
+      if (current()) {
+        lastError = error is FormatException
+            ? error.message
+            : '币种精度暂不可用，请刷新后重试';
+      }
+      transferSubmitting = false;
+      notifyListeners();
+      return;
+    }
     final idempotencyKey = _transferIdempotencyKey ??=
         'app-transfer-$id-${DateTime.now().microsecondsSinceEpoch}';
     transferSubmitting = true;
@@ -1611,11 +1816,16 @@ class AppState extends ChangeNotifier {
         sourceAccountType: sourceAccountType,
         targetAccountType: targetAccountType,
         asset: asset,
-        amountUnits: decimalToUnits(amount),
+        amountUnits: amountUnits,
         idempotencyKey: idempotencyKey,
         emailCode: emailCode,
         totpCode: totpCode,
       );
+      if (!current()) {
+        transferOutcomeLocked = true;
+        transferOutcomeTerminalFailure = false;
+        return;
+      }
       final status = asString(
         result['status'],
         fallback: 'UNKNOWN',
@@ -1634,10 +1844,16 @@ class AppState extends ChangeNotifier {
             : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
       }
     } catch (error) {
+      if (!current()) {
+        transferOutcomeLocked = true;
+        transferOutcomeTerminalFailure = false;
+        return;
+      }
       if (error is ApiException && error.statusCode == 428) {
         transferVerificationRequired = true;
         try {
           final challenge = await api.issueSecurityChallenge('LARGE_TRANSFER');
+          if (!current()) return;
           lastNotice = '大额划转需要验证，验证码已发送至 ${asString(challenge['destination'])}';
         } catch (_) {
           lastError = '验证码发送失败，请稍后重试';
@@ -1655,7 +1871,7 @@ class AppState extends ChangeNotifier {
     } finally {
       transferSubmitting = false;
     }
-    notifyListeners();
+    if (current()) notifyListeners();
   }
 
   void resetTransferIntent() {
@@ -1768,37 +1984,57 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final version = ++_depositAddressRequestVersion;
+    final epoch = _walletSessionVersion, identity = session?.accessToken;
+    bool current() =>
+        version == _depositAddressRequestVersion &&
+        epoch == _walletSessionVersion &&
+        id == userId &&
+        identity == session?.accessToken;
     try {
-      walletDepositAddress = await api.walletDepositAddress(
+      final address = await api.walletDepositAddress(
         id,
         chain: chain,
         symbol: symbol,
         forceNew: forceNew,
       );
+      if (!current()) return;
+      walletDepositAddress = address;
       lastNotice = forceNew ? '已生成新充值地址' : '充值地址已加载';
       await refreshWallet();
     } catch (error) {
-      lastError = '获取充值地址失败：$error';
+      if (!current()) return;
+      lastError = '获取充值地址失败：${clientErrorMessage(error)}';
     }
-    notifyListeners();
+    if (current()) notifyListeners();
   }
 
   Future<void> refreshWithdrawalRules() async {
     final id = userId;
     if (offline || id == null || withdrawalRulesLoading) return;
+    final epoch = _walletSessionVersion, identity = session?.accessToken;
+    bool current() =>
+        epoch == _walletSessionVersion &&
+        id == userId &&
+        identity == session?.accessToken;
     withdrawalRulesLoading = true;
     notifyListeners();
     try {
-      withdrawalRules = _withdrawalRulesFrom(await api.walletChains(id));
+      final rules = _withdrawalRulesFrom(await api.walletChains(id));
+      if (!current()) return;
+      withdrawalRules = rules;
       withdrawalRulesReady = true;
       lastError = null;
     } catch (error) {
+      if (!current()) return;
       withdrawalRules = const [];
       withdrawalRulesReady = false;
-      lastError = '加载提币规则失败：$error';
+      lastError = '加载提币规则失败：${clientErrorMessage(error)}';
     } finally {
-      withdrawalRulesLoading = false;
-      notifyListeners();
+      if (current()) {
+        withdrawalRulesLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1989,7 +2225,7 @@ class AppState extends ChangeNotifier {
       } else {
         _clearWithdrawalIntent();
         await _writeSettings();
-        lastError = '提币未受理：$error';
+        lastError = '提币未受理：${clientErrorMessage(error)}';
       }
     } finally {
       withdrawalSubmitting = false;
@@ -2015,7 +2251,7 @@ class AppState extends ChangeNotifier {
       final destination = asString(challenge['destination']).trim();
       lastNotice = destination.isEmpty ? '邮箱验证码已发送' : '邮箱验证码已发送至 $destination';
     } catch (error) {
-      lastError = '发送提币验证码失败：$error';
+      lastError = '发送提币验证码失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
   }
@@ -2187,7 +2423,7 @@ class AppState extends ChangeNotifier {
         },
         onError: (error) {
           if (connectGeneration != _realtimeGeneration) return;
-          _recordRealtimeIssue('实时 WebSocket：$error');
+          _recordRealtimeIssue('实时 WebSocket：${clientErrorMessage(error)}');
           notifyListeners();
         },
         onDone: () => _scheduleRealtimeReconnect(connectGeneration),
@@ -2206,7 +2442,7 @@ class AppState extends ChangeNotifier {
           current?.accessToken != session?.accessToken) {
         return;
       }
-      _recordRealtimeIssue('实时连接失败：$error');
+      _recordRealtimeIssue('实时连接失败：${clientErrorMessage(error)}');
       notifyListeners();
       _scheduleRealtimeReconnect(connectGeneration);
     }
@@ -2503,7 +2739,13 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (op == 'error') {
-      lastError = asString(message['error'], fallback: '实时消息错误');
+      lastError = ApiException(
+        400,
+        jsonEncode({
+          'code': message['code'],
+          'message': asString(message['error'], fallback: '实时消息暂不可用，请刷新后重试'),
+        }),
+      ).toString();
       notifyListeners();
       return;
     }
@@ -2738,6 +2980,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_walletSessionVersion;
     ++_walletVersion;
     ++_walletPricesVersion;
     ++_valuationVersion;
@@ -2748,6 +2991,7 @@ class AppState extends ChangeNotifier {
     ++_openOrdersRequestVersion;
     _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
+    _announcementRefreshTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
     _realtimeReconnectTimer?.cancel();
     _realtimeGeneration++;

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'models.dart';
+import 'account_records.dart';
 
 class ApiClient {
   ApiClient(this.config, {HttpClient? httpClient})
@@ -120,6 +122,37 @@ class ApiClient {
     await _send('GET', '/api/v1/security/login-verification'),
   ).map(asMap).toList();
 
+  Future<Map<String, dynamic>> beginLoginMethod({
+    required String method,
+    required String currentPassword,
+    required bool enabled,
+    String? destination,
+  }) => post('/api/v1/security/login-verification/$method/bind', {
+    'currentPassword': currentPassword,
+    'enabled': enabled,
+    if (destination != null && destination.trim().isNotEmpty)
+      'destination': destination.trim(),
+  });
+
+  Future<void> confirmLoginMethod({
+    required String method,
+    required String currentPassword,
+    required String challengeToken,
+    String? emailCode,
+    String? phoneCode,
+    String? totpCode,
+  }) async {
+    await post('/api/v1/security/login-verification/$method/confirm', {
+      'currentPassword': currentPassword,
+      'codes': {
+        'challengeToken': challengeToken,
+        if (emailCode != null && emailCode.isNotEmpty) 'emailCode': emailCode,
+        if (phoneCode != null && phoneCode.isNotEmpty) 'phoneCode': phoneCode,
+        if (totpCode != null && totpCode.isNotEmpty) 'totpCode': totpCode,
+      },
+    });
+  }
+
   Future<Map<String, dynamic>> userSessions({String? cursor}) => get(
     '/api/v1/security/sessions',
     query: {'active': 'true', 'limit': '100', 'cursor': ?cursor},
@@ -130,18 +163,234 @@ class ApiClient {
     query: {'limit': '100', 'cursor': ?cursor},
   );
 
+  Future<void> revokeUserSession(String sessionId) async {
+    await post(
+      '/api/v1/security/sessions/${Uri.encodeComponent(sessionId)}/revoke',
+      const {},
+    );
+  }
+
+  Future<void> revokeOtherSessions(String refreshToken) async {
+    await post('/api/v1/security/sessions/revoke-all', {
+      'refreshToken': refreshToken,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> devices() async => asList(
+    await _send('GET', '/api/v1/security/devices'),
+  ).map(asMap).toList();
+
+  Future<void> revokeDevice(String deviceId) async {
+    await post(
+      '/api/v1/security/devices/${Uri.encodeComponent(deviceId)}/revoke',
+      const {},
+    );
+  }
+
+  Future<void> setDeviceBlocked(
+    String deviceId,
+    bool blocked,
+    String emailCode,
+    String totpCode,
+  ) async {
+    await post(
+      '/api/v1/security/devices/${Uri.encodeComponent(deviceId)}/${blocked ? 'block' : 'unblock'}',
+      {'emailCode': emailCode, 'totpCode': totpCode},
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> loginIps() async =>
+      asList(await _send('GET', '/api/v1/security/ips')).map(asMap).toList();
+
+  Future<void> setIpBlocked(
+    String ipAddress,
+    bool blocked,
+    String emailCode,
+    String totpCode,
+  ) async {
+    await post('/api/v1/security/ips/${blocked ? 'block' : 'unblock'}', {
+      'ipAddress': ipAddress,
+      'emailCode': emailCode,
+      'totpCode': totpCode,
+    });
+  }
+
+  Future<Map<String, String>> assetScales() async {
+    final result = await get('/api/v1/gateway/instrument/asset-scales');
+    return result.map((key, value) => MapEntry(key.toUpperCase(), '$value'));
+  }
+
+  Future<AccountRecordPage> accountRecords({
+    required String category,
+    required int userId,
+    required ProductMode product,
+    String asset = '',
+    String referenceType = '',
+    String instrumentId = '',
+    String status = '',
+    DateTime? from,
+    DateTime? to,
+    String? cursor,
+  }) async {
+    if (category == 'external-transfer') {
+      final pages = await Future.wait(
+        ['deposit', 'withdrawal'].map(
+          (kind) => accountRecords(
+            category: kind,
+            userId: userId,
+            product: product,
+            asset: asset,
+          ),
+        ),
+      );
+      final rows = [
+        for (var i = 0; i < pages.length; i++)
+          ...pages[i].rows.map(
+            (row) => {
+              ...row,
+              'referenceType': i == 0 ? 'DEPOSIT' : 'WITHDRAWAL',
+            },
+          ),
+      ];
+      int time(Map<String, dynamic> row) =>
+          DateTime.tryParse(
+            asString(row['createdAt'] ?? row['updatedAt']),
+          )?.millisecondsSinceEpoch ??
+          0;
+      rows.sort((left, right) => time(right).compareTo(time(left)));
+      return AccountRecordPage(rows, null, false);
+    }
+    final query = <String, String>{
+      'limit': '100',
+      if (asset.trim().isNotEmpty) 'asset': asset.trim().toUpperCase(),
+      if (referenceType.trim().isNotEmpty)
+        'referenceType': referenceType.trim().toUpperCase(),
+      if (status.trim().isNotEmpty) 'status': status.trim().toUpperCase(),
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+    };
+    late String path, key;
+    String? line;
+    switch (category) {
+      case 'funding-ledger':
+        path = '/api/v1/gateway/account/ledger';
+        key = 'entries';
+      case 'product-ledger':
+        path = '/api/v1/gateway/account/product-ledger';
+        key = 'entries';
+        query['accountType'] = product.accountType;
+        line = product.productLine;
+      case 'transfer':
+        path = '/api/v1/gateway/account/transfers';
+        key = 'transfers';
+        query['accountType'] = product.accountType;
+        line = product.productLine;
+      case 'deposit':
+        path = '/api/v1/wallet/deposits';
+        key = 'deposits';
+        query['limit'] = '50';
+      case 'withdrawal':
+        path = '/api/v1/wallet/withdrawals';
+        key = 'withdrawals';
+        query['limit'] = '50';
+      case 'funding-payment':
+        path = '/api/v1/gateway/funding/payments';
+        key = 'payments';
+        query['userId'] = '$userId';
+        line = product.productLine;
+        if (instrumentId.isNotEmpty) query['instrumentId'] = instrumentId;
+      case 'trade':
+        path = '/api/v1/gateway/trading-trades/trades';
+        key = 'trades';
+        query['userId'] = '$userId';
+        line = product.productLine;
+        if (instrumentId.isNotEmpty) query['instrumentId'] = instrumentId;
+      case 'order':
+        path = '/api/v1/gateway/trading/history';
+        key = 'orders';
+        query['userId'] = '$userId';
+        line = product.productLine;
+        if (instrumentId.isNotEmpty) query['instrumentId'] = instrumentId;
+        if (from != null) query['startTime'] = '${from.millisecondsSinceEpoch}';
+        if (to != null) query['endTime'] = '${to.millisecondsSinceEpoch}';
+      default:
+        throw const FormatException('暂不支持该记录类型');
+    }
+    return AccountRecordPage.fromJson(
+      await _send('GET', path, query: query, userId: userId, productLine: line),
+      key,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> kycCountries() async => asList(
+    await _send('GET', '/api/v1/compliance/countries'),
+  ).map(asMap).toList();
+
+  Future<void> deleteKycDocument(int id) async {
+    await _send('DELETE', '/api/v1/compliance/kyc/documents/$id');
+  }
+
   Future<Map<String, dynamic>> mfaStatus() => get('/api/v1/security/mfa');
 
-  Future<Map<String, dynamic>> enrollMfa() =>
-      post('/api/v1/security/mfa/enroll', {});
+  Future<Map<String, dynamic>> enrollMfa(String currentPassword) =>
+      post('/api/v1/security/mfa/enroll', {'currentPassword': currentPassword});
 
-  Future<Map<String, dynamic>> confirmMfa(String totpCode) {
-    return post('/api/v1/security/mfa/confirm', {'totpCode': totpCode});
-  }
+  Future<Map<String, dynamic>> confirmMfa({
+    required String challengeToken,
+    required String currentPassword,
+    String? emailCode,
+    String? phoneCode,
+    required String totpCode,
+  }) => post('/api/v1/security/mfa/confirm', {
+    'currentPassword': currentPassword,
+    'codes': {
+      'challengeToken': challengeToken,
+      if (emailCode != null && emailCode.isNotEmpty) 'emailCode': emailCode,
+      if (phoneCode != null && phoneCode.isNotEmpty) 'phoneCode': phoneCode,
+      'totpCode': totpCode,
+    },
+  });
 
-  Future<Map<String, dynamic>> disableMfa(String totpCode) {
-    return post('/api/v1/security/mfa/disable', {'totpCode': totpCode});
-  }
+  Future<Map<String, dynamic>> beginMfaDisable(String currentPassword) => post(
+    '/api/v1/security/mfa/disable',
+    {'currentPassword': currentPassword},
+  );
+
+  Future<Map<String, dynamic>> confirmMfaDisable({
+    required String challengeToken,
+    required String currentPassword,
+    String? emailCode,
+    String? phoneCode,
+    required String totpCode,
+  }) => post('/api/v1/security/mfa/disable/confirm', {
+    'currentPassword': currentPassword,
+    'codes': {
+      'challengeToken': challengeToken,
+      if (emailCode != null && emailCode.isNotEmpty) 'emailCode': emailCode,
+      if (phoneCode != null && phoneCode.isNotEmpty) 'phoneCode': phoneCode,
+      'totpCode': totpCode,
+    },
+  });
+
+  Future<Map<String, dynamic>> mfaRecoveryStatus() =>
+      get('/api/v1/security/mfa/recovery');
+
+  Future<Map<String, dynamic>> issueMfaRecoveryChallenge(
+    String currentPassword,
+  ) => post('/api/v1/security/mfa/recovery/challenge', {
+    'currentPassword': currentPassword,
+  });
+
+  Future<Map<String, dynamic>> submitMfaRecovery({
+    required int challengeId,
+    required String currentPassword,
+    required String code,
+    required String reason,
+  }) => post('/api/v1/security/mfa/recovery', {
+    'challengeId': challengeId,
+    'currentPassword': currentPassword,
+    'code': code,
+    'reason': reason,
+  });
 
   Future<List<Map<String, dynamic>>> securityScenes() async {
     final response = await _send('GET', '/api/v1/security/scenes');
@@ -195,12 +444,30 @@ class ApiClient {
   Future<Map<String, dynamic>> createApiKey({
     required String label,
     required List<String> permissions,
+    List<String> ipAllowlist = const [],
     required String emailCode,
     required String totpCode,
   }) {
     return post(
       '/api/v1/security/api-keys',
-      {'label': label, 'permissions': permissions},
+      {'label': label, 'permissions': permissions, 'ipAllowlist': ipAllowlist},
+      headers: {
+        'X-Security-Email-Code': emailCode,
+        'X-Security-TOTP-Code': totpCode,
+      },
+    );
+  }
+
+  Future<void> updateApiKeyAllowlist({
+    required String apiKey,
+    required List<String> ipAllowlist,
+    required String emailCode,
+    required String totpCode,
+  }) async {
+    await _sendMap(
+      'PATCH',
+      '/api/v1/security/api-keys',
+      body: {'apiKey': apiKey, 'ipAllowlist': ipAllowlist},
       headers: {
         'X-Security-Email-Code': emailCode,
         'X-Security-TOTP-Code': totpCode,
@@ -229,9 +496,100 @@ class ApiClient {
     return asMap(response);
   }
 
+  Future<Map<String, dynamic>> announcements({
+    required String locale,
+    required String productLine,
+    required String platform,
+    required String placement,
+    int offset = 0,
+    int limit = 50,
+  }) {
+    return get(
+      '/api/v1/announcements',
+      query: {
+        'locale': locale,
+        'productLine': productLine,
+        'platform': platform,
+        'placement': placement,
+        'offset': '$offset',
+        'limit': '$limit',
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> markAnnouncementRead({
+    required int announcementId,
+    required String productLine,
+    required String platform,
+    required String placement,
+  }) {
+    final query = Uri(
+      queryParameters: {
+        'productLine': productLine,
+        'platform': platform,
+        'placement': placement,
+      },
+    ).query;
+    return post('/api/v1/announcements/$announcementId/read?$query', const {});
+  }
+
+  Future<Map<String, dynamic>> markAllAnnouncementsRead({
+    required String productLine,
+    required String platform,
+    String placement = 'CENTER',
+  }) {
+    final query = Uri(
+      queryParameters: {
+        'productLine': productLine,
+        'platform': platform,
+        'placement': placement,
+      },
+    ).query;
+    return post('/api/v1/announcements/read-all?$query', const {});
+  }
+
   Future<List<Map<String, dynamic>>> kycDocuments() async {
     final response = await _send('GET', '/api/v1/compliance/kyc/documents');
     return asList(response).map(asMap).toList();
+  }
+
+  Future<Uint8List> downloadKycDocument(int id) async {
+    Future<Uint8List> read() async {
+      final uri = Uri.parse(
+        config.gatewayBaseUrl,
+      ).replace(path: '/api/v1/compliance/kyc/documents/$id');
+      final request = await _httpClient
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 6));
+      request.headers.set(
+        'X-Trace-Id',
+        'mobile-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (_accessToken != null) {
+        request.headers.set('Authorization', 'Bearer $_accessToken');
+      }
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          response.statusCode,
+          await utf8.decodeStream(response),
+        );
+      }
+      final bytes = await response
+          .fold<List<int>>([], (all, chunk) => all..addAll(chunk))
+          .timeout(const Duration(seconds: 30));
+      return Uint8List.fromList(bytes);
+    }
+
+    try {
+      return await read();
+    } on ApiException catch (error) {
+      if (error.statusCode != 401 || _refreshToken == null) rethrow;
+      if (await _refreshAccessToken() == null) rethrow;
+      return read();
+    }
   }
 
   Future<Map<String, dynamic>> uploadKycDocument({
@@ -290,6 +648,9 @@ class ApiClient {
     required String providerReference,
     required String faceVerificationStatus,
     required List<int> documentIds,
+    String? documentExpiresOn,
+    String? documentIssuedOn,
+    String? addressIssuedOn,
   }) {
     return post('/api/v1/compliance/kyc', {
       'applicantType': applicantType,
@@ -301,8 +662,22 @@ class ApiClient {
         'providerReference': providerReference.trim(),
       'faceVerificationStatus': faceVerificationStatus,
       'documentIds': documentIds,
+      'documentExpiresOn': documentExpiresOn,
+      'documentIssuedOn': documentIssuedOn,
+      'addressIssuedOn': addressIssuedOn,
     });
   }
+
+  Future<Map<String, dynamic>> kycProvider() =>
+      get('/api/v1/compliance/kyc/provider');
+
+  Future<Map<String, dynamic>> completeKycSimulation(String decision) => post(
+    '/api/v1/compliance/kyc/simulation/complete',
+    {'decision': decision},
+  );
+
+  Future<Map<String, dynamic>> refreshKycSession() =>
+      post('/api/v1/compliance/kyc/session/refresh', const {});
 
   Future<List<Instrument>> instruments() async {
     final loaded = <String, Instrument>{};
@@ -1069,49 +1444,111 @@ class ApiClient {
     }
   }
 
-  Future<Map<String, dynamic>> walletAssets(int userId) {
-    return get(
-      '/api/v1/gateway/wallet/app/assets',
-      userId: userId,
-      unwrapResponseResult: true,
-    );
-  }
+  Future<List<Map<String, dynamic>>> fundingAssets(String operation) async =>
+      asList(
+        await _send(
+          'GET',
+          '/api/v1/wallet/assets',
+          query: {'operation': operation},
+        ),
+      ).map(asMap).toList();
 
   Future<List<Map<String, dynamic>>> walletChains(int userId) async {
-    final response = await _send(
-      'GET',
-      '/api/v1/wallet/chains',
-      userId: userId,
-    );
-    return asList(response).map(asMap).toList();
+    final values = await Future.wait([
+      fundingAssets('withdraw'),
+      assetScales(),
+    ]);
+    final catalog = values[0] as List<Map<String, dynamic>>,
+        scales = values[1] as Map<String, String>;
+    return [
+      for (final asset in catalog)
+        for (final network in asList(asset['networks']).map(asMap))
+          {
+            'chain': network['networkCode'],
+            'network': network['displayName'],
+            'withdrawalEnabled': true,
+            'tokens': [
+              {
+                'symbol': asset['asset'],
+                'platformEnabled': true,
+                'decimals':
+                    RegExp(r'^10*$').hasMatch(scales[asset['asset']] ?? '')
+                    ? scales[asset['asset']]!.length - 1
+                    : null,
+                'minWithdraw': network['minWithdrawal'],
+                'withdrawalFee': network['withdrawalFee'],
+              },
+            ],
+          },
+    ];
   }
 
   Future<WalletPortfolio> walletPortfolio(
     int userId, {
     bool hideZero = false,
   }) async {
-    final json = await get(
-      '/api/v1/gateway/wallet/app/portfolio',
-      query: {'hideZero': '$hideZero'},
-      userId: userId,
-      unwrapResponseResult: true,
+    final values = await Future.wait([
+      get(
+        '/api/v1/gateway/account/balances',
+        query: {'userId': '$userId'},
+        userId: userId,
+        productLine: ProductMode.spot.productLine,
+      ),
+      assetScales(),
+    ]);
+    final balances = asMap(values[0]);
+    final scales = values[1] as Map<String, String>;
+    final assets = asList(balances['balances'] ?? balances['items'])
+        .map((value) {
+          final row = asMap(value),
+              asset = asString(asMap(value)['asset']).toUpperCase();
+          final available = BigInt.tryParse(asString(row['availableUnits'])),
+              locked = BigInt.tryParse(asString(row['lockedUnits']));
+          if (asset.isEmpty ||
+              available == null ||
+              locked == null ||
+              !scales.containsKey(asset)) {
+            throw const FormatException('资金余额或币种精度尚未同步，请刷新后重试');
+          }
+          double units(BigInt amount) =>
+              double.parse(formatAccountUnits(amount, scales[asset]));
+          return WalletAssetSummary(
+            symbol: asset,
+            availableBalance: units(available),
+            lockedBalance: units(locked),
+            totalBalance: units(available + locked),
+            chains: const [],
+          );
+        })
+        .where((row) => !hideZero || row.totalBalance != 0)
+        .toList();
+    return WalletPortfolio(
+      generatedAt: DateTime.now().toUtc().toIso8601String(),
+      assets: assets,
+      assetCount: assets.length,
     );
-    return WalletPortfolio.fromJson(json);
   }
 
   Future<List<WalletOrderRecord>> walletOrders(
     int userId, {
     int limit = 30,
   }) async {
-    final json = await get(
-      '/api/v1/gateway/wallet/app/orders',
-      query: {'limit': '$limit'},
+    final page = await accountRecords(
+      category: 'external-transfer',
       userId: userId,
-      unwrapResponseResult: true,
+      product: ProductMode.spot,
     );
-    return asList(
-      json['items'] ?? json['orders'],
-    ).map((item) => WalletOrderRecord.fromJson(asMap(item))).toList();
+    return page.rows
+        .take(limit)
+        .map(
+          (row) => WalletOrderRecord.fromJson({
+            ...row,
+            'type': row['referenceType'],
+            'refNo': row['withdrawalId'] ?? row['id'] ?? row['orderNo'],
+            'updatedAt': row['updatedAt'] ?? row['createdAt'],
+          }),
+        )
+        .toList();
   }
 
   Future<WalletDepositAddress> walletDepositAddress(
@@ -1120,20 +1557,21 @@ class ApiClient {
     required String symbol,
     bool forceNew = false,
   }) async {
-    final json = forceNew
-        ? await post(
-            '/api/v1/gateway/wallet/app/deposit-address',
-            {'chain': chain, 'symbol': symbol},
-            userId: userId,
-            unwrapResponseResult: true,
-          )
-        : await get(
-            '/api/v1/gateway/wallet/app/deposit-address',
-            query: {'chain': chain, 'symbol': symbol},
-            userId: userId,
-            unwrapResponseResult: true,
-          );
-    return WalletDepositAddress.fromJson(json);
+    if (forceNew) throw const FormatException('当前网络不支持更换充值地址，请继续使用已分配地址');
+    final value = await post('/api/v1/wallet/deposit-address', {
+      'asset': symbol,
+      'network': chain,
+    }, userId: userId);
+    if (value['asset'] != symbol ||
+        value['network'] != chain ||
+        asString(value['address']).isEmpty) {
+      throw const FormatException('充值地址与所选币种或网络不一致，请重新加载');
+    }
+    return WalletDepositAddress.fromJson({
+      ...value,
+      'chain': chain,
+      'symbol': symbol,
+    });
   }
 
   Future<Map<String, dynamic>> walletWithdraw(
@@ -1491,6 +1929,23 @@ Object? _decodeJson(String value) {
   }
 }
 
+String clientErrorMessage(Object error) {
+  if (error is ApiException) return error.toString();
+  if (error is FormatException) return error.message;
+  if (error is TimeoutException) return '请求超时，请检查网络后重试';
+  if (error is SocketException) return '网络连接失败，请检查网络后重试';
+  final detail = error.toString();
+  if (RegExp(r'[\u4e00-\u9fff]').hasMatch(detail) &&
+      detail.length <= 200 &&
+      !RegExp(
+        r'Aeron|Exception|Kafka|SQL|stack|<html',
+        caseSensitive: false,
+      ).hasMatch(detail)) {
+    return detail;
+  }
+  return '操作未完成，请稍后重试';
+}
+
 class ApiException implements Exception {
   ApiException(this.statusCode, this.message);
 
@@ -1498,7 +1953,42 @@ class ApiException implements Exception {
   final String message;
 
   @override
-  String toString() => 'HTTP $statusCode $message';
+  String toString() {
+    String code = '', detail = message;
+    try {
+      final payload = asMap(jsonDecode(message));
+      final error = payload['error'];
+      final value = error is Map ? asMap(error) : payload;
+      code = asString(value['code']);
+      detail = asString(value['message'] ?? value['detail']);
+    } catch (_) {}
+    const messages = {
+      'INVALID_COMMAND': '操作未完成，请刷新状态后重试',
+      'INSUFFICIENT_BALANCE': '可用余额不足',
+      'INVALID_VERIFICATION_CODE': '验证码不正确或已过期',
+      'INVALID_CREDENTIALS': '账号或密码不正确',
+      'SECURITY_HOLD': '账户处于安全保护期，请稍后重试',
+    };
+    if (messages.containsKey(code)) return messages[code]!;
+    if (RegExp(r'[\u4e00-\u9fff]').hasMatch(detail) &&
+        !RegExp(
+          r'Aeron|Exception|Kafka|SQL|stack|<html',
+          caseSensitive: false,
+        ).hasMatch(detail) &&
+        detail.length <= 240) {
+      return detail;
+    }
+    return switch (statusCode) {
+      401 => '登录已失效，请重新登录',
+      403 => '当前账户暂不允许此操作，请检查认证与安全状态',
+      409 => '状态已变化，请刷新后重试',
+      423 => '账户处于安全保护期，请稍后重试',
+      428 => '请先完成所需的安全验证',
+      429 => '操作过于频繁，请稍后重试',
+      >= 500 => '服务暂时不可用，请稍后重试',
+      _ => '操作未完成，请检查输入后重试',
+    };
+  }
 }
 
 class RealtimeClient {

@@ -1,15 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:kline_chart/kline_chart.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_state.dart';
 import 'asset_overview.dart';
 import 'api.dart';
+import 'device_access_panel.dart';
+import 'funding_records_page.dart';
+import 'kyc_application_page.dart';
+import 'kyc_documents_page.dart';
+import 'deposit_page.dart';
 import 'models.dart';
 
 const _ink = Color(0xFFF2F0F3);
@@ -25,13 +32,18 @@ const _red = Color(0xFFFF7D86);
 const _amber = Color(0xFFF1B85C);
 const _lime = Color(0xFFF1B85C);
 
-String _displayFileSize(int bytes) {
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).ceil()} KB';
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-}
-
 String clientText(ClientLanguage language, String zh, String en) {
   return language == ClientLanguage.en ? en : zh;
+}
+
+String _announcementCategory(Object? value, ClientLanguage language) {
+  return switch ('$value') {
+    'PRODUCT' => clientText(language, '产品更新', 'Product update'),
+    'MAINTENANCE' => clientText(language, '维护通知', 'Maintenance'),
+    'SECURITY' => clientText(language, '安全通知', 'Security'),
+    'RISK' => clientText(language, '风险提示', 'Risk notice'),
+    _ => clientText(language, '平台公告', 'General'),
+  };
 }
 
 class AppScope extends InheritedNotifier<AppState> {
@@ -245,6 +257,10 @@ class _ClientShellState extends State<ClientShell> {
   int index = 0;
   String? seenNotice;
   String? seenError;
+  bool announcementsOpen = false;
+  bool checkedAnnouncementModal = false;
+  String lastAnnouncementModalFingerprint = '';
+  final Set<String> shownAnnouncementModals = {};
 
   void openInstrument(Instrument instrument) {
     setState(() => index = instrument.isSpot ? 2 : 3);
@@ -256,24 +272,36 @@ class _ClientShellState extends State<ClientShell> {
     if (next == 3 && state.mode.isSpot) {
       unawaited(state.selectMode(ProductMode.linear));
     }
-    setState(() => index = next);
+    setState(() {
+      index = next;
+      announcementsOpen = false;
+    });
   }
+
+  void openAnnouncements() => setState(() => announcementsOpen = true);
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     _showMessage(context, state);
-    final page = switch (index) {
-      0 => const HomePage(),
-      1 => const MarketsPage(),
-      2 => TradePage(
-        key: ValueKey('trade-${state.mode.name}-${state.selectedSymbol}'),
-      ),
-      3 => TradePage(
-        key: ValueKey('contract-${state.mode.name}-${state.selectedSymbol}'),
-      ),
-      _ => const WalletPage(),
-    };
+    _maybeShowAnnouncementModal(state);
+    final page = announcementsOpen
+        ? AnnouncementCenterPage(
+            onClose: () => setState(() => announcementsOpen = false),
+          )
+        : switch (index) {
+            0 => const HomePage(),
+            1 => const MarketsPage(),
+            2 => TradePage(
+              key: ValueKey('trade-${state.mode.name}-${state.selectedSymbol}'),
+            ),
+            3 => TradePage(
+              key: ValueKey(
+                'contract-${state.mode.name}-${state.selectedSymbol}',
+              ),
+            ),
+            _ => const WalletPage(),
+          };
     return Scaffold(
       body: SafeArea(child: page),
       bottomNavigationBar: ExchangeBottomNav(
@@ -284,10 +312,89 @@ class _ClientShellState extends State<ClientShell> {
           } else if (next == 3 && state.mode.isSpot) {
             unawaited(state.selectMode(ProductMode.linear));
           }
-          setState(() => index = next);
+          setState(() {
+            index = next;
+            announcementsOpen = false;
+          });
         },
       ),
     );
+  }
+
+  void _maybeShowAnnouncementModal(AppState state) {
+    if (!state.isLoggedIn || state.announcementsLoading) return;
+    if (state.announcementError != null) return;
+    final fingerprint = state.announcementModals
+        .map((row) => '${row['announcementId']}:${row['readAt'] ?? ''}')
+        .join('|');
+    if (fingerprint != lastAnnouncementModalFingerprint) {
+      lastAnnouncementModalFingerprint = fingerprint;
+      checkedAnnouncementModal = false;
+    }
+    if (checkedAnnouncementModal) return;
+    final next = state.announcementModals.where((row) {
+      final id = '${row['announcementId'] ?? ''}';
+      return id.isNotEmpty &&
+          row['readAt'] == null &&
+          !shownAnnouncementModals.contains(id);
+    }).firstOrNull;
+    if (next == null) {
+      checkedAnnouncementModal = true;
+      return;
+    }
+    final id = '${next['announcementId']}';
+    shownAnnouncementModals.add(id);
+    checkedAnnouncementModal = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !state.isLoggedIn) return;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          final language = state.language;
+          return AlertDialog(
+            icon: const Icon(Icons.campaign_outlined),
+            title: Text(
+              '${next['title'] ?? clientText(language, '公告', 'Announcement')}',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if ('${next['summary'] ?? ''}'.isNotEmpty)
+                    Text('${next['summary']}'),
+                  const SizedBox(height: 12),
+                  Text('${next['body'] ?? ''}'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  openAnnouncements();
+                },
+                child: Text(
+                  clientText(language, '公告中心', 'Announcement center'),
+                ),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final navigator = Navigator.of(dialogContext);
+                  final success = await state.markAnnouncementRead(
+                    int.tryParse(id) ?? 0,
+                    placement: 'MODAL',
+                  );
+                  if (success && navigator.mounted) navigator.pop();
+                },
+                child: Text(clientText(language, '已阅读', 'Read')),
+              ),
+            ],
+          );
+        },
+      );
+    });
   }
 
   void _showMessage(BuildContext context, AppState state) {
@@ -312,6 +419,209 @@ class _ClientShellState extends State<ClientShell> {
         messenger.showSnackBar(SnackBar(content: Text(state.lastNotice!)));
       }
     });
+  }
+}
+
+class AnnouncementCenterPage extends StatefulWidget {
+  const AnnouncementCenterPage({required this.onClose, super.key});
+
+  final VoidCallback onClose;
+
+  @override
+  State<AnnouncementCenterPage> createState() => _AnnouncementCenterPageState();
+}
+
+class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
+  int? selectedAnnouncementId;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final language = state.language;
+    final rows = state.announcements;
+    final selected =
+        rows
+            .where(
+              (row) => asInt(row['announcementId']) == selectedAnnouncementId,
+            )
+            .firstOrNull ??
+        rows.where((row) => row['readAt'] == null).firstOrNull ??
+        rows.firstOrNull;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: widget.onClose,
+                icon: const Icon(Icons.arrow_back),
+              ),
+              Expanded(
+                child: Text(
+                  clientText(language, '公告中心', 'Announcements'),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              IconButton(
+                tooltip: clientText(language, '刷新', 'Refresh'),
+                onPressed: state.announcementsLoading
+                    ? null
+                    : state.refreshAnnouncements,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+        ),
+        if (state.announcementError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Text(
+              state.announcementError!,
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: state.refreshAnnouncements,
+            child: rows.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      const SizedBox(height: 90),
+                      Icon(
+                        Icons.campaign_outlined,
+                        size: 44,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          clientText(language, '暂无公告', 'No announcements yet'),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              clientText(
+                                language,
+                                '未读 ${state.unreadAnnouncementCount} 条',
+                                '${state.unreadAnnouncementCount} unread',
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: state.unreadAnnouncementCount == 0
+                                ? null
+                                : () async {
+                                    await state.markAllAnnouncementsRead();
+                                    if (mounted) setState(() {});
+                                  },
+                            child: Text(
+                              clientText(language, '全部已读', 'Mark all read'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (selected != null) ...[
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _announcementCategory(
+                                    selected['category'],
+                                    language,
+                                  ),
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.labelMedium,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${selected['title'] ?? ''}',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                if ('${selected['summary'] ?? ''}'
+                                    .isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text('${selected['summary']}'),
+                                ],
+                                const SizedBox(height: 14),
+                                SelectableText('${selected['body'] ?? ''}'),
+                                const SizedBox(height: 12),
+                                Text(
+                                  '${selected['startsAt'] ?? ''}',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.labelMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      for (final row in rows)
+                        Card(
+                          color:
+                              asInt(row['announcementId']) ==
+                                  asInt(selected?['announcementId'])
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest
+                              : null,
+                          child: ListTile(
+                            leading: Icon(
+                              row['readAt'] == null
+                                  ? Icons.markunread_outlined
+                                  : Icons.drafts_outlined,
+                            ),
+                            title: Text(
+                              '${row['title'] ?? ''}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${row['summary'] ?? ''}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () async {
+                              final id = asInt(row['announcementId']);
+                              setState(() => selectedAnnouncementId = id);
+                              if (row['readAt'] == null) {
+                                await state.markAnnouncementRead(id);
+                              }
+                            },
+                          ),
+                        ),
+                      if (state.announcementsHasMore)
+                        Center(
+                          child: TextButton(
+                            onPressed: state.announcementsLoading
+                                ? null
+                                : state.loadMoreAnnouncements,
+                            child: Text(
+                              clientText(language, '加载更多', 'Load more'),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -662,7 +972,12 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     return RefreshIndicator(
-      onRefresh: state.refreshInstruments,
+      onRefresh: () async {
+        await Future.wait([
+          state.refreshInstruments(),
+          state.refreshAnnouncements(),
+        ]);
+      },
       child: ListView(
         padding: const EdgeInsets.all(16),
         physics: const AlwaysScrollableScrollPhysics(),
@@ -676,6 +991,47 @@ class HomePage extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+              ),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    tooltip: clientText(
+                      state.language,
+                      '公告中心',
+                      'Announcements',
+                    ),
+                    onPressed: () => context
+                        .findAncestorStateOfType<_ClientShellState>()
+                        ?.openAnnouncements(),
+                    icon: const Icon(Icons.campaign_outlined),
+                  ),
+                  if (state.unreadAnnouncementCount > 0)
+                    Positioned(
+                      right: 5,
+                      top: 4,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 16),
+                        height: 16,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE5484D),
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                        ),
+                        child: Center(
+                          child: Text(
+                            state.unreadAnnouncementCount > 99
+                                ? '99+'
+                                : '${state.unreadAnnouncementCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               IconButton(
                 tooltip: '账户',
@@ -692,6 +1048,24 @@ class HomePage extends StatelessWidget {
               ),
             ],
           ),
+          for (final announcement in state.announcementBanners.take(1))
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.campaign_outlined),
+                title: Text(
+                  '${announcement['title'] ?? clientText(state.language, '平台公告', 'Exchange announcement')}',
+                ),
+                subtitle: Text(
+                  '${announcement['summary'] ?? ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context
+                    .findAncestorStateOfType<_ClientShellState>()
+                    ?.openAnnouncements(),
+              ),
+            ),
           const SizedBox(height: 24),
           Text(
             '交易，从这里开始',
@@ -1266,11 +1640,10 @@ class _WalletPageState extends State<WalletPage> {
   final amountController = TextEditingController(text: '10');
   final transferEmailCodeController = TextEditingController();
   final transferTotpCodeController = TextEditingController();
-  String source = 'SPOT';
-  String target = 'USDT_PERPETUAL';
+  String source = 'FUNDING';
+  String target = 'SPOT';
   String asset = 'USDT';
   String walletSymbol = 'USDT';
-  String walletChain = 'ETH';
 
   @override
   void dispose() {
@@ -1284,19 +1657,6 @@ class _WalletPageState extends State<WalletPage> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final symbols = _walletSymbols(state);
-    final selectedSymbol = symbols.contains(walletSymbol)
-        ? walletSymbol
-        : symbols.first;
-    final chains = _walletChains(state, selectedSymbol);
-    final selectedChain = chains.contains(walletChain)
-        ? walletChain
-        : chains.first;
-    final deposit = state.walletDepositAddress;
-    final depositMatches =
-        deposit != null &&
-        deposit.symbol == selectedSymbol &&
-        deposit.chain == selectedChain;
     return Material(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: RefreshIndicator(
@@ -1341,86 +1701,10 @@ class _WalletPageState extends State<WalletPage> {
                   ),
                   children: [
                     Panel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SectionTitle(
-                            title: '充币地址',
-                            action: IconButton.filledTonal(
-                              onPressed: () => unawaited(
-                                state.loadDepositAddress(
-                                  chain: selectedChain,
-                                  symbol: selectedSymbol,
-                                ),
-                              ),
-                              icon: const Icon(Icons.qr_code),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SmallDropdown(
-                                  value: selectedSymbol,
-                                  values: symbols,
-                                  onChanged: (value) {
-                                    final nextChains = _walletChains(
-                                      state,
-                                      value,
-                                    );
-                                    setState(() {
-                                      walletSymbol = value;
-                                      walletChain = nextChains.first;
-                                    });
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: SmallDropdown(
-                                  value: selectedChain,
-                                  values: chains,
-                                  onChanged: (value) =>
-                                      setState(() => walletChain = value),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: PrimaryAction(
-                                  label: '获取地址',
-                                  icon: Icons.call_received,
-                                  onPressed: () => unawaited(
-                                    state.loadDepositAddress(
-                                      chain: selectedChain,
-                                      symbol: selectedSymbol,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () => unawaited(
-                                    state.loadDepositAddress(
-                                      chain: selectedChain,
-                                      symbol: selectedSymbol,
-                                      forceNew: true,
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('新地址'),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (depositMatches) ...[
-                            const SizedBox(height: 10),
-                            DepositAddressCard(address: deposit),
-                          ],
-                        ],
+                      child: PrimaryAction(
+                        label: '充值地址与网络',
+                        icon: Icons.qr_code,
+                        onPressed: () => _openRechargeFlow(context, state),
                       ),
                     ),
                     Panel(
@@ -1555,6 +1839,7 @@ class _WalletPageState extends State<WalletPage> {
                                             amountController.text,
                                           ) ??
                                           0,
+                                      amountText: amountController.text,
                                       emailCode:
                                           transferEmailCodeController.text,
                                       totpCode: transferTotpCodeController.text,
@@ -1595,6 +1880,15 @@ class _WalletPageState extends State<WalletPage> {
                       ),
                     ),
 
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => FundingRecordsPage(state: state),
+                        ),
+                      ),
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text('查看分类资金与交易记录'),
+                    ),
                     const SectionTitle(title: '资金记录'),
                     if (state.walletError != null ||
                         state.walletOrdersError != null)
@@ -1620,9 +1914,9 @@ class _WalletPageState extends State<WalletPage> {
       showAuthSheet(context);
       return;
     }
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const RechargeCoinPage()));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => MobileDepositPage(state: state)),
+    );
   }
 
   void _openWithdrawalFlow(BuildContext context, AppState state) {
@@ -1637,32 +1931,6 @@ class _WalletPageState extends State<WalletPage> {
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => const WithdrawalPage()));
     }());
-  }
-
-  List<String> _walletSymbols(AppState state) {
-    final values =
-        state.walletPortfolio.assets
-            .map((asset) => asset.symbol)
-            .where((symbol) => symbol.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    return values.isEmpty ? const ['USDT', 'BTC', 'ETH'] : values;
-  }
-
-  List<String> _walletChains(AppState state, String symbol) {
-    final matches = state.walletPortfolio.assets.where(
-      (asset) => asset.symbol == symbol,
-    );
-    final chains = matches.isEmpty
-        ? <String>[]
-        : matches.first.chains
-              .map((chain) => chain.chain)
-              .where((chain) => chain.isNotEmpty)
-              .toSet()
-              .toList();
-    chains.sort();
-    return chains.isEmpty ? const ['ETH', 'TRON', 'BTC'] : chains;
   }
 }
 
@@ -3140,6 +3408,93 @@ class ProfilePage extends StatelessWidget {
   }
 }
 
+class KycSumsubWebView extends StatefulWidget {
+  const KycSumsubWebView({
+    required this.token,
+    required this.refreshToken,
+    required this.language,
+    super.key,
+  });
+  final String token;
+  final Future<String> Function() refreshToken;
+  final ClientLanguage language;
+
+  @override
+  State<KycSumsubWebView> createState() => _KycSumsubWebViewState();
+}
+
+class _KycSumsubWebViewState extends State<KycSumsubWebView> {
+  late final WebViewController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final tokenJson = jsonEncode(widget.token);
+    controller =
+        WebViewController(
+            onPermissionRequest: (request) {
+              if (request.types.every(
+                (type) =>
+                    type == WebViewPermissionResourceType.camera ||
+                    type == WebViewPermissionResourceType.microphone,
+              )) {
+                request.grant();
+              } else {
+                request.deny();
+              }
+            },
+          )
+          ..addJavaScriptChannel(
+            'KycHost',
+            onMessageReceived: (_) => unawaited(_refreshToken()),
+          )
+          ..setJavaScriptMode(JavaScriptMode.unrestricted)
+          ..loadHtmlString(
+            '''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><script src="https://static.sumsub.com/idensic/static/sns-websdk-builder.js"></script></head><body><div id="sumsub-websdk-container"></div><script>window.__requestNewToken=()=>new Promise(resolve=>{window.__resolveNewToken=resolve;KycHost.postMessage("refresh")});window.__provideNewToken=token=>window.__resolveNewToken?.(token);snsWebSdk.init($tokenJson, window.__requestNewToken).withConf({lang:"${widget.language == ClientLanguage.en ? 'en' : 'zh'}"}).build().launch("#sumsub-websdk-container");</script></body></html>''',
+            baseUrl: 'https://static.sumsub.com/',
+          );
+  }
+
+  Future<void> _refreshToken() async {
+    try {
+      final token = await widget.refreshToken();
+      await controller.runJavaScript(
+        'window.__provideNewToken(${jsonEncode(token)});',
+      );
+    } catch (_) {
+      await controller.runJavaScript('window.__provideNewToken("");');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog.fullscreen(
+    child: SafeArea(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  clientText(
+                    widget.language,
+                    'Sumsub 身份与人脸核验',
+                    'Sumsub identity and face verification',
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          Expanded(child: WebViewWidget(controller: controller)),
+        ],
+      ),
+    ),
+  );
+}
+
 class SecuritySheet extends StatefulWidget {
   const SecuritySheet({this.kycOnly = false, super.key});
 
@@ -3150,38 +3505,50 @@ class SecuritySheet extends StatefulWidget {
 }
 
 class _SecuritySheetState extends State<SecuritySheet> {
+  Timer? _kycStatusPoll;
+  bool _pollingSecurity = false;
+  bool _operationCancelled = false;
   Map<String, dynamic> mfa = const {};
+  Map<String, dynamic> mfaRecovery = const {};
+  Map<String, dynamic> mfaRecoveryChallenge = const {};
   Map<String, dynamic> enrollment = const {};
   List<Map<String, dynamic>> scenes = const [];
   List<Map<String, dynamic>> keys = const [];
   Map<String, dynamic> kyc = const {};
+  Map<String, dynamic> kycProviderInfo = const {};
+  Map<String, dynamic> kycVerificationSession = const {};
   final totp = TextEditingController();
   final emailCode = TextEditingController();
   final securityEmailCode = TextEditingController();
   final apiTotp = TextEditingController();
   final apiLabel = TextEditingController();
+  final apiAllowlist = TextEditingController();
+  bool apiTradeEnabled = false;
   bool apiWithdrawEnabled = false;
-  final kycCountry = TextEditingController();
-  final kycProviderReference = TextEditingController();
+  String? apiSecret;
   final currentPassword = TextEditingController();
+  final mfaPassword = TextEditingController();
+  final mfaEmailCode = TextEditingController();
+  final mfaPhoneCode = TextEditingController();
+  final loginMethodDestination = TextEditingController();
+  final mfaRecoveryCode = TextEditingController();
+  final mfaRecoveryReason = TextEditingController();
   final newPassword = TextEditingController();
   final changePasswordEmailCode = TextEditingController();
   final changePasswordTotpCode = TextEditingController();
   List<Map<String, dynamic>> kycDocumentRecords = const [];
-  PlatformFile? kycFile;
-  String kycApplicantType = 'INDIVIDUAL';
-  String kycLevel = 'STANDARD';
-  String kycDocumentType = 'ID_CARD';
-  String kycUploadType = 'ID_CARD';
-  String kycProvider = 'SELF';
-  String kycFaceStatus = 'NOT_REQUIRED';
+  String kycProvider = 'SUMSUB';
+  bool get kycSimulationEnabled => kycProviderInfo['simulationEnabled'] == true;
   bool busy = false;
   String? error;
   String? notice;
 
   String? loadedToken;
   String? operationToken;
-  bool get operationCurrent => mounted && operationToken == loadedToken;
+  bool get operationCurrent =>
+      mounted &&
+      operationToken == loadedToken &&
+      AppScope.of(context).session?.accessToken == operationToken;
   bool loading = true;
   bool mfaLoaded = false;
   bool kycLoaded = false;
@@ -3194,15 +3561,58 @@ class _SecuritySheetState extends State<SecuritySheet> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _kycStatusPoll ??= Timer.periodic(const Duration(seconds: 12), (_) {
+      if (!mounted ||
+          _pollingSecurity ||
+          loading ||
+          busy ||
+          loadedToken == null) {
+        return;
+      }
+      final state = AppScope.of(context);
+      if (state.session?.accessToken != loadedToken) return;
+      final version = loadVersion, token = loadedToken;
+      _pollingSecurity = true;
+      unawaited(() async {
+        try {
+          if (kyc['status'] == 'PENDING') {
+            final value = await state.api.kycStatus();
+            if (mounted &&
+                version == loadVersion &&
+                state.session?.accessToken == token) {
+              setState(() => kyc = value);
+            }
+          }
+          if (mfaRecovery['status'] == 'PENDING' &&
+              version == loadVersion &&
+              state.session?.accessToken == token) {
+            final value = await state.api.mfaRecoveryStatus();
+            if (mounted &&
+                version == loadVersion &&
+                state.session?.accessToken == token) {
+              setState(() => mfaRecovery = value);
+            }
+          }
+        } catch (_) {
+          // The next poll retries; a transient read must not overwrite the form.
+        } finally {
+          _pollingSecurity = false;
+        }
+      }());
+    });
     final token = AppScope.of(context).session?.accessToken;
     if (token == loadedToken) return;
     loadedToken = token;
     ++loadVersion;
     mfa = {};
+    mfaRecovery = {};
+    mfaRecoveryChallenge = {};
     enrollment = {};
     scenes = [];
     keys = [];
     kyc = {};
+    kycProviderInfo = {};
+    kycVerificationSession = {};
     methods = [];
     sessionsPage = {};
     historyPage = {};
@@ -3222,22 +3632,35 @@ class _SecuritySheetState extends State<SecuritySheet> {
     changePasswordEmailCode.clear();
     changePasswordTotpCode.clear();
     apiLabel.clear();
-    kycCountry.clear();
-    kycProviderReference.clear();
-    kycFile = null;
+    apiAllowlist.clear();
+    apiSecret = null;
+    apiTradeEnabled = false;
+    apiWithdrawEnabled = false;
+    mfaPassword.clear();
+    mfaEmailCode.clear();
+    mfaPhoneCode.clear();
+    mfaRecoveryCode.clear();
+    mfaRecoveryReason.clear();
+    loginMethodDestination.clear();
     if (token != null) unawaited(_load());
   }
 
   @override
   void dispose() {
+    _kycStatusPoll?.cancel();
     totp.dispose();
     emailCode.dispose();
     securityEmailCode.dispose();
     apiTotp.dispose();
     apiLabel.dispose();
-    kycCountry.dispose();
-    kycProviderReference.dispose();
+    apiAllowlist.dispose();
     currentPassword.dispose();
+    mfaPassword.dispose();
+    mfaEmailCode.dispose();
+    mfaPhoneCode.dispose();
+    loginMethodDestination.dispose();
+    mfaRecoveryCode.dispose();
+    mfaRecoveryReason.dispose();
     newPassword.dispose();
     changePasswordEmailCode.dispose();
     changePasswordTotpCode.dispose();
@@ -3257,6 +3680,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     historyPage = {};
     mfa = {};
     kyc = {};
+    kycProviderInfo = {};
     scenes = [];
     keys = [];
     kycDocumentRecords = [];
@@ -3284,6 +3708,11 @@ class _SecuritySheetState extends State<SecuritySheet> {
           mfa = value;
           mfaLoaded = true;
         }),
+        read(
+          '2FA 恢复',
+          state.api.mfaRecoveryStatus,
+          (value) => mfaRecovery = value,
+        ),
         read('敏感场景', state.api.securityScenes, (value) => scenes = value),
         read('API 密钥', state.api.apiKeys, (value) => keys = value),
       ],
@@ -3291,6 +3720,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
         kyc = value;
         kycLoaded = true;
         _applyKyc(kyc);
+      }),
+      read('KYC 服务', state.api.kycProvider, (value) {
+        kycProviderInfo = value;
+        kycProvider = asString(value['provider'], fallback: 'SUMSUB');
       }),
       read(
         '认证材料',
@@ -3335,72 +3768,63 @@ class _SecuritySheetState extends State<SecuritySheet> {
   }
 
   void _applyKyc(Map<String, dynamic> profile) {
-    kycApplicantType = asString(
-      profile['applicantType'],
-      fallback: kycApplicantType,
-    );
-    kycLevel = asString(profile['kycLevel'], fallback: kycLevel);
-    kycCountry.text = asString(profile['country']);
-    kycDocumentType = asString(
-      profile['documentType'],
-      fallback: kycDocumentType,
-    );
-    kycProvider = asString(profile['provider'], fallback: kycProvider);
-    kycProviderReference.text = asString(profile['providerReference']);
-    kycFaceStatus = asString(
-      profile['faceVerificationStatus'],
-      fallback: kycFaceStatus,
-    );
+    if (profile['provider'] != null) {
+      kycProvider = asString(profile['provider']);
+    }
   }
 
-  Future<void> _submitKyc(AppState state) async {
-    final country = kycCountry.text.trim().toUpperCase();
-    if (!RegExp(r'^[A-Z]{2}$').hasMatch(country)) {
-      throw const FormatException('国家/地区代码必须是 2 位大写字母');
-    }
-    if (kycDocumentRecords.isEmpty) {
-      throw const FormatException('请先上传至少一份 KYC 材料');
-    }
-    final types = kycDocumentRecords
-        .map((document) => asString(document['documentType']))
-        .toSet();
-    if (!types.contains('ID_CARD') && !types.contains('PASSPORT')) {
-      throw const FormatException('请上传身份证或护照');
-    }
-    if (kycApplicantType == 'BUSINESS' && !types.contains('BUSINESS_LICENSE')) {
-      throw const FormatException('企业认证还需要上传营业执照');
-    }
-    if ((kycLevel == 'STANDARD' || kycLevel == 'ENHANCED') &&
-        !types.contains('ADDRESS_PROOF')) {
-      throw const FormatException('标准及以上认证还需要上传地址证明');
-    }
-    if (kycLevel == 'ENHANCED' && kycFaceStatus != 'PENDING') {
-      throw const FormatException('增强认证需要启用人脸识别');
-    }
-    if (kycFaceStatus == 'PENDING' && !types.contains('FACE_IMAGE')) {
-      throw const FormatException('启用人脸识别时还需要上传人脸材料');
-    }
-    if (kycProvider == 'THIRD_PARTY' &&
-        kycProviderReference.text.trim().isEmpty) {
-      throw const FormatException('第三方认证需要填写服务引用');
-    }
-    final next = await state.api.submitKyc(
-      applicantType: kycApplicantType,
-      kycLevel: kycLevel,
-      country: country,
-      documentType: kycDocumentType,
-      provider: kycProvider,
-      providerReference: kycProviderReference.text,
-      faceVerificationStatus: kycFaceStatus,
-      documentIds: kycDocumentRecords
-          .map((document) => asInt(document['documentId']))
-          .toList(),
-    );
+  Future<void> _completeKycSimulation(AppState state, String decision) async {
+    final next = await state.api.completeKycSimulation(decision);
     if (!operationCurrent) return;
     setState(() {
       kyc = next;
-      _applyKyc(next);
+      kycVerificationSession = {};
     });
+  }
+
+  Future<void> _launchKycProvider(AppState state) async {
+    final session = kycVerificationSession;
+    final token = asString(session['launchToken']);
+    final redirect = asString(session['redirectUrl']);
+    if (kycProvider == 'SUMSUB' && token.isNotEmpty) {
+      if (Platform.isAndroid) {
+        final permissions = await const MethodChannel(
+          'surprising/kyc-permissions',
+        ).invokeMethod<bool>('requestCameraAndMicrophone');
+        if (permissions != true) {
+          throw const FormatException('身份核验需要相机和麦克风权限');
+        }
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => KycSumsubWebView(
+          token: token,
+          language: state.language,
+          refreshToken: () async {
+            final refreshed = await state.api.refreshKycSession();
+            final nextToken = asString(refreshed['launchToken']);
+            if (nextToken.isEmpty) throw const FormatException('无法刷新核验令牌');
+            return nextToken;
+          },
+        ),
+      );
+      if (mounted) {
+        await state.api.kycStatus().then((value) {
+          if (mounted) setState(() => kyc = value);
+        });
+      }
+      return;
+    }
+    if (kycProvider == 'VERIFF' && redirect.isNotEmpty) {
+      final uri = Uri.tryParse(redirect);
+      if (uri == null || !uri.hasScheme || uri.scheme != 'https') {
+        throw const FormatException('服务商核验链接无效');
+      }
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    throw const FormatException('当前核验会话暂不可启动');
   }
 
   Future<void> _changePassword(AppState state) async {
@@ -3456,42 +3880,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
     }
   }
 
-  Future<void> _pickKycDocument() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
-      withData: true,
-    );
-    if (!operationCurrent || result == null || result.files.isEmpty) return;
-    final picked = result.files.single;
-    final bytes = picked.bytes;
-    if (bytes == null || bytes.isEmpty) {
-      throw const FormatException('无法读取所选材料');
-    }
-    setState(() => kycFile = picked);
-  }
-
-  Future<void> _uploadKycDocument(AppState state) async {
-    final file = kycFile;
-    final bytes = file?.bytes;
-    if (file == null || bytes == null) {
-      throw const FormatException('请先选择 KYC 材料');
-    }
-    final uploaded = await state.api.uploadKycDocument(
-      documentType: kycUploadType,
-      fileName: file.name,
-      bytes: bytes,
-    );
-    if (!operationCurrent) return;
-    setState(() {
-      kycDocumentRecords = [uploaded, ...kycDocumentRecords];
-      kycFile = null;
-    });
-  }
-
   Future<void> _run(Future<void> Function() action, String message) async {
     if (busy) return;
     operationToken = loadedToken;
+    _operationCancelled = false;
     setState(() {
       busy = true;
       error = null;
@@ -3499,12 +3891,111 @@ class _SecuritySheetState extends State<SecuritySheet> {
     });
     try {
       await action();
-      if (operationCurrent && notice == null) setState(() => notice = message);
+      if (operationCurrent && notice == null && !_operationCancelled) {
+        setState(() => notice = message);
+      }
     } catch (cause) {
-      if (operationCurrent) setState(() => error = '$cause');
+      if (operationCurrent) {
+        setState(
+          () => error = cause is FormatException
+              ? cause.message
+              : cause is ApiException
+              ? '$cause'
+              : '操作未完成，请稍后重试',
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  List<String> _apiAllowlist() => apiAllowlist.text
+      .split(RegExp(r'[\s,]+'))
+      .where((v) => v.isNotEmpty)
+      .toSet()
+      .toList();
+
+  Future<bool> _confirmSecurity(String title, String message) async {
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialog) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialog, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialog, true),
+                child: const Text('确认'),
+              ),
+            ],
+          ),
+        ) ==
+        true;
+    if (!confirmed) _operationCancelled = true;
+    return confirmed;
+  }
+
+  Future<void> _beginLoginMethodChange(
+    AppState state,
+    String method,
+    bool enabled, {
+    bool changeBinding = false,
+  }) async {
+    mfaPassword.clear();
+    loginMethodDestination.clear();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(changeBinding ? '更换绑定' : '安全验证方式设置'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
+            TextField(
+              controller: mfaPassword,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '登录密码'),
+            ),
+            if (changeBinding)
+              TextField(
+                controller: loginMethodDestination,
+                keyboardType: method == 'EMAIL'
+                    ? TextInputType.emailAddress
+                    : TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: method == 'EMAIL' ? '新邮箱' : '新手机号（国际区号）',
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('发送验证码'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || mfaPassword.text.isEmpty) return;
+    await _run(() async {
+      final next = await state.api.beginLoginMethod(
+        method: method,
+        currentPassword: mfaPassword.text,
+        enabled: enabled,
+        destination: changeBinding ? loginMethodDestination.text : null,
+      );
+      if (operationCurrent) {
+        setState(() => enrollment = {...next, 'loginMethod': method});
+      }
+    }, '验证码已发送，请完成安全验证');
   }
 
   @override
@@ -3517,10 +4008,22 @@ class _SecuritySheetState extends State<SecuritySheet> {
       );
     }
     final mfaEnabled = mfa['enabled'] == true || mfa['enrolled'] == true;
-    final actionsBlocked =
-        busy || loading || !mfaLoaded || loadErrors.isNotEmpty;
+    final actionsBlocked = busy || loading || !mfaLoaded;
+    final kycActionsBlocked =
+        busy || loading || !kycLoaded || kycProviderInfo.isEmpty;
     final enrollmentSecret = asString(enrollment['secret']);
-    final selectedKycFile = kycFile;
+    final mfaChallenge = asMap(enrollment['challenge']);
+    final challengeMethods = asList(
+      mfaChallenge['methods'],
+    ).map(asMap).toList();
+    final challengeToken = asString(mfaChallenge['challengeToken']);
+    final disablingMfa = enrollment['disabling'] == true;
+    final needsEmailCode = challengeMethods.any(
+      (method) => method['type'] == 'EMAIL',
+    );
+    final needsPhoneCode = challengeMethods.any(
+      (method) => method['type'] == 'PHONE',
+    );
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -3575,19 +4078,86 @@ class _SecuritySheetState extends State<SecuritySheet> {
             ),
             if (!widget.kycOnly) ...[
               const SectionTitle(title: '登录验证方式'),
-              ...methods.map(
-                (method) => InfoLine(
-                  label: switch (method['type']) {
-                    'EMAIL' => '邮箱',
-                    'PHONE' => '手机',
-                    _ => '验证器',
-                  },
-                  value:
-                      '${method['bound'] == true ? asString(method['destination'], fallback: '已绑定') : '未绑定'} · ${method['enabled'] == true ? '已启用' : '未启用'}',
-                ),
+              for (final method in methods)
+                if (method['type'] == 'TOTP')
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: InfoLine(
+                        label: '谷歌验证器',
+                        value:
+                            '${method['bound'] == true ? asString(method['destination'], fallback: '已绑定') : '未绑定'} · ${method['enabled'] == true ? '已启用' : '未启用'}',
+                      ),
+                    ),
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          InfoLine(
+                            label: switch (method['type']) {
+                              'EMAIL' => '邮箱',
+                              'PHONE' => '手机',
+                              _ => '谷歌验证器',
+                            },
+                            value:
+                                '${method['bound'] == true ? asString(method['destination'], fallback: '已绑定') : '未绑定'} · ${method['enabled'] == true ? '已启用' : '未启用'}',
+                          ),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              TextButton(
+                                onPressed: actionsBlocked
+                                    ? null
+                                    : () => _beginLoginMethodChange(
+                                        state,
+                                        asString(method['type']),
+                                        method['enabled'] != true,
+                                      ),
+                                child: Text(
+                                  method['enabled'] == true ? '停用' : '启用/绑定',
+                                ),
+                              ),
+                              if (method['type'] == 'EMAIL' ||
+                                  method['type'] == 'PHONE')
+                                TextButton(
+                                  onPressed: actionsBlocked
+                                      ? null
+                                      : () => _beginLoginMethodChange(
+                                          state,
+                                          asString(method['type']),
+                                          true,
+                                          changeBinding: true,
+                                        ),
+                                  child: const Text('更换绑定'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              TextButton.icon(
+                icon: const Icon(Icons.devices_outlined),
+                label: const Text('下线其他设备'),
+                onPressed: busy
+                    ? null
+                    : () => _run(() async {
+                        final confirmed = await _confirmSecurity(
+                          '下线其他设备？',
+                          '当前手机会保持登录，其他设备需要重新登录。',
+                        );
+                        if (!confirmed || !operationCurrent) return;
+                        await state.api.revokeOtherSessions(
+                          state.session!.refreshToken,
+                        );
+                        if (operationCurrent) await _load();
+                      }, '其他设备已下线'),
               ),
-              if (methods.isNotEmpty)
-                const Text('邮箱与手机验证方式的绑定和修改请在 Web 安全中心完成。'),
+              DeviceAccessPanel(state: state),
               ExpansionTile(
                 title: const Text('活跃会话'),
                 children: [
@@ -3598,6 +4168,26 @@ class _SecuritySheetState extends State<SecuritySheet> {
                       ),
                       subtitle: Text(
                         '${asMap(item)['ipAddress'] ?? '—'}\n登录 ${asMap(item)['createdAt'] ?? '—'}\n到期 ${asMap(item)['expiresAt'] ?? '—'}',
+                      ),
+                      trailing: TextButton(
+                        onPressed: busy
+                            ? null
+                            : () => _run(() async {
+                                final id = asString(asMap(item)['sessionId']);
+                                if (id.isEmpty) {
+                                  throw const FormatException('会话信息暂不可用，请刷新');
+                                }
+                                if (!await _confirmSecurity(
+                                      '下线这个会话？',
+                                      '该设备需要重新登录后才能继续使用。',
+                                    ) ||
+                                    !operationCurrent) {
+                                  return;
+                                }
+                                await state.api.revokeUserSession(id);
+                                if (operationCurrent) await _load();
+                              }, '会话已下线'),
+                        child: const Text('下线'),
                       ),
                     ),
                   if (!loading &&
@@ -3649,63 +4239,232 @@ class _SecuritySheetState extends State<SecuritySheet> {
                     ? '2FA 已启用'
                     : '绑定 2FA',
               ),
-              if (!mfaEnabled && enrollmentSecret.isEmpty)
+              if (mfa['withdrawalsRestrictedUntil'] != null &&
+                  DateTime.tryParse(
+                        '${mfa['withdrawalsRestrictedUntil']}',
+                      )?.isAfter(DateTime.now()) ==
+                      true)
+                Text(
+                  '安全信息变更后提现暂不可用，可恢复时间：${mfa['withdrawalsRestrictedUntil']}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              if (!mfaEnabled && enrollment.isEmpty) ...[
+                const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
+                AppTextField(controller: mfaPassword, label: '登录密码'),
                 PrimaryAction(
                   label: '生成绑定信息',
                   icon: Icons.qr_code_2,
                   onPressed: actionsBlocked
                       ? null
                       : () => _run(() async {
-                          final next = await state.api.enrollMfa();
+                          final next = await state.api.enrollMfa(
+                            mfaPassword.text,
+                          );
                           if (operationCurrent) {
                             setState(() => enrollment = next);
                           }
-                        }, '请在验证器中完成绑定'),
+                        }, '验证码已发送，请完成双重验证'),
                 ),
-              if (!mfaEnabled && enrollmentSecret.isNotEmpty) ...[
-                InfoLine(label: '密钥', value: enrollmentSecret),
-                InfoLine(
-                  label: 'URI',
-                  value: asString(enrollment['provisioningUri']),
-                ),
-                AppTextField(controller: totp, label: '验证器验证码'),
-                PrimaryAction(
-                  label: '确认绑定',
-                  icon: Icons.verified_user,
+              ],
+              if (mfaEnabled && enrollment.isEmpty) ...[
+                const Text('关闭谷歌验证码后将重新生成新密钥；安全信息变更后 24 小时内不能提现。'),
+                AppTextField(controller: mfaPassword, label: '登录密码'),
+                TextButton(
                   onPressed: actionsBlocked
                       ? null
                       : () => _run(() async {
-                          final next = await state.api.confirmMfa(
-                            totp.text.trim(),
+                          final next = await state.api.beginMfaDisable(
+                            mfaPassword.text,
                           );
+                          if (operationCurrent) {
+                            setState(
+                              () => enrollment = {...next, 'disabling': true},
+                            );
+                          }
+                        }, '验证码已发送，请完成双重验证'),
+                  child: const Text('关闭 2FA'),
+                ),
+              ],
+              if (enrollment.isNotEmpty) ...[
+                if (enrollmentSecret.isNotEmpty) ...[
+                  if (asString(
+                    enrollment['qrCodeDataUrl'],
+                  ).startsWith('data:image/png;base64,'))
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        color: Colors.white,
+                        child: Image.memory(
+                          base64Decode(
+                            asString(
+                              enrollment['qrCodeDataUrl'],
+                            ).split(',').last,
+                          ),
+                          width: 184,
+                          height: 184,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+                    ),
+                  const Text('请使用身份验证器扫描二维码，或手动输入密钥。密钥只显示这一次，请勿截图或转发。'),
+                  InfoLine(label: '密钥', value: enrollmentSecret),
+                ],
+                for (final method in challengeMethods)
+                  if (method['type'] == 'EMAIL')
+                    AppTextField(controller: mfaEmailCode, label: '邮箱验证码'),
+                for (final method in challengeMethods)
+                  if (method['type'] == 'PHONE')
+                    AppTextField(controller: mfaPhoneCode, label: '手机验证码'),
+                if (challengeMethods.any((method) => method['type'] == 'TOTP'))
+                  AppTextField(
+                    controller: totp,
+                    label: disablingMfa ? '当前谷歌验证码' : '谷歌验证码',
+                  ),
+                Text('安全信息变更后，提现将在 24 小时后恢复。'),
+                PrimaryAction(
+                  label: disablingMfa ? '确认关闭' : '确认绑定',
+                  icon: Icons.verified_user,
+                  onPressed: actionsBlocked || challengeToken.isEmpty
+                      ? null
+                      : () => _run(() async {
+                          final args = {
+                            'challengeToken': challengeToken,
+                            'currentPassword': mfaPassword.text,
+                            'emailCode': needsEmailCode
+                                ? mfaEmailCode.text.trim()
+                                : null,
+                            'phoneCode': needsPhoneCode
+                                ? mfaPhoneCode.text.trim()
+                                : null,
+                            'totpCode': totp.text.trim(),
+                          };
+                          final loginMethod = asString(
+                            enrollment['loginMethod'],
+                          );
+                          final next = loginMethod.isNotEmpty
+                              ? await state.api
+                                    .confirmLoginMethod(
+                                      method: loginMethod,
+                                      currentPassword: args['currentPassword']!,
+                                      challengeToken: args['challengeToken']!,
+                                      emailCode: args['emailCode'],
+                                      phoneCode: args['phoneCode'],
+                                      totpCode: args['totpCode'],
+                                    )
+                                    .then((_) => state.api.mfaStatus())
+                              : disablingMfa
+                              ? await state.api.confirmMfaDisable(
+                                  challengeToken: args['challengeToken']!,
+                                  currentPassword: args['currentPassword']!,
+                                  emailCode: args['emailCode'],
+                                  phoneCode: args['phoneCode'],
+                                  totpCode: args['totpCode']!,
+                                )
+                              : await state.api.confirmMfa(
+                                  challengeToken: args['challengeToken']!,
+                                  currentPassword: args['currentPassword']!,
+                                  emailCode: args['emailCode'],
+                                  phoneCode: args['phoneCode'],
+                                  totpCode: args['totpCode']!,
+                                );
                           if (operationCurrent) {
                             setState(() {
                               mfa = next;
                               enrollment = const {};
                               totp.clear();
+                              mfaPassword.clear();
+                              mfaEmailCode.clear();
+                              mfaPhoneCode.clear();
                             });
+                            if (loginMethod.isNotEmpty) unawaited(_load());
                           }
-                        }, '2FA 已启用'),
+                        }, disablingMfa ? '2FA 已关闭' : '2FA 已启用'),
+                ),
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => setState(() => enrollment = const {}),
+                  child: const Text('取消'),
                 ),
               ],
-              if (mfaEnabled) ...[
-                AppTextField(controller: totp, label: '关闭 2FA 的验证码'),
-                TextButton(
-                  onPressed: actionsBlocked
-                      ? null
-                      : () => _run(() async {
-                          final next = await state.api.disableMfa(
-                            totp.text.trim(),
-                          );
-                          if (operationCurrent) {
-                            setState(() {
-                              mfa = next;
-                              totp.clear();
-                            });
-                          }
-                        }, '2FA 已关闭'),
-                  child: const Text('关闭 2FA'),
+              const SectionTitle(title: '丢失谷歌验证码'),
+              Text(
+                '恢复需要已通过的 KYC、登录密码、邮箱或手机验证码，并由运营人员人工审核。审核通过后会移除旧验证器，提现冻结 24 小时。',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
                 ),
+              ),
+              if (mfaRecovery['status'] == 'PENDING')
+                InfoLine(
+                  label: '恢复申请',
+                  value: '审核中 · ${mfaRecovery['submittedAt'] ?? ''}',
+                )
+              else if (mfaRecovery['status'] == 'APPROVED')
+                const InfoLine(label: '恢复申请', value: '已通过，可以重新绑定新的验证器密钥')
+              else ...[
+                if (mfaRecovery['status'] == 'REJECTED')
+                  Text('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
+                if (mfaRecoveryChallenge.isEmpty) ...[
+                  AppTextField(controller: mfaPassword, label: '登录密码'),
+                  PrimaryAction(
+                    label: '发送恢复验证码',
+                    icon: Icons.mark_email_read_outlined,
+                    onPressed: actionsBlocked || !mfaEnabled
+                        ? null
+                        : () => _run(
+                            () async {
+                              final challenge = await state.api
+                                  .issueMfaRecoveryChallenge(mfaPassword.text);
+                              if (operationCurrent) {
+                                setState(
+                                  () => mfaRecoveryChallenge = challenge,
+                                );
+                              }
+                            },
+                            '验证码已发送到 ${mfaRecoveryChallenge['destination'] ?? '已绑定联系方式'}',
+                          ),
+                  ),
+                ] else ...[
+                  Text('验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}'),
+                  AppTextField(controller: mfaRecoveryCode, label: '恢复验证码'),
+                  AppTextField(
+                    controller: mfaRecoveryReason,
+                    label: '丢失原因（至少 8 个字符）',
+                  ),
+                  PrimaryAction(
+                    label: '提交人工审核',
+                    icon: Icons.support_agent,
+                    onPressed: actionsBlocked
+                        ? null
+                        : () => _run(() async {
+                            final id = int.tryParse(
+                              '${mfaRecoveryChallenge['challengeId']}',
+                            );
+                            if (id == null) throw StateError('恢复验证码已失效，请重新申请');
+                            final request = await state.api.submitMfaRecovery(
+                              challengeId: id,
+                              currentPassword: mfaPassword.text,
+                              code: mfaRecoveryCode.text.trim(),
+                              reason: mfaRecoveryReason.text.trim(),
+                            );
+                            if (operationCurrent) {
+                              setState(() {
+                                mfaRecovery = request;
+                                mfaRecoveryChallenge = const {};
+                                mfaRecoveryCode.clear();
+                                mfaRecoveryReason.clear();
+                              });
+                            }
+                          }, '已提交，请等待人工审核'),
+                  ),
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => setState(() => mfaRecoveryChallenge = const {}),
+                    child: const Text('取消'),
+                  ),
+                ],
               ],
               const SectionTitle(title: '敏感场景'),
               ...scenes.map((scene) {
@@ -3805,230 +4564,194 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   '身份认证 KYC · ${kycLoaded ? asString(kyc['status'], fallback: '未提交') : '状态未获取'}',
             ),
             Text(
-              '提币前必须完成认证。材料会存入对象存储，审核只读取已上传的材料元数据和原件。',
+              '提币前请完成身份认证。请提供清晰、真实且在有效期内的材料。',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '申请主体',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
+            TextButton.icon(
+              onPressed: busy || loading
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => KycDocumentsPage(state: state),
                       ),
-                      SmallDropdown(
-                        value: kycApplicantType,
-                        values: const ['INDIVIDUAL', 'BUSINESS'],
-                        labelBuilder: (value) =>
-                            value == 'BUSINESS' ? '企业' : '个人',
-                        onChanged: (value) =>
-                            setState(() => kycApplicantType = value),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '认证等级',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                      SmallDropdown(
-                        value: kycLevel,
-                        values: const ['BASIC', 'STANDARD', 'ENHANCED'],
-                        labelBuilder: (value) => switch (value) {
-                          'BASIC' => '基础',
-                          'ENHANCED' => '增强',
-                          _ => '标准',
-                        },
-                        onChanged: (value) => setState(() => kycLevel = value),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+              icon: const Icon(Icons.folder_outlined),
+              label: const Text('查看认证材料'),
             ),
-            const SizedBox(height: 8),
-            AppTextField(controller: kycCountry, label: '国家/地区代码，例如 CN'),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '主证件类型',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                      SmallDropdown(
-                        value: kycDocumentType,
-                        values: const [
-                          'ID_CARD',
-                          'PASSPORT',
-                          'BUSINESS_LICENSE',
-                        ],
-                        labelBuilder: (value) => switch (value) {
-                          'PASSPORT' => '护照',
-                          'BUSINESS_LICENSE' => '企业营业执照',
-                          _ => '身份证',
-                        },
-                        onChanged: (value) =>
-                            setState(() => kycDocumentType = value),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '认证服务',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                      SmallDropdown(
-                        value: kycProvider,
-                        values: const ['SELF', 'THIRD_PARTY'],
-                        labelBuilder: (value) =>
-                            value == 'THIRD_PARTY' ? '第三方服务' : '平台审核',
-                        onChanged: (value) =>
-                            setState(() => kycProvider = value),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            AppTextField(
-              controller: kycProviderReference,
-              label: kycProvider == 'THIRD_PARTY' ? '服务引用' : '服务引用（可选）',
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: SmallDropdown(
-                    value: kycUploadType,
-                    values: const [
-                      'ID_CARD',
-                      'PASSPORT',
-                      'ADDRESS_PROOF',
-                      'BUSINESS_LICENSE',
-                      'FACE_IMAGE',
-                    ],
-                    labelBuilder: (value) => switch (value) {
-                      'PASSPORT' => '上传护照',
-                      'ADDRESS_PROOF' => '上传地址证明',
-                      'BUSINESS_LICENSE' => '上传营业执照',
-                      'FACE_IMAGE' => '上传人脸照片',
-                      _ => '上传身份证',
-                    },
-                    onChanged: (value) => setState(() => kycUploadType = value),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: PrimaryAction(
-                    label: selectedKycFile == null
-                        ? '选择材料'
-                        : '上传 ${selectedKycFile.name}',
-                    icon: Icons.upload_file,
-                    onPressed: actionsBlocked
-                        ? null
-                        : () => _run(_pickKycDocument, '已选择材料'),
-                  ),
-                ),
-              ],
-            ),
-            if (selectedKycFile != null) ...[
-              const SizedBox(height: 6),
+            if (kyc['country'] != null)
+              InfoLine(label: '国家 / 地区', value: asString(kyc['country'])),
+            if (kyc['kycLevel'] != null)
+              InfoLine(label: '认证等级', value: asString(kyc['kycLevel'])),
+            if (kyc['reviewReason'] != null)
+              Text(asString(kyc['reviewReason'])),
+            if (!['PENDING', 'VERIFIED'].contains(kyc['status']))
               PrimaryAction(
-                label: '确认上传 ${selectedKycFile.name}',
-                icon: Icons.cloud_upload_outlined,
-                onPressed: actionsBlocked
+                label: '填写认证资料',
+                icon: Icons.badge_outlined,
+                onPressed:
+                    busy || loading || !kycLoaded || kycProviderInfo.isEmpty
                     ? null
-                    : () => _run(() => _uploadKycDocument(state), '材料已上传'),
+                    : () => _run(
+                        () async {
+                          final next = await Navigator.of(context)
+                              .push<Map<String, dynamic>>(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      KycApplicationPage(state: state),
+                                ),
+                              );
+                          if (next == null || !operationCurrent) {
+                            if (operationCurrent) {
+                              setState(() => notice = '已返回认证页面');
+                            }
+                            return;
+                          }
+                          final profile = asMap(next['profile']);
+                          setState(() {
+                            kyc = profile;
+                            kycVerificationSession = asMap(
+                              next['verificationSession'],
+                            );
+                            _applyKyc(profile);
+                          });
+                        },
+                        kycSimulationEnabled
+                            ? '已提交模拟认证，请选择核验结果'
+                            : '认证已提交，请继续核验',
+                      ),
+              ),
+            if (kyc['status'] == 'PENDING' &&
+                kycProvider != 'SELF' &&
+                kycVerificationSession.isEmpty)
+              PrimaryAction(
+                label: clientText(
+                  state.language,
+                  '继续认证',
+                  'Continue verification',
+                ),
+                icon: Icons.play_arrow,
+                onPressed: kycActionsBlocked
+                    ? null
+                    : () => _run(() async {
+                        final next = kycSimulationEnabled
+                            ? <String, dynamic>{'simulation': true}
+                            : await state.api.refreshKycSession();
+                        if (!operationCurrent) return;
+                        setState(() => kycVerificationSession = next);
+                        if (!kycSimulationEnabled) {
+                          await _launchKycProvider(state);
+                        }
+                      }, '认证会话已恢复'),
+              ),
+            if (kycSimulationEnabled && kycVerificationSession.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                clientText(
+                  state.language,
+                  '模拟模式：未调用第三方服务，可选择结果验证完整状态流转。',
+                  'Simulation mode: no provider is called. Choose an outcome to test the complete status flow.',
+                ),
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: kycActionsBlocked
+                        ? null
+                        : () => _run(
+                            () => _completeKycSimulation(state, 'APPROVED'),
+                            '模拟核验通过',
+                          ),
+                    child: Text(
+                      clientText(state.language, '模拟自动通过', 'Simulate approval'),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: kycActionsBlocked
+                        ? null
+                        : () => _run(
+                            () =>
+                                _completeKycSimulation(state, 'MANUAL_REVIEW'),
+                            '已转人工复核',
+                          ),
+                    child: Text(
+                      clientText(
+                        state.language,
+                        '模拟人工复核',
+                        'Simulate manual review',
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: kycActionsBlocked
+                        ? null
+                        : () => _run(
+                            () => _completeKycSimulation(state, 'REJECTED'),
+                            '模拟核验拒绝',
+                          ),
+                    child: Text(
+                      clientText(state.language, '模拟拒绝', 'Simulate rejection'),
+                    ),
+                  ),
+                ],
               ),
             ],
-            const SizedBox(height: 8),
-            if (kycDocumentRecords.isEmpty)
-              Text(
-                '尚未上传材料。请至少上传主证件；标准及以上认证请同时上传地址证明。',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 10,
-                ),
-              )
-            else
-              ...kycDocumentRecords.map(
-                (document) => InfoLine(
-                  label: asString(document['documentType']),
-                  value:
-                      '${asString(document['originalFilename'])} · ${_displayFileSize(asInt(document['fileSize']))} · ${asString(document['status'], fallback: 'UPLOADED')}',
-                ),
-              ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '人脸状态',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
+            if (!kycSimulationEnabled && kycVerificationSession.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              PrimaryAction(
+                label: kycProvider == 'SUMSUB'
+                    ? clientText(
+                        state.language,
+                        '打开 Sumsub 证件与人脸核验',
+                        'Open Sumsub identity and face verification',
+                      )
+                    : clientText(
+                        state.language,
+                        '打开 Veriff 证件与人脸核验',
+                        'Open Veriff identity and face verification',
                       ),
-                      SmallDropdown(
-                        value: kycFaceStatus,
-                        values: const ['NOT_REQUIRED', 'PENDING'],
-                        labelBuilder: (value) =>
-                            value == 'PENDING' ? '等待人脸识别' : '暂不启用',
-                        onChanged: (value) =>
-                            setState(() => kycFaceStatus = value),
+                icon: Icons.open_in_new,
+                onPressed: kycActionsBlocked
+                    ? null
+                    : () => _run(() => _launchKycProvider(state), '已返回核验服务'),
+              ),
+            ],
+            if (!widget.kycOnly) ...[
+              const SectionTitle(title: 'API Key'),
+              if (apiSecret != null)
+                Panel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Secret 仅显示这一次，请妥善保存'),
+                      SelectableText(
+                        apiSecret!,
+                        key: const ValueKey('api-secret'),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() => apiSecret = null),
+                        child: const Text('我已保存'),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: PrimaryAction(
-                    label: '提交认证',
-                    icon: Icons.verified_user,
-                    onPressed: actionsBlocked
-                        ? null
-                        : () => _run(() => _submitKyc(state), 'KYC 已提交，等待审核'),
-                  ),
-                ),
-              ],
-            ),
-            if (!widget.kycOnly) ...[
-              const SectionTitle(title: 'API Key'),
               AppTextField(controller: apiLabel, label: '名称'),
+              AppTextField(
+                controller: apiAllowlist,
+                label: 'IP 白名单（多个地址以逗号分隔）',
+              ),
+              const Text('默认只有读取权限。按需要开启交易或提现权限。'),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('允许交易'),
+                value: apiTradeEnabled,
+                onChanged: actionsBlocked
+                    ? null
+                    : (v) => setState(() => apiTradeEnabled = v),
+              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('允许提币'),
@@ -4064,15 +4787,20 @@ class _SecuritySheetState extends State<SecuritySheet> {
                               final created = await state.api.createApiKey(
                                 label: apiLabel.text.trim(),
                                 permissions: [
-                                  'TRADE',
+                                  'READ',
+                                  if (apiTradeEnabled) 'TRADE',
                                   if (apiWithdrawEnabled) 'WITHDRAW',
                                 ],
+                                ipAllowlist: _apiAllowlist(),
                                 emailCode: emailCode.text.trim(),
                                 totpCode: apiTotp.text.trim(),
                               );
                               if (operationCurrent) {
                                 setState(() {
                                   keys = [...keys, asMap(created['apiKey'])];
+                                  apiSecret = asString(created['secret']);
+                                  apiTradeEnabled = false;
+                                  apiAllowlist.clear();
                                   apiLabel.clear();
                                   emailCode.clear();
                                   apiTotp.clear();
@@ -4091,18 +4819,66 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   subtitle: Text(
                     '${asString(apiKey['apiKey'])} · ${asString(apiKey['permissions'])}',
                   ),
-                  trailing: TextButton(
-                    onPressed: actionsBlocked
-                        ? null
-                        : () => _run(() async {
-                            await state.api.revokeApiKey(
-                              apiKey: asString(apiKey['apiKey']),
-                              emailCode: emailCode.text.trim(),
-                              totpCode: apiTotp.text.trim(),
-                            );
-                            await _load();
-                          }, 'API Key 已撤销'),
-                    child: const Text('撤销'),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (action) => _run(() async {
+                      final key = asString(apiKey['apiKey']);
+                      if (key.isEmpty) {
+                        throw const FormatException('密钥信息暂不可用，请刷新');
+                      }
+                      if (action == 'allowlist') {
+                        apiAllowlist.text = asList(
+                          apiKey['ipAllowlist'],
+                        ).join(', ');
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialog) => AlertDialog(
+                            title: const Text('修改 IP 白名单'),
+                            content: AppTextField(
+                              controller: apiAllowlist,
+                              label: 'IP 地址或 CIDR，以逗号分隔',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialog, false),
+                                child: const Text('取消'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(dialog, true),
+                                child: const Text('保存'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !operationCurrent) {
+                          _operationCancelled = true;
+                          return;
+                        }
+                        await state.api.updateApiKeyAllowlist(
+                          apiKey: key,
+                          ipAllowlist: _apiAllowlist(),
+                          emailCode: emailCode.text.trim(),
+                          totpCode: apiTotp.text.trim(),
+                        );
+                      } else {
+                        if (!await _confirmSecurity(
+                              '撤销 API 密钥？',
+                              '使用该密钥的应用将无法继续访问。',
+                            ) ||
+                            !operationCurrent) {
+                          return;
+                        }
+                        await state.api.revokeApiKey(
+                          apiKey: key,
+                          emailCode: emailCode.text.trim(),
+                          totpCode: apiTotp.text.trim(),
+                        );
+                      }
+                      if (operationCurrent) await _load();
+                    }, action == 'allowlist' ? 'IP 白名单已更新' : 'API Key 已撤销'),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'allowlist', child: Text('IP 白名单')),
+                      PopupMenuItem(value: 'revoke', child: Text('撤销')),
+                    ],
                   ),
                 ),
               ),
@@ -7753,6 +8529,7 @@ class AppTextField extends StatelessWidget {
     required this.label,
     this.enabled = true,
     this.obscure = false,
+    this.readOnly = false,
     this.onChanged,
     super.key,
   });
@@ -7762,6 +8539,7 @@ class AppTextField extends StatelessWidget {
   final String label;
   final bool enabled;
   final bool obscure;
+  final bool readOnly;
   final ValueChanged<String>? onChanged;
 
   @override
@@ -7771,6 +8549,7 @@ class AppTextField extends StatelessWidget {
       initialValue: controller == null ? initialValue : null,
       enabled: enabled,
       obscureText: obscure,
+      readOnly: readOnly,
       onChanged: onChanged,
       style: TextStyle(
         fontSize: 11.5,

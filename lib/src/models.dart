@@ -107,6 +107,7 @@ enum ClientLanguage {
 }
 
 const productAccountTypes = [
+  'FUNDING',
   'SPOT',
   'USDT_PERPETUAL',
   'COIN_PERPETUAL',
@@ -117,6 +118,7 @@ const productAccountTypes = [
 
 String productAccountLabel(String type) {
   return switch (type) {
+    'FUNDING' => '资金账户',
     'SPOT' => '现货',
     'USDT_PERPETUAL' => 'U本位永续',
     'COIN_PERPETUAL' => '币本位永续',

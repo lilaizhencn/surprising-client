@@ -9,6 +9,7 @@ import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
+import 'deposit_parity_test.dart' show DepositApi;
 
 void main() {
   test('online state starts without demo market data', () {
@@ -301,7 +302,7 @@ void main() {
   testWidgets('opens the deposit coin and network selection flow', (
     tester,
   ) async {
-    final state = AppState(offline: true)
+    final state = AppState(offline: true, apiClient: DepositApi())
       ..session = const AuthSession(
         user: AuthUser(
           userId: 1,
@@ -350,20 +351,21 @@ void main() {
     await tester.tap(find.text('充币').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('选择资产'), findsOneWidget);
+    expect(find.text('充值'), findsOneWidget);
     expect(find.text('USDT'), findsWidgets);
 
-    await tester.tap(find.text('USDT').first);
+    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
     await tester.pumpAndSettle();
 
-    expect(find.text('选择网络'), findsOneWidget);
-    expect(find.text('Ethereum (ERC20)'), findsOneWidget);
+    expect(find.text('充值网络'), findsWidgets);
+    expect(find.text('Ethereum'), findsOneWidget);
+    expect(find.text('Tron'), findsOneWidget);
   });
 
-  testWidgets('shows fallback deposit networks for an empty wallet', (
+  testWidgets('does not invent deposit networks when catalog is empty', (
     tester,
   ) async {
-    final state = AppState(offline: true)
+    final state = AppState(offline: true, apiClient: _EmptyDepositApi())
       ..session = const AuthSession(
         user: AuthUser(
           userId: 1,
@@ -383,13 +385,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('充币').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('USDT').first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('选择网络'), findsOneWidget);
-    expect(find.text('Surprising Chain (USDT)'), findsOneWidget);
-    expect(find.text('Tron (TRC20)'), findsOneWidget);
-    expect(find.text('Ethereum (ERC20)'), findsOneWidget);
+    expect(find.text('USDT'), findsNothing);
+    expect(find.text('暂无可充值币种'), findsOneWidget);
+    expect(find.text('Surprising Chain (USDT)'), findsNothing);
+    expect(find.text('Tron'), findsNothing);
+    expect(find.text('Ethereum'), findsNothing);
   });
 
   testWidgets('renders the deposit address show page details', (tester) async {
@@ -1390,12 +1390,21 @@ void main() {
   });
 }
 
+class _EmptyDepositApi extends DepositApi {
+  @override
+  Future<List<Map<String, dynamic>>> fundingAssets(String operation) async =>
+      [];
+}
+
 class _TransferApiClient extends ApiClient {
   _TransferApiClient(this.response, {this.failure}) : super(const AppConfig());
 
   final Map<String, dynamic> response;
   final Object? failure;
   final List<String> idempotencyKeys = [];
+
+  @override
+  Future<Map<String, String>> assetScales() async => {'USDT': '100000000'};
 
   @override
   Future<Map<String, dynamic>> transfer({

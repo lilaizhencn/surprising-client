@@ -173,15 +173,13 @@ class AppState extends ChangeNotifier {
   AppState({
     this.config = const AppConfig(),
     ApiClient? apiClient,
-    RealtimeClient? publicRealtimeClient,
-    RealtimeClient? privateRealtimeClient,
+    RealtimeClient? realtimeClient,
     SessionStore? sessionStore,
     ClientSettingsStore? settingsStore,
     this.offline = false,
     this.seedInstruments,
   }) : api = apiClient ?? ApiClient(config),
-       publicRealtime = publicRealtimeClient ?? RealtimeClient(config),
-       privateRealtime = privateRealtimeClient ?? RealtimeClient(config),
+       realtime = realtimeClient ?? RealtimeClient(config),
        sessionStore = sessionStore ?? SecureSessionStore() {
     this.settingsStore = settingsStore ?? SecureClientSettingsStore();
     api.onSessionRefreshed = _persistRefreshedSession;
@@ -202,8 +200,7 @@ class AppState extends ChangeNotifier {
 
   final AppConfig config;
   final ApiClient api;
-  final RealtimeClient publicRealtime;
-  final RealtimeClient privateRealtime;
+  final RealtimeClient realtime;
   final SessionStore sessionStore;
   late final ClientSettingsStore settingsStore;
   final bool offline;
@@ -339,11 +336,12 @@ class AppState extends ChangeNotifier {
   String? lastNotice;
   final List<String> realtimeLog = [];
   Timer? _realtimeNotifyTimer;
-  Timer? _publicReconnectTimer;
-  Timer? _privateReconnectTimer;
-  int _privateRealtimeGeneration = 0;
-  int _publicReconnectAttempts = 0;
-  int _privateReconnectAttempts = 0;
+  Timer? _realtimeReconnectTimer;
+  int _realtimeGeneration = 0;
+  int _realtimeReconnectAttempts = 0;
+  bool _realtimeConnected = false;
+  final _publicSubscriptions = <String, Map<String, String>>{};
+  final _privateSubscriptions = <String, Map<String, String>>{};
   int _openOrdersRequestVersion = 0;
   final Map<int, int> _triggerOrderEventVersions = {};
   String? _transferIdempotencyKey;
@@ -609,7 +607,7 @@ class AppState extends ChangeNotifier {
     pendingBiometricSession = null;
     api.setSession(next);
     if (persist) await sessionStore.saveSession(next);
-    await _connectPrivateRealtime();
+    await _connectRealtime(forceReconnect: true);
     await refreshPrivateData();
   }
 
@@ -689,14 +687,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistRefreshedSession(AuthSession next) async {
-    _privateReconnectTimer?.cancel();
-    _privateReconnectTimer = null;
-    _privateRealtimeGeneration++;
+    _realtimeReconnectTimer?.cancel();
+    _realtimeReconnectTimer = null;
     session = next;
     api.setSession(next);
     await sessionStore.saveSession(next);
-    await privateRealtime.close();
-    await _connectPrivateRealtime();
+    await _connectRealtime(forceReconnect: true);
     notifyListeners();
   }
 
@@ -717,12 +713,15 @@ class AppState extends ChangeNotifier {
   Future<void> _clearExpiredSession() async {
     _clearWalletData();
     ++_openOrdersRequestVersion;
-    _privateReconnectTimer?.cancel();
-    _privateReconnectTimer = null;
-    _privateRealtimeGeneration++;
-    await privateRealtime.close();
+    _realtimeReconnectTimer?.cancel();
+    _realtimeReconnectTimer = null;
+    _realtimeGeneration++;
+    _realtimeConnected = false;
+    await realtime.close();
     await sessionStore.clear();
     session = null;
+    api.setSession(null);
+    await _connectRealtime();
     privateViews.clear();
     _riskInputKey = '';
     positionPnlUnits.clear();
@@ -737,7 +736,6 @@ class AppState extends ChangeNotifier {
     openTriggerOrders = const [];
     pendingBiometricSession = null;
     biometricLoginEnabled = false;
-    api.setSession(null);
     notifyListeners();
   }
 
@@ -1125,9 +1123,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> logout() async {
     _clearWalletData();
-    _privateReconnectTimer?.cancel();
-    _privateReconnectTimer = null;
-    _privateRealtimeGeneration++;
+    _realtimeReconnectTimer?.cancel();
+    _realtimeReconnectTimer = null;
+    _realtimeGeneration++;
+    _realtimeConnected = false;
     _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
     _privateAuthenticated = false;
@@ -1139,10 +1138,11 @@ class AppState extends ChangeNotifier {
     productBalances.clear();
     valuedProducts.clear();
     assetsReady = false;
-    await privateRealtime.close();
+    await realtime.close();
     api.setSession(null);
     await sessionStore.clear();
     session = null;
+    await _connectRealtime();
     _openOrdersRequestVersion++;
     pendingVerificationSession = null;
     pendingBiometricSession = null;
@@ -2128,88 +2128,87 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _connectPublicRealtime() async {
-    if (config.websocketUrl.trim().isEmpty) return;
-    _publicVersions.clear();
-    try {
-      await publicRealtime.connect(
-        onEvent: handleRealtimeMessage,
-        onError: (error) {
-          _recordRealtimeIssue('公共行情 WebSocket：$error');
-          notifyListeners();
-        },
-        onDone: _schedulePublicReconnect,
-      );
-      _publicReconnectAttempts = 0;
-      _subscribePublicSelected();
-    } catch (error) {
-      _recordRealtimeIssue('实时行情连接失败：$error');
-      notifyListeners();
-      _schedulePublicReconnect();
-    }
+    await _connectRealtime();
   }
 
-  Future<void> _connectPrivateRealtime() async {
-    if (config.websocketUrl.trim().isEmpty) return;
-    final connectGeneration = ++_privateRealtimeGeneration;
+  Future<void> _connectRealtime({bool forceReconnect = false}) async {
+    if (offline || config.websocketUrl.trim().isEmpty) return;
+    if (_realtimeConnected && !forceReconnect) {
+      _syncRealtimeSubscriptions();
+      return;
+    }
+    final connectGeneration = ++_realtimeGeneration;
+    _realtimeConnected = false;
+    if (forceReconnect) await realtime.close();
+    if (connectGeneration != _realtimeGeneration) return;
+    _publicVersions.clear();
     _privateAuthenticated = false;
-    privateViews.clear();
-    _riskInputKey = '';
-    positionPnlUnits.clear();
-    queriedPositionRisks = [];
-    ++_riskDetailsVersion;
-    productBalances.clear();
-    valuedProducts.clear();
-    assetsReady = false;
-    balances = const [];
-    positions = const [];
-    openOrders = const [];
-    openTriggerOrders = const [];
-    positionRisks = const [];
-    accountRisk = null;
-    _riskDetailsTimer?.cancel();
-    _freshnessTimer?.cancel();
     final current = session;
-    if (current == null) return;
-    _freshnessTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _materializePrivate();
-      _scheduleRealtimeNotify();
-    });
+    if (current != null) {
+      privateViews.clear();
+      _riskInputKey = '';
+      positionPnlUnits.clear();
+      queriedPositionRisks = [];
+      ++_riskDetailsVersion;
+      productBalances.clear();
+      valuedProducts.clear();
+      assetsReady = false;
+      balances = const [];
+      positions = const [];
+      openOrders = const [];
+      openTriggerOrders = const [];
+      positionRisks = const [];
+      accountRisk = null;
+      _riskDetailsTimer?.cancel();
+      _freshnessTimer?.cancel();
+      _freshnessTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _materializePrivate();
+        _scheduleRealtimeNotify();
+      });
+    } else {
+      _freshnessTimer?.cancel();
+      _freshnessTimer = null;
+    }
     try {
-      await privateRealtime.connect(
-        userId: current.user.userId,
-        accessToken: current.accessToken,
+      await realtime.connect(
+        userId: current?.user.userId,
+        accessToken: current?.accessToken,
         onEvent: (message) {
-          if (connectGeneration != _privateRealtimeGeneration ||
-              current.accessToken != session?.accessToken) {
+          if (connectGeneration != _realtimeGeneration ||
+              current?.accessToken != session?.accessToken) {
             return;
           }
-          if (message['op'] == 'authenticated') _privateAuthenticated = true;
+          if (current != null &&
+              message['op'] == 'authenticated' &&
+              asInt(message['userId']) == current.user.userId) {
+            _privateAuthenticated = true;
+          }
           handleRealtimeMessage(message);
         },
         onError: (error) {
-          if (connectGeneration != _privateRealtimeGeneration ||
-              current.accessToken != session?.accessToken) {
-            return;
-          }
-          _recordRealtimeIssue('账户 WebSocket：$error');
+          if (connectGeneration != _realtimeGeneration) return;
+          _recordRealtimeIssue('实时 WebSocket：$error');
           notifyListeners();
         },
-        onDone: () => _schedulePrivateReconnect(connectGeneration),
+        onDone: () => _scheduleRealtimeReconnect(connectGeneration),
       );
-      if (connectGeneration != _privateRealtimeGeneration ||
-          current.accessToken != session?.accessToken) {
+      if (connectGeneration != _realtimeGeneration ||
+          current?.accessToken != session?.accessToken) {
         return;
       }
-      _privateReconnectAttempts = 0;
+      _realtimeConnected = true;
+      _realtimeReconnectAttempts = 0;
       _subscribePrivateSelected();
+      _subscribePublicSelected();
+      _syncRealtimeSubscriptions();
     } catch (error) {
-      if (connectGeneration != _privateRealtimeGeneration ||
-          current.accessToken != session?.accessToken) {
+      if (connectGeneration != _realtimeGeneration ||
+          current?.accessToken != session?.accessToken) {
         return;
       }
-      _recordRealtimeIssue('账户实时连接失败：$error');
+      _recordRealtimeIssue('实时连接失败：$error');
       notifyListeners();
-      _schedulePrivateReconnect(connectGeneration);
+      _scheduleRealtimeReconnect(connectGeneration);
     }
   }
 
@@ -2218,43 +2217,28 @@ class AppState extends ChangeNotifier {
     if (realtimeLog.length > 20) realtimeLog.removeLast();
   }
 
-  void _schedulePublicReconnect() {
-    if (offline || (_publicReconnectTimer?.isActive ?? false)) return;
-    _publicReconnectAttempts++;
-    _publicReconnectTimer = Timer(
-      _reconnectDelay(_publicReconnectAttempts),
-      () async {
-        _publicReconnectTimer = null;
-        await _connectPublicRealtime();
-        await refreshPublicData(silent: true);
-      },
-    );
-  }
-
-  void _schedulePrivateReconnect([int? expectedGeneration]) {
+  void _scheduleRealtimeReconnect([int? expectedGeneration]) {
     if (expectedGeneration != null &&
-        expectedGeneration != _privateRealtimeGeneration) {
+        expectedGeneration != _realtimeGeneration) {
       return;
     }
-    if (offline || !isLoggedIn || (_privateReconnectTimer?.isActive ?? false)) {
-      return;
-    }
+    if (offline || (_realtimeReconnectTimer?.isActive ?? false)) return;
+    _realtimeConnected = false;
     _privateAuthenticated = false;
     for (final view in privateViews.values) {
       view.status = 'STALE';
     }
-    _materializePrivate();
-    final reconnectGeneration = _privateRealtimeGeneration;
-    _privateReconnectAttempts++;
-    _privateReconnectTimer = Timer(
-      _reconnectDelay(_privateReconnectAttempts),
+    if (isLoggedIn) _materializePrivate();
+    final reconnectGeneration = _realtimeGeneration;
+    _realtimeReconnectAttempts++;
+    _realtimeReconnectTimer = Timer(
+      _reconnectDelay(_realtimeReconnectAttempts),
       () async {
-        _privateReconnectTimer = null;
-        if (reconnectGeneration != _privateRealtimeGeneration || !isLoggedIn) {
-          return;
-        }
-        await _connectPrivateRealtime();
-        await refreshPrivateData();
+        _realtimeReconnectTimer = null;
+        if (reconnectGeneration != _realtimeGeneration) return;
+        await _connectRealtime(forceReconnect: true);
+        await refreshPublicData(silent: true);
+        if (isLoggedIn) await refreshPrivateData();
       },
     );
   }
@@ -2266,12 +2250,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _reconnectRealtimeForSelectedProduct() async {
-    if (offline) return;
-    await publicRealtime.close();
-    await _connectPublicRealtime();
-    _privateRealtimeGeneration++;
-    await privateRealtime.close();
-    await _connectPrivateRealtime();
+    await _connectRealtime();
   }
 
   void _subscribePublicSelected() {
@@ -2322,22 +2301,40 @@ class AppState extends ChangeNotifier {
         }
       }
     }
-    publicRealtime.replaceSubscriptions(subscriptions);
+    _publicSubscriptions
+      ..clear()
+      ..addEntries(subscriptions.map((s) => MapEntry(_subscriptionKey(s), s)));
+    _syncRealtimeSubscriptions();
   }
 
   void _subscribePrivateSelected() {
-    if (!isLoggedIn) return;
-    privateRealtime.replaceSubscriptions([
-      for (final product in ProductMode.values)
-        for (final channel in [
-          'accountState',
-          'orders',
-          'triggerOrders',
-          'positions',
-          'positionRisk',
-          'executionReports',
-        ])
-          {'channel': channel, 'productLine': product.productLine},
+    final subscriptions = !isLoggedIn
+        ? <Map<String, String>>[]
+        : [
+            for (final product in ProductMode.values)
+              for (final channel in [
+                'accountState',
+                'orders',
+                'triggerOrders',
+                'positions',
+                'positionRisk',
+                'executionReports',
+              ])
+                {'channel': channel, 'productLine': product.productLine},
+          ];
+    _privateSubscriptions
+      ..clear()
+      ..addEntries(subscriptions.map((s) => MapEntry(_subscriptionKey(s), s)));
+    _syncRealtimeSubscriptions();
+  }
+
+  String _subscriptionKey(Map<String, String> subscription) =>
+      '${subscription['productLine']}:${subscription['channel']}:${subscription['instrumentId'] ?? subscription['symbol'] ?? '*'}:${subscription['period'] ?? ''}';
+
+  void _syncRealtimeSubscriptions() {
+    realtime.replaceSubscriptions([
+      ..._publicSubscriptions.values,
+      ..._privateSubscriptions.values,
     ]);
   }
 
@@ -2752,11 +2749,9 @@ class AppState extends ChangeNotifier {
     _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
-    _publicReconnectTimer?.cancel();
-    _privateReconnectTimer?.cancel();
-    _privateRealtimeGeneration++;
-    unawaited(publicRealtime.close());
-    unawaited(privateRealtime.close());
+    _realtimeReconnectTimer?.cancel();
+    _realtimeGeneration++;
+    unawaited(realtime.close());
     super.dispose();
   }
 }

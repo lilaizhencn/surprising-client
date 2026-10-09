@@ -1,8 +1,8 @@
 # 实时订阅 / Realtime subscriptions
 
-公共和私有数据使用两个 WebSocket。私有连接先发送 authenticate，收到 authenticated 后才发送订阅。更新令牌、重连和退出登录会丢弃旧连接状态；旧连接回调不能更新新会话。令牌不出现在 URL。
+整个 App 共用一个 WebSocket，页面和六产品通过订阅集合区分。公共订阅立即发送；每条登录连接只发送一次 authenticate，收到匹配用户的 authenticated 后才发送私有订阅。更新令牌、重连和退出登录先关闭旧连接并丢弃私有状态；旧连接回调不能更新新会话。令牌不出现在 URL。
 
-Public and private data use separate connections. Private subscriptions wait for authentication; session changes and reconnects reset the baseline. Tokens are not included in URLs.
+The app shares one connection across pages and products. Public subscriptions do not wait for authentication; private subscriptions require an authenticated response for the expected user. Session changes close the previous connection before opening its replacement and reset private baselines. Tokens are never included in URLs.
 
 首页和行情默认展示 U 本位永续，行情页可筛选其他产品；交易页按六产品各自的 symbol 订阅成交、深度、K 线，衍生品同时订阅 mark/index，永续订阅 funding。订阅集合变化时退订旧项。现货 bookTicker 提供资产折算，六产品实际持仓驱动额外 mark 订阅。价格缓存按 productLine + symbol 隔离。
 

@@ -542,7 +542,7 @@ void main() {
         AppState(
             config: const AppConfig(websocketUrl: 'ws://test'),
             apiClient: _PrivateRealtimeApiClient(),
-            privateRealtimeClient: privateRealtime,
+            realtimeClient: privateRealtime,
             sessionStore: _InMemorySessionStore(),
             seedInstruments: fallbackInstruments(),
           )
@@ -591,7 +591,7 @@ void main() {
           AppState(
               config: const AppConfig(websocketUrl: 'ws://test'),
               apiClient: _PrivateRealtimeApiClient(),
-              privateRealtimeClient: privateRealtime,
+              realtimeClient: privateRealtime,
               sessionStore: _InMemorySessionStore(),
             )
             ..session = const AuthSession(
@@ -654,7 +654,7 @@ void main() {
         AppState(
             config: const AppConfig(websocketUrl: 'ws://test'),
             apiClient: _PrivateRealtimeApiClient(),
-            privateRealtimeClient: privateRealtime,
+            realtimeClient: privateRealtime,
             sessionStore: _InMemorySessionStore(),
           )
           ..session = const AuthSession(
@@ -775,25 +775,23 @@ void main() {
   });
 
   test(
-    'reconnects realtime subscriptions when opening another product page',
+    'updates realtime subscriptions when opening another product page',
     () async {
-      final publicRealtime = _RecordingRealtimeClient();
-      final privateRealtime = _RecordingRealtimeClient();
+      final realtime = _RecordingRealtimeClient();
       final state = AppState(
         config: const AppConfig(websocketUrl: 'ws://test'),
         apiClient: _RealtimeSwitchApiClient(),
-        publicRealtimeClient: publicRealtime,
-        privateRealtimeClient: privateRealtime,
+        realtimeClient: realtime,
         seedInstruments: fallbackInstruments(),
       );
 
       await state.selectMode(ProductMode.option);
 
       expect(state.mode, ProductMode.option);
-      expect(publicRealtime.closeCount, 1);
-      expect(publicRealtime.connectCount, 1);
+      expect(realtime.closeCount, 0);
+      expect(realtime.connectCount, 1);
       expect(
-        publicRealtime.subscriptions.any(
+        realtime.subscriptions.any(
           (item) =>
               item.channel == 'depth' &&
               item.symbol == state.selectedSymbol &&
@@ -802,7 +800,7 @@ void main() {
         isTrue,
       );
       expect(
-        publicRealtime.subscriptions.any(
+        realtime.subscriptions.any(
           (item) =>
               item.productLine == 'LINEAR_PERPETUAL' &&
               item.channel != 'trades',
@@ -811,7 +809,7 @@ void main() {
       );
       // Market overview trades remain explicit subscriptions across trade products.
       expect(
-        publicRealtime.subscriptions.any(
+        realtime.subscriptions.any(
           (item) =>
               item.productLine == 'LINEAR_PERPETUAL' &&
               item.channel == 'trades',
@@ -823,19 +821,21 @@ void main() {
   );
 
   test(
-    'subscribes authenticated derivative sessions to trigger updates',
+    'uses one authenticated socket for public and private subscriptions',
     () async {
       final privateRealtime = _RecordingRealtimeClient();
       final state = AppState(
         config: const AppConfig(websocketUrl: 'ws://test'),
         apiClient: _PrivateRealtimeApiClient(),
-        privateRealtimeClient: privateRealtime,
+        realtimeClient: privateRealtime,
         sessionStore: _InMemorySessionStore(),
         seedInstruments: fallbackInstruments(),
       );
 
       await state.login('demo_user', 'password');
 
+      expect(privateRealtime.connectCount, 1);
+      expect(privateRealtime.accessTokens, ['access-token']);
       expect(
         privateRealtime.subscriptions.any(
           (item) =>
@@ -845,6 +845,26 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        privateRealtime.subscriptions.any(
+          (item) => item.channel == 'trades' && item.productLine == 'SPOT',
+        ),
+        isTrue,
+      );
+      await state.logout();
+      expect(privateRealtime.connectCount, 2);
+      expect(privateRealtime.accessTokens, ['access-token', null]);
+      expect(
+        privateRealtime.subscriptions.any(
+          (item) => item.channel == 'triggerOrders',
+        ),
+        isFalse,
+      );
+      expect(
+        privateRealtime.subscriptions.any((item) => item.channel == 'trades'),
+        isTrue,
+      );
+      state.dispose();
     },
   );
 
@@ -1652,6 +1672,7 @@ class _RecordingRealtimeClient extends RealtimeClient {
 
   int connectCount = 0;
   int closeCount = 0;
+  final List<String?> accessTokens = [];
   final List<_RecordedSubscription> subscriptions = [];
   final List<void Function(Map<String, dynamic>)> events = [];
 
@@ -1664,6 +1685,7 @@ class _RecordingRealtimeClient extends RealtimeClient {
     void Function()? onDone,
   }) async {
     connectCount++;
+    accessTokens.add(accessToken);
     events.add(onEvent);
   }
 

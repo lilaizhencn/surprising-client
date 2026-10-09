@@ -1509,7 +1509,22 @@ class RealtimeClient {
   StreamSubscription<dynamic>? _subscription;
   bool _closing = false;
   int _connectionGeneration = 0;
-  bool _authenticated = true;
+  bool _authenticated = false;
+  bool _authenticationRequested = false;
+  int? _expectedUserId;
+  static const _privateChannels = {
+    'accountState',
+    'orders',
+    'triggerOrders',
+    'executionReports',
+    'positions',
+    'accountRisk',
+    'positionRisk',
+  };
+
+  bool _isPrivate(Map<String, dynamic> message) =>
+      message['op'] == 'snapshot' ||
+      _privateChannels.contains(message['channel']);
   final _desired = <String, Map<String, String>>{};
   final _installed = <String, Map<String, String>>{};
 
@@ -1524,20 +1539,26 @@ class RealtimeClient {
 
   void _reconcileSubscriptions() {
     final socket = _socket;
-    if (socket == null || !_authenticated) return;
+    if (socket == null || socket.readyState != WebSocket.open) return;
+    final allowed = <String, Map<String, String>>{
+      for (final entry in _desired.entries)
+        if (!_privateChannels.contains(entry.value['channel']) ||
+            _authenticated)
+          entry.key: entry.value,
+    };
     for (final e in _installed.entries) {
-      if (!_desired.containsKey(e.key)) {
+      if (!allowed.containsKey(e.key)) {
         socket.add(jsonEncode({'op': 'unsubscribe', 'id': e.key, ...e.value}));
       }
     }
-    for (final e in _desired.entries) {
+    for (final e in allowed.entries) {
       if (!_installed.containsKey(e.key)) {
         socket.add(jsonEncode({'op': 'subscribe', 'id': e.key, ...e.value}));
       }
     }
     _installed
       ..clear()
-      ..addAll(_desired);
+      ..addAll(allowed);
   }
 
   Future<void> connect({
@@ -1552,16 +1573,32 @@ class RealtimeClient {
     if (generation != _connectionGeneration) return;
     _closing = false;
     final base = Uri.parse(config.websocketUrl);
-    final query = <String, String>{};
+    final query = <String, String>{...base.queryParameters}
+      ..remove('token')
+      ..remove('userId')
+      ..remove('productLine');
     if (userId != null) {
       if (config.localWebSocketUserFallback) {
         query['userId'] = '$userId';
       }
     }
-    final uri = query.isEmpty ? base : base.replace(queryParameters: query);
-    final socket = await WebSocket.connect(
-      uri.toString(),
-    ).timeout(const Duration(seconds: 5));
+    final uri = base.replace(queryParameters: query);
+    var expired = false;
+    final pending = WebSocket.connect(uri.toString());
+    unawaited(
+      pending.then((socket) async {
+        if (expired || generation != _connectionGeneration) {
+          await socket.close();
+        }
+      }, onError: (Object _) {}),
+    );
+    final socket = await pending.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        expired = true;
+        throw TimeoutException('实时连接超时');
+      },
+    );
     if (generation != _connectionGeneration) {
       await socket.close();
       return;
@@ -1569,31 +1606,48 @@ class RealtimeClient {
     _socket = socket;
     _installed.clear();
     _desired.clear();
-    _authenticated = accessToken == null;
+    _authenticated = false;
+    _authenticationRequested = accessToken != null && accessToken.isNotEmpty;
+    _expectedUserId = userId;
     _subscription = socket.listen(
       (message) {
         if (generation != _connectionGeneration) return;
         try {
           final decoded = asMap(jsonDecode(message as String));
-          if (decoded['op'] == 'authenticated') {
+          if (decoded['op'] == 'authenticated' &&
+              _authenticationRequested &&
+              asInt(decoded['userId']) > 0 &&
+              (_expectedUserId == null ||
+                  asInt(decoded['userId']) == _expectedUserId)) {
             _authenticated = true;
             _reconcileSubscriptions();
+          }
+          if (decoded['op'] == 'authenticated' && !_authenticated) return;
+          if (_isPrivate(decoded) &&
+              (!_authenticated ||
+                  (_expectedUserId != null &&
+                      asInt(decoded['userId']) != _expectedUserId))) {
+            return;
           }
           onEvent(decoded);
         } catch (error) {
           onError(error);
         }
       },
-      onError: onError,
+      onError: (Object error) {
+        if (generation == _connectionGeneration) onError(error);
+      },
       onDone: () {
         if (generation != _connectionGeneration) return;
         _socket = null;
         _subscription = null;
+        _authenticated = false;
+        _installed.clear();
         if (!_closing) onDone?.call();
       },
       cancelOnError: false,
     );
-    if (accessToken != null) {
+    if (_authenticationRequested) {
       socket.add(
         jsonEncode({'op': 'authenticate', 'id': 'auth', 'token': accessToken}),
       );
@@ -1646,10 +1700,16 @@ class RealtimeClient {
 
   Future<void> _closeCurrent() async {
     _closing = true;
-    await _subscription?.cancel();
+    final subscription = _subscription;
+    final socket = _socket;
     _subscription = null;
-    await _socket?.close();
     _socket = null;
+    _authenticated = false;
+    _authenticationRequested = false;
+    _expectedUserId = null;
+    _installed.clear();
+    await subscription?.cancel();
+    await socket?.close();
     _closing = false;
   }
 }

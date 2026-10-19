@@ -12,7 +12,7 @@ Home and markets default to U-margined perpetual instruments; the market page ca
 
 Six product views merge versioned absolute entity updates before notifying the UI. Snapshot fences preserve newer updates and terminal tombstones; periodic snapshots repair gaps. Expired or unavailable snapshots hide current valuation. Private push events do not cause REST balance, position or open-order queries; wallet, ledger, algo and liquidation history remain separate explicit queries.
 
-OPEN 订单保留，其他终态移除；触发单保留 PENDING/TRIGGERING；零持仓移除、零余额保留。新 depth 的 levels 是完整盘口替换快照，包括空盘口。迟到的 REST 行情响应不能覆盖更晚的推送。
+OPEN 订单保留，其他终态移除；触发单保留 PENDING/TRIGGERING；零持仓移除、零余额保留。depth 首条为最多每侧 50 档 SNAPSHOT，后续 DELTA 按价格档位绝对数量更新，零数量删除，包括空盘口。迟到的 REST 行情响应不能覆盖更晚的推送。
 
 Open orders and active triggers remain; terminal entities and zero positions are removed, while zero balances remain explicit. Depth levels replace the complete bounded book. Late REST results cannot overwrite newer streamed market data.
 
@@ -47,3 +47,15 @@ CorePositionView 当前不提供 instrumentChangeId，不能将其缺失默认�
 accountState 中的 leverages 按 instrumentId + marginMode 合并；最近订单更新最多保留 100 条，接受终态且不允许旧事件覆盖。当前交易对筛选只是展示筛选，私有订阅仍覆盖六产品，持仓的额外 mark 订阅也不受筛选影响。
 
 强平价格通过 risk/positions/latest 快照补充；持仓/余额变化后合并刷新，mark 高频事件不触发重复风险查询。返回结果按请求版本、账号和产品检查；切换、重连及退出登录会失效旧请求。强平价标为快照，保证金率/维持保证金采用后端风险推送。
+
+## realtime 查询和断档恢复（2026-10-19）
+
+盘口 REST 的原 URL 保持不变，gateway 读取 realtime Router 的 Valkey 视图，不再直接查询 Core。
+初始化或超过 5 秒未刷新返回 503；该响应只记录盘口同步问题，不丢弃本次已成功加载的 K 线和逐笔成交。
+盘口 DELTA 的 previousSequence 不连续时，`AppState` 只调用 `RealtimeClient.resubscribe` 退订/订阅
+当前产品与合约的 depth；等待期间忽略后续 DELTA，新的 SNAPSHOT（包括空盘口及较小序号）重新建立基线。
+不通过整页 REST 刷新恢复盘口，其他行情/私有订阅保持原连接。
+
+WS trades value 携带与可靠历史相同的 tradeId、instrumentId、eventTime。成交列表按 tradeId 去重，
+精确解析其中的日志位置、matcher 序号和成交索引排序，保留 REST 已有展示字段；不将 REST 导出
+sequence 与 WS coreSequence 比较。实时成交因此可以进入列表，多笔同毫秒成交不会相互覆盖。

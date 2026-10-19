@@ -135,7 +135,7 @@ void main() {
         const Duration(hours: 1200),
       );
       expect(book.symbol, 'BTC-USDT-PERP');
-      expect(requests[0]['query'], {'instrumentId': '42', 'depth': '20'});
+      expect(requests[0]['query'], {'instrumentId': '42', 'depth': '50'});
       expect(requests[1]['query'], {'instrumentId': '42', 'limit': '50'});
       expect(requests[2]['body']['instrumentId'], '42');
       expect(requests[2]['body'].containsKey('symbol'), isFalse);

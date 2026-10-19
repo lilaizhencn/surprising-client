@@ -225,6 +225,7 @@ class AppState extends ChangeNotifier {
   ProductMode mode = ProductMode.linear;
   String period = '1m';
   late OrderBook orderBook;
+  String? _depthRecoveryKey;
   late List<Candle> candles;
   List<ProductBalance> balances = const [];
   List<Position> positions = const [];
@@ -966,7 +967,13 @@ class AppState extends ChangeNotifier {
       final beforeCandles =
           _publicVersions['$productLine:$symbol:candles:$period'];
       final results = await Future.wait([
-        api.orderBook(symbol, productLine: productLine),
+        api
+            .orderBook(symbol, productLine: productLine)
+            .then<OrderBook?>((book) => book)
+            .catchError((Object error) {
+              _recordRealtimeIssue('加载盘口失败：${clientErrorMessage(error)}');
+              return null;
+            }),
         api.candles(symbol, period, productLine: productLine),
         api.recentTrades(symbol, productLine: productLine).catchError((
           Object error,
@@ -978,11 +985,12 @@ class AppState extends ChangeNotifier {
       if (requestVersion != _publicRequestVersion) return;
       final loadedTrades = results[2] as List<Map<String, dynamic>>;
       recentTrades = mergeRecentTrades(loadedTrades, recentTrades);
-      final loadedBook = results[0] as OrderBook;
-      if (identical(
-        beforeBook,
-        _publicVersions['$productLine:$symbol:depth:'],
-      )) {
+      final loadedBook = results[0] as OrderBook?;
+      if (loadedBook != null &&
+          identical(
+            beforeBook,
+            _publicVersions['$productLine:$symbol:depth:'],
+          )) {
         orderBook = loadedBook;
       }
       final loadedCandles = results[1] as List<Candle>;
@@ -2875,7 +2883,9 @@ class AppState extends ChangeNotifier {
     );
     final updateType = asString(data['updateType'], fallback: 'SNAPSHOT');
     final depth = asInt(data['depth'], fallback: 50);
+    final recoveryKey = '${mode.productLine}:$symbol';
     if (updateType != 'DELTA') {
+      _depthRecoveryKey = null;
       if (data['updateType'] != 'SNAPSHOT' &&
           sequence > 0 &&
           sequence < orderBook.sequence) {
@@ -2889,12 +2899,20 @@ class AppState extends ChangeNotifier {
       });
       return;
     }
-    if (sequence <= orderBook.sequence) return;
+    if (_depthRecoveryKey == recoveryKey || sequence <= orderBook.sequence) {
+      return;
+    }
     final previousSequence = asNullableInt(data['previousSequence']);
     if (orderBook.symbol != symbol ||
         orderBook.sequence == 0 ||
         previousSequence != orderBook.sequence) {
-      unawaited(refreshPublicData(silent: true));
+      _depthRecoveryKey = recoveryKey;
+      for (final subscription in _publicSubscriptions.values) {
+        if (subscription['channel'] == 'depth' &&
+            subscription['productLine'] == mode.productLine) {
+          realtime.resubscribe(subscription);
+        }
+      }
       return;
     }
     orderBook = OrderBook(

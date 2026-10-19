@@ -94,6 +94,139 @@ Map<String, dynamic> event(
 
 void main() {
   test(
+    'retains all fifty snapshot levels so deltas reveal previously hidden levels',
+    () async {
+      final state = SelectionState();
+      addTearDown(state.dispose);
+      await state.selectMode(ProductMode.linear);
+      void depth(int sequence, String type, List<Map<String, int>> levels) {
+        state.handleRealtimeMessage({
+          'op': 'event',
+          'channel': 'depth',
+          'productLine': 'LINEAR_PERPETUAL',
+          'instrumentId': '${100 + ProductMode.linear.index}',
+          'data': {
+            'version': version(sequence),
+            'value': {
+              'updateType': type,
+              'sequence': '$sequence',
+              'previousSequence': '1',
+              'depth': 50,
+              'bids': levels,
+              'asks': [],
+            },
+          },
+        });
+      }
+
+      depth(1, 'SNAPSHOT', [
+        for (var price = 1; price <= 60; price++)
+          {'priceTicks': price, 'quantitySteps': 2},
+      ]);
+      expect(state.orderBook.bids, hasLength(50));
+      depth(2, 'DELTA', [
+        for (var price = 31; price <= 60; price++)
+          {'priceTicks': price, 'quantitySteps': 0},
+      ]);
+      expect(state.orderBook.bids, hasLength(20));
+      expect(state.orderBook.bids.first.priceTicks, 30);
+      expect(state.orderBook.bids.last.priceTicks, 11);
+    },
+  );
+
+  test(
+    'an initializing realtime book does not discard loaded candles and trades',
+    () async {
+      final state = AppState(
+        config: const AppConfig(websocketUrl: ''),
+        seedInstruments: catalog,
+        apiClient: UnavailableBookApi(),
+      );
+      addTearDown(state.dispose);
+      await state.refreshPublicData();
+      expect(state.candles, hasLength(1));
+      expect(state.recentTrades.single['tradeId'], 'LINEAR_PERPETUAL:1:1:1:0');
+      expect(state.orderBook.bids, isEmpty);
+      expect(state.realtimeLog.any((line) => line.contains('加载盘口失败')), isTrue);
+    },
+  );
+
+  test(
+    'depth gap only resubscribes its channel and waits for a replacement snapshot',
+    () async {
+      final transport = DepthProbe();
+      final state = SelectionState(realtime: transport);
+      addTearDown(state.dispose);
+      await state.selectMode(ProductMode.linear);
+      void depth(
+        int n, {
+        String type = 'DELTA',
+        int? previous,
+        int quantity = 2,
+      }) {
+        state.handleRealtimeMessage({
+          'op': 'event',
+          'channel': 'depth',
+          'productLine': 'LINEAR_PERPETUAL',
+          'instrumentId': '${100 + ProductMode.linear.index}',
+          'data': {
+            'version': version(n),
+            'value': {
+              'updateType': type,
+              'sequence': '$n',
+              'previousSequence': previous == null ? null : '$previous',
+              'depth': 50,
+              'bids': [
+                {'priceTicks': 100, 'quantitySteps': quantity},
+              ],
+              'asks': [],
+            },
+          },
+        });
+      }
+
+      depth(10, type: 'SNAPSHOT');
+      depth(12, previous: 11);
+      depth(13, previous: 12);
+      expect(state.orderBook.sequence, 10);
+      expect(transport.recovered, hasLength(1));
+      expect(transport.recovered.single, {
+        'channel': 'depth',
+        'productLine': 'LINEAR_PERPETUAL',
+        'instrumentId': '${100 + ProductMode.linear.index}',
+      });
+      depth(2, type: 'SNAPSHOT');
+      depth(3, previous: 2, quantity: 0);
+      expect(state.orderBook.sequence, 3);
+      expect(state.orderBook.bids, isEmpty);
+      depth(1, type: 'SNAPSHOT', quantity: 0);
+      expect(state.orderBook.sequence, 1);
+      expect(state.orderBook.bids, isEmpty);
+    },
+  );
+
+  test(
+    'trade tape merges reliable history with WS identities across sequence domains',
+    () {
+      const old = 'SPOT:9007199254740993:1:100:0';
+      const current = 'SPOT:9007199254740994:1:101:0';
+      const fill = 'SPOT:9007199254740994:1:101:1';
+      final rows = mergeRecentTrades(
+        [
+          {'tradeId': old, 'sequence': 99999},
+          {'tradeId': current, 'sequence': 100000, 'quantity': '0.2'},
+        ],
+        [
+          {'tradeId': fill, 'coreSequence': '1'},
+          {'tradeId': current, 'coreSequence': '1'},
+        ],
+      );
+      expect(rows.map((r) => r['tradeId']), [fill, current, old]);
+      expect(rows[1]['quantity'], '0.2');
+    },
+  );
+
+  test(
     'late cancellation responses cannot remove same IDs in another product',
     () async {
       final api = DeferredCancelApi();
@@ -271,11 +404,12 @@ void main() {
 }
 
 class SelectionState extends AppState {
-  SelectionState({ApiClient? api})
+  SelectionState({ApiClient? api, RealtimeClient? realtime})
     : super(
         config: const AppConfig(websocketUrl: ''),
         seedInstruments: catalog,
         apiClient: api,
+        realtimeClient: realtime,
       );
   @override
   Future<void> refreshInstruments({bool silent = false}) async {}
@@ -339,4 +473,44 @@ class DeferredCancelApi extends ApiClient {
     products.add(productLine);
     return trigger.future;
   }
+}
+
+class DepthProbe extends RealtimeClient {
+  DepthProbe() : super(const AppConfig(websocketUrl: ''));
+  final recovered = <Map<String, String>>[];
+  @override
+  void resubscribe(Map<String, String> subscription) =>
+      recovered.add(subscription);
+}
+
+class UnavailableBookApi extends ApiClient {
+  UnavailableBookApi() : super(const AppConfig());
+  @override
+  Future<OrderBook> orderBook(
+    String symbol, {
+    int depth = 50,
+    String? productLine,
+  }) async => throw StateError('MARKET_BOOK_UNAVAILABLE');
+  @override
+  Future<List<Candle>> candles(
+    String symbol,
+    String period, {
+    String? productLine,
+  }) async => [
+    Candle.fromJson({
+      'openTime': '2026-10-19T00:00:00Z',
+      'open': 1,
+      'high': 2,
+      'low': 1,
+      'close': 2,
+      'volume': 3,
+    }),
+  ];
+  @override
+  Future<List<Map<String, dynamic>>> recentTrades(
+    String symbol, {
+    String? productLine,
+  }) async => [
+    {'tradeId': 'LINEAR_PERPETUAL:1:1:1:0', 'sequence': 1, 'price': 2},
+  ];
 }

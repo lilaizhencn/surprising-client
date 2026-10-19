@@ -551,7 +551,7 @@ class OrderBook {
               ? b.priceTicks.compareTo(a.priceTicks)
               : a.priceTicks.compareTo(b.priceTicks),
         );
-      return sorted.take(20).toList();
+      return sorted.take(50).toList();
     }
 
     return OrderBook(
@@ -1926,11 +1926,23 @@ List<Map<String, dynamic>> mergeRecentTrades(
   for (final row in [...older, ...newer]) {
     final id = asString(row['tradeId'], fallback: asString(row['sequence']));
     if (id.isEmpty) continue;
-    rows[id] = row;
+    rows[id] = {...?rows[id], ...row};
   }
   final result = rows.values.toList()
     ..sort((a, b) {
-      final sequence = asInt(b['sequence']).compareTo(asInt(a['sequence']));
+      final left = asString(a['tradeId']).split(':');
+      final right = asString(b['tradeId']).split(':');
+      if (left.length == 5 && right.length == 5 && left.first == right.first) {
+        for (var i = 1; i < 5; i++) {
+          final l = BigInt.tryParse(left[i]), r = BigInt.tryParse(right[i]);
+          if (l == null || r == null) break;
+          final order = r.compareTo(l);
+          if (order != 0) return order;
+        }
+      }
+      final sequence = a['sequence'] != null && b['sequence'] != null
+          ? asInt(b['sequence']).compareTo(asInt(a['sequence']))
+          : 0;
       if (sequence != 0) return sequence;
       final time = asString(b['eventTime']).compareTo(asString(a['eventTime']));
       if (time != 0) return time;

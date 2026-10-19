@@ -16,7 +16,7 @@ Surprising Client 是 iOS / Android 客户端。Web 的产品线能力变更，�
 - 产品切换后要重新加载 instrument、行情、订单、持仓和风险数据，并重新订阅对应 WebSocket。
 - 不要把产品切换做成会复用旧订阅状态的简单 tab。
 - WebSocket 重连后必须重新订阅公共和私有 channel。
-- 新实时 depth 是完整的 20 档替换快照，空盘口也必须替换；兼容旧 delta 时仍须检查 sequence。私有状态使用 accountState 等版本化推送和周期快照，不再订阅 matches，详见 REALTIME.md。
+- 实时 depth 首条为每侧最多 50 档 SNAPSHOT，后续 DELTA 按价格档位绝对数量更新，零数量删除；空盘口也必须替换。逐条检查 previousSequence，断档只重订阅当前 depth 并等待新基线。私有状态使用 accountState 等版本化推送和周期快照，不再订阅 matches，详见 REALTIME.md。
 
 ## UI 和文案
 

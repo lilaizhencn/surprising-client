@@ -6,6 +6,53 @@ import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/models.dart';
 
 void main() {
+  test(
+    'depth resubscribe sends only its own unsubscribe and subscribe on the same socket',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final messages = <Map<String, dynamic>>[];
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.listen((raw) => messages.add(asMap(jsonDecode(raw as String))));
+      });
+      final client = RealtimeClient(
+        AppConfig(websocketUrl: 'ws://127.0.0.1:${server.port}'),
+      );
+      addTearDown(() async {
+        await client.close();
+        await server.close(force: true);
+      });
+      await client.connect(onEvent: (_) {}, onError: (error) => fail('$error'));
+      final depth = {
+        'channel': 'depth',
+        'productLine': 'LINEAR_PERPETUAL',
+        'instrumentId': '42',
+      };
+      client.replaceSubscriptions([
+        depth,
+        {...depth, 'channel': 'trades'},
+        {...depth, 'productLine': 'SPOT'},
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      messages.clear();
+      client.resubscribe(depth);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(messages.map((m) => m['op']), ['unsubscribe', 'subscribe']);
+      expect(
+        messages.every(
+          (m) =>
+              m['channel'] == 'depth' &&
+              m['productLine'] == 'LINEAR_PERPETUAL' &&
+              m['instrumentId'] == '42',
+        ),
+        isTrue,
+      );
+      client.resubscribe({...depth, 'instrumentId': '99'});
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(messages, hasLength(2));
+    },
+  );
+
   for (final loggedIn in [false, true]) {
     test(
       'one connection: public continues while private waits ($loggedIn)',

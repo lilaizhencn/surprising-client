@@ -746,7 +746,7 @@ class ApiClient {
 
   Future<OrderBook> orderBook(
     String symbol, {
-    int depth = 20,
+    int depth = 50,
     String? productLine,
   }) async {
     final json = await get(
@@ -2049,6 +2049,21 @@ class RealtimeClient {
     _installed
       ..clear()
       ..addAll(allowed);
+  }
+
+  /// Request a fresh baseline for one installed channel without disturbing others.
+  void resubscribe(Map<String, String> subscription) {
+    final key =
+        '${subscription['productLine']}:${subscription['channel']}:${subscription['instrumentId'] ?? subscription['symbol'] ?? '*'}:${subscription['period'] ?? ''}';
+    final installed = _installed[key];
+    final socket = _socket;
+    if (installed == null ||
+        socket == null ||
+        socket.readyState != WebSocket.open) {
+      return;
+    }
+    socket.add(jsonEncode({'op': 'unsubscribe', 'id': key, ...installed}));
+    socket.add(jsonEncode({'op': 'subscribe', 'id': key, ...installed}));
   }
 
   Future<void> connect({

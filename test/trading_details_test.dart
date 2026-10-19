@@ -404,7 +404,7 @@ void main() {
     },
   );
   test(
-    'book snapshot sorts, bounds, clears, and rejects reversed or gapped legacy deltas',
+    'book snapshot preserves its window, clears, and waits for a baseline after a gap',
     () {
       final s = DepthState()..instruments = [instrument()];
       addTearDown(s.dispose);
@@ -419,7 +419,7 @@ void main() {
           ],
         }),
       );
-      expect(s.orderBook.bids, hasLength(20));
+      expect(s.orderBook.bids, hasLength(29));
       expect(s.orderBook.bids.first.priceTicks, 29);
       expect(s.orderBook.asks.first.priceTicks, 31);
       s.handleRealtimeMessage(
@@ -442,7 +442,7 @@ void main() {
           ],
         }),
       );
-      expect(s.refreshes, 1);
+      expect(s.refreshes, 0);
       expect(s.orderBook.sequence, 10);
       s.handleRealtimeMessage(
         frame('depth', 4, {'sequence': 12, 'levels': []}),

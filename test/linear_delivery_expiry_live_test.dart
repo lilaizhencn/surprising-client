@@ -9,11 +9,21 @@ import 'package:surprising_client/src/models.dart';
 void main() {
   final line =
       Platform.environment['DELIVERY_EXPIRY_PRODUCT'] ?? 'LINEAR_DELIVERY';
-  final mode = line == 'INVERSE_DELIVERY'
+  final mode = line == 'OPTION'
+      ? ProductMode.option
+      : line == 'INVERSE_DELIVERY'
       ? ProductMode.inverseDelivery
       : ProductMode.linearDelivery;
-  final cashUnits = line == 'INVERSE_DELIVERY' ? '78431' : '200000000';
-  final cashText = line == 'INVERSE_DELIVERY' ? 'BTC 0.00078431' : 'USDT 2';
+  final cashUnits = line == 'OPTION'
+      ? '400000000'
+      : line == 'INVERSE_DELIVERY'
+      ? '78431'
+      : '200000000';
+  final cashText = line == 'OPTION'
+      ? 'USDT 4'
+      : line == 'INVERSE_DELIVERY'
+      ? 'BTC 0.00078431'
+      : 'USDT 2';
   final email = Platform.environment['LINEAR_DELIVERY_EXPIRY_EMAIL'];
   final id = Platform.environment['LINEAR_DELIVERY_EXPIRY_INSTRUMENT'];
   testWidgets(
@@ -21,7 +31,14 @@ void main() {
     (tester) async {
       await tester.runAsync(
         () => HttpOverrides.runWithHttpOverrides(() async {
-          expect(email, startsWith('qa-expiry-trader-'));
+          expect(
+            email,
+            startsWith(
+              line == 'OPTION'
+                  ? 'qa-option-call-itm-buyer-'
+                  : 'qa-expiry-trader-',
+            ),
+          );
           expect(email, endsWith('@surprising.test'));
           final run = email!.split('@').first.split('-').last;
           final http = HttpClient();
@@ -73,7 +90,9 @@ void main() {
             );
             expect(positions, isEmpty);
             final page = await api.accountRecords(
-              category: 'delivery-ledger',
+              category: line == 'OPTION'
+                  ? 'option-exercise'
+                  : 'delivery-ledger',
               userId: session.user.userId,
               product: mode,
             );
@@ -90,7 +109,9 @@ void main() {
                   theme: ThemeData(brightness: brightness),
                   home: FundingRecordsPage(
                     state: state,
-                    initialCategory: 'delivery-ledger',
+                    initialCategory: line == 'OPTION'
+                        ? 'option-exercise'
+                        : 'delivery-ledger',
                   ),
                 ),
               );

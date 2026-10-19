@@ -229,26 +229,44 @@ class ApiClient {
     if (!instrument.isSpot || instrument.changeId == null) {
       throw const FormatException('下单资料未就绪');
     }
+    return _tradingOrderTerms(userId, instrument);
+  }
+
+  Future<({int takerFeeRatePpm, int marketMaxSlippagePpm})> optionOrderTerms(
+    int userId,
+    Instrument instrument,
+  ) async {
+    if (!instrument.isOption || instrument.changeId == null) {
+      throw const FormatException('下单资料未就绪');
+    }
+    return _tradingOrderTerms(userId, instrument);
+  }
+
+  Future<({int takerFeeRatePpm, int marketMaxSlippagePpm})> _tradingOrderTerms(
+    int userId,
+    Instrument instrument,
+  ) async {
+    final line = instrument.mode.productLine;
     final results = await Future.wait([
       get(
         '/api/v1/gateway/trading-fees/effective',
         userId: userId,
-        productLine: 'SPOT',
-        query: {'instrumentId': instrument.instrumentId, 'productLine': 'SPOT'},
+        productLine: line,
+        query: {'instrumentId': instrument.instrumentId, 'productLine': line},
       ),
       get(
         '/api/v1/gateway/trading/price-protection',
         userId: userId,
-        productLine: 'SPOT',
+        productLine: line,
       ),
     ]);
     final fee = int.tryParse('${results[0]['takerFeeRatePpm']}');
     final slip = int.tryParse('${results[1]['marketMaxSlippagePpm']}');
-    if (results[0]['productLine'] != 'SPOT' ||
+    if (results[0]['productLine'] != line ||
         asString(results[0]['instrumentId']) != instrument.instrumentId ||
         asInt(results[0]['userId']) != userId ||
         asInt(results[0]['instrumentChangeId']) != instrument.changeId ||
-        results[1]['productLine'] != 'SPOT' ||
+        results[1]['productLine'] != line ||
         fee == null ||
         fee.abs() > 1000000 ||
         slip == null ||
@@ -313,6 +331,10 @@ class ApiClient {
       case 'funding-ledger':
         path = '/api/v1/gateway/account/ledger';
         key = 'entries';
+      case 'option-exercise':
+        if (!product.isOption) throw const FormatException('期权流水产品线不匹配');
+        query['referenceType'] = 'OPTION_EXERCISE';
+        continue productLedger;
       case 'delivery-ledger':
         if (product != ProductMode.linearDelivery &&
             product != ProductMode.inverseDelivery) {
@@ -730,12 +752,12 @@ class ApiClient {
   Future<List<Instrument>> instruments() =>
       _loadInstruments({'status': 'TRADING'});
 
-  /// Visible lifecycle states remain selectable for existing delivery positions and orders.
-  Future<List<Instrument>> deliveryInstruments(ProductMode product) async {
-    if (!product.isDelivery) throw const FormatException('交割合约目录产品线不匹配');
+  /// Visible lifecycle states remain selectable for existing expiring positions and orders.
+  Future<List<Instrument>> expiringInstruments(ProductMode product) async {
+    if (!product.isExpiring) throw const FormatException('到期合约目录产品线不匹配');
     final loaded = await _loadInstruments({'productLine': product.productLine});
     if (loaded.any((i) => i.mode != product)) {
-      throw const FormatException('交割合约目录产品线不匹配');
+      throw const FormatException('到期合约目录产品线不匹配');
     }
     return loaded;
   }

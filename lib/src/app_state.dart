@@ -416,39 +416,46 @@ class AppState extends ChangeNotifier {
   String? _depthRecoveryKey;
   late List<Candle> candles;
   List<ProductBalance> balances = const [];
-  ({int takerFeeRatePpm, int marketMaxSlippagePpm})? _spotOrderTerms;
-  String? _spotOrderTermsIdentity;
-  int _spotOrderTermsRequest = 0;
-  String get _currentSpotTermsIdentity =>
+  ({int takerFeeRatePpm, int marketMaxSlippagePpm})? _orderTerms;
+  String? _orderTermsIdentity;
+  int _orderTermsRequest = 0;
+  String get _currentOrderTermsIdentity =>
       '$_walletSessionVersion:$userId:${mode.productLine}:${selectedInstrument.instrumentId}:${selectedInstrument.changeId}';
   ({int takerFeeRatePpm, int marketMaxSlippagePpm})? get spotOrderTerms =>
-      mode.isSpot && _spotOrderTermsIdentity == _currentSpotTermsIdentity
-      ? _spotOrderTerms
+      mode.isSpot && _orderTermsIdentity == _currentOrderTermsIdentity
+      ? _orderTerms
       : null;
 
-  Future<void> refreshSpotOrderTerms() async {
-    final request = ++_spotOrderTermsRequest;
-    final identity = _currentSpotTermsIdentity;
+  ({int takerFeeRatePpm, int marketMaxSlippagePpm})? get optionOrderTerms =>
+      mode.isOption && _orderTermsIdentity == _currentOrderTermsIdentity
+      ? _orderTerms
+      : null;
+
+  Future<void> refreshOrderTerms() async {
+    final request = ++_orderTermsRequest;
+    final identity = _currentOrderTermsIdentity;
     final id = userId;
-    _spotOrderTerms = null;
-    _spotOrderTermsIdentity = null;
+    _orderTerms = null;
+    _orderTermsIdentity = null;
     if (offline ||
         id == null ||
-        !mode.isSpot ||
+        !(mode.isSpot || mode.isOption) ||
         selectedInstrument.instrumentId.isEmpty) {
       return;
     }
     try {
-      final terms = await api.spotOrderTerms(id, selectedInstrument);
-      if (request == _spotOrderTermsRequest &&
-          identity == _currentSpotTermsIdentity) {
-        _spotOrderTerms = terms;
-        _spotOrderTermsIdentity = identity;
+      final terms = mode.isOption
+          ? await api.optionOrderTerms(id, selectedInstrument)
+          : await api.spotOrderTerms(id, selectedInstrument);
+      if (request == _orderTermsRequest &&
+          identity == _currentOrderTermsIdentity) {
+        _orderTerms = terms;
+        _orderTermsIdentity = identity;
       }
     } catch (_) {
       // Missing sizing metadata disables percentage controls; no default fees are invented.
     } finally {
-      if (request == _spotOrderTermsRequest) notifyListeners();
+      if (request == _orderTermsRequest) notifyListeners();
     }
   }
 
@@ -1221,13 +1228,13 @@ class AppState extends ChangeNotifier {
     final old = selectedInstrument;
     try {
       final base = await api.instruments();
-      final loaded = mode.isDelivery
+      final loaded = mode.isExpiring
           ? [
               ...base.where((i) => i.mode != mode),
-              ...await api.deliveryInstruments(mode),
+              ...await api.expiringInstruments(mode),
             ]
           : base;
-      if (old.mode.isDelivery &&
+      if (old.mode.isExpiring &&
           old.instrumentId.isNotEmpty &&
           !loaded.any(
             (i) => i.mode == old.mode && i.instrumentId == old.instrumentId,
@@ -1371,7 +1378,7 @@ class AppState extends ChangeNotifier {
     loadingPrivate = true;
     notifyListeners();
     final walletRefresh = refreshWallet();
-    final spotTermsRefresh = refreshSpotOrderTerms();
+    final orderTermsRefresh = refreshOrderTerms();
     try {
       final results = await Future.wait([
         selectedMode.isDerivative
@@ -1399,7 +1406,7 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       await walletRefresh;
-      await spotTermsRefresh;
+      await orderTermsRefresh;
       if (generation == _openOrdersRequestVersion) {
         loadingPrivate = false;
         notifyListeners();
@@ -1823,7 +1830,7 @@ class AppState extends ChangeNotifier {
         : positionSide == 'NET'
         ? (side == 'SELL' ? 'SHORT' : 'LONG')
         : positionSide;
-    if (instrument.isDelivery && effectiveReduceOnly) {
+    if (instrument.isExpiring && effectiveReduceOnly) {
       final position = positions
           .where(
             (p) =>
@@ -3881,7 +3888,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
-    ++_spotOrderTermsRequest;
+    ++_orderTermsRequest;
     ++_walletSessionVersion;
     ++_walletVersion;
     ++_walletPricesVersion;

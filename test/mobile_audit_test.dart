@@ -376,4 +376,7 @@ class InstrumentApi extends ApiClient {
       .toList();
   @override
   Future<List<Instrument>> instruments() async => rows;
+  @override
+  Future<List<Instrument>> expiringInstruments(ProductMode product) async =>
+      rows.where((row) => row.mode == product).toList();
 }

@@ -1481,6 +1481,7 @@ class _TradePageState extends State<TradePage> {
                   const SizedBox(height: 6),
                   ContractQuickSettings(
                     marginMode: marginMode,
+                    showLeverage: !instrument.isOption,
                     leverage:
                         '${(instrument.maxLeveragePpm / 1000000).round()}x',
                     positionMode: state.positionMode,
@@ -5346,6 +5347,59 @@ class OrderTicket extends StatelessWidget {
                 quantity: quantityController,
                 loggedIn: loggedIn,
               ),
+            if (instrument.isOption)
+              ListenableBuilder(
+                listenable: Listenable.merge([
+                  priceController,
+                  quantityController,
+                ]),
+                builder: (context, _) {
+                  final state = AppScope.of(context);
+                  final sameSide =
+                      orderType == 'LIMIT' &&
+                      bboEnabled &&
+                      bboPriceMode.startsWith('SAME_SIDE_');
+                  final levels = (side == 'BUY') != sameSide
+                      ? state.orderBook.asks
+                      : state.orderBook.bids;
+                  final rank =
+                      orderType == 'LIMIT' &&
+                          bboEnabled &&
+                          bboPriceMode.endsWith('_5')
+                      ? 4
+                      : 0;
+                  final reference = orderType == 'LIMIT' && !bboEnabled
+                      ? decimalIncrement(
+                          priceController.text,
+                          instrument.priceTickUnits,
+                          scaleUnits: instrument.quoteScaleUnits ?? 0,
+                        )
+                      : levels.length > rank
+                      ? levels[rank].priceTicks
+                      : null;
+                  final terms = optionPremiumTerms(
+                    instrument: instrument,
+                    side: side,
+                    priceTicks: reference,
+                    quantity: quantityController.text,
+                    takerFeeRatePpm: state.optionOrderTerms?.takerFeeRatePpm,
+                  );
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${side == 'BUY' ? '买入权利金及手续费' : '卖出权利金扣费后'} ${terms?.cash ?? '--'} ${instrument.settleAsset}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      if (side == 'SELL')
+                        const Text(
+                          '卖方保证金按提交时的期权风险核定',
+                          style: TextStyle(fontSize: 10),
+                        ),
+                    ],
+                  );
+                },
+              ),
             const SizedBox(height: 6),
             Text(
               '最小价格变动 ${instrument.isSpot ? scaledAmount(BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits) : instrument.priceFromTicks(1)} ${instrument.quoteAsset}',
@@ -5389,17 +5443,19 @@ class OrderTicket extends StatelessWidget {
                     : '该交易对已暂停交易',
                 style: const TextStyle(fontSize: 11),
               ),
-            if (instrument.isDelivery)
+            if (instrument.isExpiring)
               TextButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => FundingRecordsPage(
                       state: AppScope.of(context),
-                      initialCategory: 'delivery-ledger',
+                      initialCategory: instrument.isOption
+                          ? 'option-exercise'
+                          : 'delivery-ledger',
                     ),
                   ),
                 ),
-                child: const Text('交割现金流水'),
+                child: Text(instrument.isOption ? '期权行权现金流水' : '交割现金流水'),
               ),
             const SizedBox(height: 6),
             if (AppScope.of(context).tradingCommandPending) ...[
@@ -5450,8 +5506,10 @@ class OrderTicket extends StatelessWidget {
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn
-                    ? instrument.isDelivery && effectiveReduceOnly
+                    ? instrument.isExpiring && effectiveReduceOnly
                           ? (buy ? '买入平空' : '卖出平多')
+                          : instrument.isOption
+                          ? (buy ? '买入期权' : '卖出期权')
                           : instrument.isSpot
                           ? (buy ? '买入' : '卖出')
                           : hedgeMode
@@ -5548,7 +5606,7 @@ class SpotOrderSizing extends StatelessWidget {
             TextButton(
               onPressed: () => unawaited(() async {
                 await state.refreshInstruments(silent: true);
-                await state.refreshSpotOrderTerms();
+                await state.refreshOrderTerms();
               }()),
               child: const Text('刷新下单资料'),
             ),
@@ -7837,7 +7895,7 @@ class ProductLifecyclePanel extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  isOption ? '期权链路' : '交割合约生命周期',
+                  isOption ? '期权合约' : '交割合约生命周期',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -7903,7 +7961,8 @@ class ProductLifecyclePanel extends StatelessWidget {
                 MetricPill(
                   label: '底层',
                   value: underlyingPrice == null
-                      ? instrument.underlyingSymbol ?? '--'
+                      ? underlying?.displayName ??
+                            '${instrument.baseAsset} · ${instrument.underlyingInstrumentId ?? '--'}'
                       : money(
                           underlyingPrice,
                           digits: underlying?.pricePrecision ?? 2,
@@ -7934,8 +7993,8 @@ class ProductLifecyclePanel extends StatelessWidget {
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 MetricPill(
-                  label: 'Delta估算',
-                  value: estimatedDelta(instrument, underlyingPrice, strike),
+                  label: 'Greeks',
+                  value: '暂无可信报价',
                   color: Theme.of(context).colorScheme.secondary,
                 ),
               ],
@@ -8002,10 +8061,17 @@ class ProductLifecyclePanel extends StatelessWidget {
   }
 
   Instrument? _underlyingInstrument() {
-    final target = instrument.underlyingSymbol;
-    if (target == null || target.isEmpty) return null;
+    final target = instrument.underlyingInstrumentId;
+    if (target == null ||
+        target.isEmpty ||
+        instrument.underlyingProductLine == null) {
+      return null;
+    }
     for (final item in state.instruments) {
-      if (item.symbol == target) return item;
+      if (item.instrumentId == target &&
+          item.mode.productLine == instrument.underlyingProductLine) {
+        return item;
+      }
     }
     return null;
   }
@@ -8054,6 +8120,7 @@ class ContractQuickSettings extends StatelessWidget {
   const ContractQuickSettings({
     required this.marginMode,
     required this.leverage,
+    this.showLeverage = true,
     required this.positionMode,
     required this.onMarginMode,
     required this.onPositionMode,
@@ -8062,6 +8129,7 @@ class ContractQuickSettings extends StatelessWidget {
 
   final String marginMode;
   final String leverage;
+  final bool showLeverage;
   final String positionMode;
   final ValueChanged<String> onMarginMode;
   final ValueChanged<String> onPositionMode;
@@ -8078,27 +8146,28 @@ class ContractQuickSettings extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 5),
-        Expanded(
-          child: TradeSettingButton(
-            label: '杠杆',
-            onTap: () {
-              final state = AppScope.of(context);
-              if (!state.isLoggedIn) {
-                showAuthSheet(context);
-                return;
-              }
-              showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => TradingLeverageSheet(
-                  state: state,
-                  instrument: state.selectedInstrument,
-                  marginMode: marginMode,
-                ),
-              );
-            },
+        if (showLeverage)
+          Expanded(
+            child: TradeSettingButton(
+              label: '杠杆',
+              onTap: () {
+                final state = AppScope.of(context);
+                if (!state.isLoggedIn) {
+                  showAuthSheet(context);
+                  return;
+                }
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => TradingLeverageSheet(
+                    state: state,
+                    instrument: state.selectedInstrument,
+                    marginMode: marginMode,
+                  ),
+                );
+              },
+            ),
           ),
-        ),
         const SizedBox(width: 5),
         Expanded(
           child: TradeSettingButton(
@@ -9202,7 +9271,7 @@ class InstrumentRow extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                   Text(
-                    '${instrument.mode.label} · ${instrument.status} · ${(instrument.maxLeveragePpm / 1000000).round()}X',
+                    '${instrument.mode.label} · ${instrument.status}${instrument.isOption ? '' : ' · ${(instrument.maxLeveragePpm / 1000000).round()}X'}',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
@@ -10000,9 +10069,10 @@ class PositionRow extends StatelessWidget {
                 instrument,
                 position.signedQuantitySteps.abs(),
               ),
-              '杠杆': leverage == null
-                  ? '--'
-                  : '${asInt(leverage['leveragePpm']) / 1000000}×',
+              if (!instrument.isOption)
+                '杠杆': leverage == null
+                    ? '--'
+                    : '${asInt(leverage['leveragePpm']) / 1000000}×',
               '开仓均价': price(position.entryPriceTicks),
               '标记价格': price(mark),
               '未实现盈亏': tradingAmount(pnl, instrument, asset),
@@ -10396,36 +10466,29 @@ double? _intrinsicValue(
   return math.max(0, underlyingPrice - strike);
 }
 
-String estimatedDelta(
-  Instrument instrument,
-  double? underlyingPrice,
-  double? strike,
-) {
-  if (underlyingPrice == null || strike == null || strike <= 0) return '--';
-  final ratio = underlyingPrice / strike;
-  final call = instrument.optionType != 'PUT';
-  if (call) {
-    if (ratio >= 1.03) return '0.7500';
-    if (ratio <= 0.97) return '0.2500';
-    return '0.5000';
-  }
-  if (ratio <= 0.97) return '-0.7500';
-  if (ratio >= 1.03) return '-0.2500';
-  return '-0.5000';
-}
-
 List<OptionChainRow> _optionChainRows(
   Instrument selected,
   List<Instrument> instruments,
 ) {
-  final targetExpiry = _dateKey(selected.expiryTime ?? selected.deliveryTime);
-  final targetUnderlying = selected.underlyingSymbol ?? selected.baseAsset;
+  final targetExpiry = selected.expiryTime?.toUtc().millisecondsSinceEpoch;
+  if (targetExpiry == null ||
+      selected.underlyingInstrumentId == null ||
+      selected.underlyingProductLine == null) {
+    return [];
+  }
+  final targetUnderlying =
+      '${selected.underlyingProductLine}:${selected.underlyingInstrumentId}';
   final rows = <String, OptionChainRow>{};
   for (final item in instruments) {
     if (!item.isOption) continue;
-    if ((item.underlyingSymbol ?? item.baseAsset) != targetUnderlying) continue;
+    if ('${item.underlyingProductLine}:${item.underlyingInstrumentId}' !=
+        targetUnderlying) {
+      continue;
+    }
     final expiry = _dateKey(item.expiryTime ?? item.deliveryTime);
-    if (targetExpiry.isNotEmpty && expiry != targetExpiry) continue;
+    if (item.expiryTime?.toUtc().millisecondsSinceEpoch != targetExpiry) {
+      continue;
+    }
     final strike = item.strikePrice;
     if (strike == null) continue;
     final key = '$expiry:$strike';

@@ -14,12 +14,13 @@ enum ProductMode {
   final String contractType;
 
   bool get isSpot => this == ProductMode.spot;
-  bool get tracksSingleOrderIntent => isSpot || isDelivery;
+  bool get tracksSingleOrderIntent => isSpot || isExpiring;
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>
       this == ProductMode.linearDelivery || this == ProductMode.inverseDelivery;
   bool get isOption => this == ProductMode.option;
+  bool get isExpiring => isDelivery || isOption;
   bool get isDerivative => !isSpot;
 
   String get contractLabel {
@@ -394,6 +395,8 @@ class Instrument {
     this.expiryTime,
     this.deliveryTime,
     this.underlyingSymbol,
+    this.underlyingInstrumentId,
+    this.underlyingProductLine,
     this.strikePriceUnits,
     this.optionType,
     this.optionExerciseStyle,
@@ -428,6 +431,8 @@ class Instrument {
   final DateTime? expiryTime;
   final DateTime? deliveryTime;
   final String? underlyingSymbol;
+  final String? underlyingInstrumentId;
+  final String? underlyingProductLine;
   final int? strikePriceUnits;
   final String? optionType;
   final String? optionExerciseStyle;
@@ -482,10 +487,15 @@ class Instrument {
   bool get isPerpetual => mode.isPerpetual;
   bool get isDelivery => mode.isDelivery;
   bool get isOption => mode.isOption;
+  bool get isExpiring => mode.isExpiring;
   String get contractLabel => mode.contractLabel;
 
-  bool canPlaceOrder({required bool reduceOnly}) =>
-      status == 'TRADING' || (isDelivery && status == 'SETTLING' && reduceOnly);
+  bool canPlaceOrder({required bool reduceOnly}) => isOption
+      ? status == 'TRADING' &&
+            expiryTime != null &&
+            expiryTime!.isAfter(DateTime.now().toUtc())
+      : status == 'TRADING' ||
+            (isDelivery && status == 'SETTLING' && reduceOnly);
 
   bool effectiveReduceOnly({
     required bool reduceOnly,
@@ -494,7 +504,7 @@ class Instrument {
     required String positionSide,
   }) =>
       reduceOnly ||
-      (isDelivery &&
+      (isExpiring &&
           positionMode == 'HEDGE' &&
           ((positionSide == 'LONG' && side == 'SELL') ||
               (positionSide == 'SHORT' && side == 'BUY')));
@@ -503,8 +513,10 @@ class Instrument {
 
   double? get strikePrice {
     final units = strikePriceUnits;
-    if (units == null) return null;
-    return units / 100000000.0;
+    if (units == null || quoteScaleUnits == null || quoteScaleUnits! <= 0) {
+      return null;
+    }
+    return units / quoteScaleUnits!;
   }
 
   double priceFromTicks(int ticks) {
@@ -565,13 +577,16 @@ class Instrument {
         json['status'],
         fallback:
             (json['contractType'] == 'LINEAR_DELIVERY' ||
-                json['contractType'] == 'INVERSE_DELIVERY')
+                json['contractType'] == 'INVERSE_DELIVERY' ||
+                json['contractType'] == 'VANILLA_OPTION')
             ? 'UNAVAILABLE'
             : 'TRADING',
       ),
       expiryTime: asNullableDateTime(json['expiryTime']),
       deliveryTime: asNullableDateTime(json['deliveryTime']),
       underlyingSymbol: nullableString(json['underlyingSymbol']),
+      underlyingInstrumentId: nullableString(json['underlyingInstrumentId']),
+      underlyingProductLine: nullableString(json['underlyingProductLine']),
       strikePriceUnits: asNullableInt(json['strikePriceUnits']),
       optionType: nullableString(json['optionType']),
       optionExerciseStyle: nullableString(json['optionExerciseStyle']),
@@ -2325,4 +2340,46 @@ List<OrderBookLevel> aggregateBookLevels(
         ? b.priceTicks.compareTo(a.priceTicks)
         : a.priceTicks.compareTo(b.priceTicks),
   );
+}
+
+/// Option premium is paid in full in settlement asset units; leverage does not divide it.
+({String premium, String fee, String cash})? optionPremiumTerms({
+  required Instrument instrument,
+  required String side,
+  required int? priceTicks,
+  required String quantity,
+  required int? takerFeeRatePpm,
+}) {
+  final contracts = decimalIncrement(quantity, 1, scaleUnits: 1);
+  final multiplier = instrument.notionalMultiplierUnits;
+  if (!instrument.isOption ||
+      priceTicks == null ||
+      priceTicks <= 0 ||
+      contracts == null ||
+      contracts <= 0 ||
+      multiplier == null ||
+      multiplier <= 0 ||
+      instrument.settleScaleUnits == null ||
+      takerFeeRatePpm == null ||
+      takerFeeRatePpm.abs() > 1000000 ||
+      !['BUY', 'SELL'].contains(side)) {
+    return null;
+  }
+  final premium =
+      BigInt.from(priceTicks) *
+      BigInt.from(contracts) *
+      BigInt.from(multiplier);
+  if (premium > BigInt.from(9223372036854775807)) return null;
+  final fee =
+      ((premium * BigInt.from(takerFeeRatePpm.abs()) + BigInt.from(999999)) ~/
+          BigInt.from(1000000)) *
+      BigInt.from(takerFeeRatePpm < 0 ? -1 : 1);
+  final scale = instrument.settleScaleUnits;
+  final cash = side == 'BUY' ? premium + fee : premium - fee;
+  final result = (
+    premium: scaledAmount(premium, scale),
+    fee: scaledAmount(fee, scale),
+    cash: scaledAmount(cash, scale),
+  );
+  return result.cash == '--' ? null : result;
 }

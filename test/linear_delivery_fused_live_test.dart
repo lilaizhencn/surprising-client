@@ -12,10 +12,14 @@ import 'package:surprising_client/src/session_store.dart';
 void main() {
   final line =
       Platform.environment['DELIVERY_LIVE_PRODUCT'] ?? 'LINEAR_DELIVERY';
-  final mode = line == 'INVERSE_DELIVERY'
+  final mode = line == 'OPTION'
+      ? ProductMode.option
+      : line == 'INVERSE_DELIVERY'
       ? ProductMode.inverseDelivery
       : ProductMode.linearDelivery;
-  final rootPrefix = line == 'INVERSE_DELIVERY'
+  final rootPrefix = line == 'OPTION'
+      ? '/tmp/surprising-option-fused-'
+      : line == 'INVERSE_DELIVERY'
       ? '/tmp/surprising-inverse-delivery-fused-'
       : '/tmp/surprising-linear-delivery-fused-';
   final fixturePath = Platform.environment['LINEAR_DELIVERY_LIVE_FIXTURE'];
@@ -156,7 +160,10 @@ void main() {
               'baseScaleUnits': scales[asString(raw['baseAsset'])],
               'settleScaleUnits': scales[asString(raw['settleAsset'])],
             });
-            expect(instrument.status, 'SETTLING');
+            expect(
+              instrument.status,
+              line == 'OPTION' ? 'TRADING' : 'SETTLING',
+            );
             state = make(instrument);
             await state.bootstrap();
             for (var i = 0; i < 100 && state.positions.isEmpty; i++) {
@@ -164,7 +171,7 @@ void main() {
             }
             final initial = state.positions.single;
             expect(initial.signedQuantitySteps, 1);
-            expect(state.selectedInstrument.status, 'SETTLING');
+            expect(state.selectedInstrument.status, instrument.status);
             await state.placeOrder(
               side: 'BUY',
               orderType: 'MARKET',
@@ -173,11 +180,14 @@ void main() {
               quantitySteps: 1,
               marginMode: initial.marginMode,
               positionSide: 'NET',
-              reduceOnly: false,
+              reduceOnly: line == 'OPTION',
               postOnly: false,
             );
             expect(posts, isEmpty);
-            expect(state.lastError, contains('仅允许减仓'));
+            expect(
+              state.lastError,
+              contains(line == 'OPTION' ? '减仓' : '仅允许减仓'),
+            );
             await state.closePosition(initial);
             expect(posts.length, 1);
             expect(state.tradingCommandPending, true);
@@ -228,7 +238,7 @@ void main() {
             await File('$fixturePath.client-evidence.json').writeAsString(
               jsonEncode({
                 'productLine': line,
-                'status': 'SETTLING',
+                'status': instrument.status,
                 'openBlocked': true,
                 'closeQuantity': 1,
                 'posts': 1,
@@ -242,7 +252,7 @@ void main() {
               }),
             );
             debugPrint(
-              '${line}_CLIENT_PASS status=SETTLING openBlocked=true closeQuantity=1 posts=1 pausedUnknown=true restartRestored=true positions=0 locked=0',
+              '${line}_CLIENT_PASS status=${instrument.status} invalidOrderBlocked=true closeQuantity=1 posts=1 pausedUnknown=true restartRestored=true positions=0 locked=0',
             );
             await tester.pumpWidget(const SizedBox.shrink());
           } finally {

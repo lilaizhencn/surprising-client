@@ -1074,7 +1074,7 @@ void main() {
             )
             ..mode = ProductMode.spot
             ..session = session;
-      final request = state.refreshSpotOrderTerms();
+      final request = state.refreshOrderTerms();
       state.session = const AuthSession(
         user: AuthUser(
           userId: 2,
@@ -1098,7 +1098,7 @@ void main() {
             )
             ..mode = ProductMode.spot
             ..session = session;
-      final late = disposed.refreshSpotOrderTerms();
+      final late = disposed.refreshOrderTerms();
       disposed.dispose();
       lateApi.result.complete((
         takerFeeRatePpm: 1000,

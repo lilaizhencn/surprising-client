@@ -21,6 +21,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
     'funding-ledger': '资金账户流水',
     'product-ledger': '交易账户流水',
     'delivery-ledger': '交割现金流水',
+    'option-exercise': '期权行权现金流水',
     'transfer': '账户划转',
     'funding-payment': '资金费',
     'deposit': '充值记录',
@@ -45,6 +46,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
     super.initState();
     category = widget.initialCategory;
     product = widget.state.mode;
+    if (category == 'option-exercise') product = ProductMode.option;
     if (category == 'delivery-ledger' &&
         product != ProductMode.linearDelivery &&
         product != ProductMode.inverseDelivery) {
@@ -318,6 +320,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     if (v == null) return;
                     setState(() {
                       category = v;
+                      if (v == 'option-exercise') product = ProductMode.option;
                       reference.clear();
                       status.clear();
                       instrument.clear();
@@ -337,6 +340,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                 if ([
                   'product-ledger',
                   'delivery-ledger',
+                  'option-exercise',
                   'transfer',
                   'funding-payment',
                   'trade',
@@ -348,7 +352,9 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     decoration: const InputDecoration(labelText: '产品线'),
                     items: ProductMode.values
                         .where(
-                          (p) => category == 'delivery-ledger'
+                          (p) => category == 'option-exercise'
+                              ? p.isOption
+                              : category == 'delivery-ledger'
                               ? p == ProductMode.linearDelivery ||
                                     p == ProductMode.inverseDelivery
                               : category != 'funding-payment' || p.isPerpetual,

@@ -889,6 +889,7 @@ void main() {
       'instrumentType': 'OPTION',
       'contractType': 'VANILLA_OPTION',
       'strikePriceUnits': 7000000000000,
+      'quoteScaleUnits': 100000000,
       'optionType': 'CALL',
       'optionExerciseStyle': 'EUROPEAN',
       'settlementMethod': 'CASH',

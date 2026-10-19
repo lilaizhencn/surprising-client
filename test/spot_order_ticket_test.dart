@@ -310,7 +310,7 @@ class _SpotApi extends ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
-    expect(path, '/api/v1/gateway/trading-orders/commands/123');
+    expect(path, '/api/v1/gateway/trading/commands/123');
     expect(productLine, 'SPOT');
     commandQueries++;
     return {

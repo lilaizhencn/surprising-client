@@ -224,7 +224,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final receipt = await api.get(
-        '/api/v1/gateway/trading-orders/commands/${Uri.encodeComponent(pending.commandId)}',
+        '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId)}',
         userId: pending.userId,
         productLine: pending.product.productLine,
       );

@@ -117,3 +117,8 @@ MATCHING_PENDING/RESULT_UNKNOWN 记录命令、用户和产品，阻止继续下
 后台资金路径沿用 FUSED：仅运行 CoreSpotAssetUnitsTest，覆盖 4 种碎片成交/快照恢复组合，
 包含做市方对手单、买卖冻结、手续费和资金守恒、撤单解冻；未启动其他产品或常驻 Java 服务。
 本轮没有真机安装或接入真实全套服务，所有发布声明以实际测试范围为限。
+
+查询路径统一为用户入口 `GET /api/v1/gateway/trading/commands/{commandId}`，与后端返回的
+commandResultUrl 一致，修正了原先误用后台路由名导致的 404。路径回归已先复现失败再修复，
+`flutter analyze` 无问题、131 项测试通过；真实 FUSED 现货服务已核对回执查询、终态订单和余额接口。
+本轮没有原生真机安装或客户端界面连接真实服务的验收。

@@ -438,6 +438,7 @@ class CloseApi extends ApiClient {
     required bool postOnly,
     String? bboPriceMode,
     String? productLine,
+    String? clientOrderId,
   }) async {
     this.symbol = symbol;
     product = productLine;

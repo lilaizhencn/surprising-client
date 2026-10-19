@@ -16,6 +16,7 @@ class ApiClient {
   List<Instrument> instrumentCatalog = [];
   final HttpClient _httpClient;
   String? _accessToken;
+  int? _sessionUserId;
   String? _refreshToken;
   Future<AuthSession?>? _refreshInFlight;
 
@@ -23,11 +24,13 @@ class ApiClient {
   Future<void> Function()? onSessionExpired;
 
   void setSession(AuthSession? session) {
+    _sessionUserId = session?.user.userId;
     _accessToken = session?.accessToken;
     _refreshToken = session?.refreshToken;
   }
 
   void setAccessToken(String? accessToken) {
+    _sessionUserId = null;
     _accessToken = accessToken == null || accessToken.trim().isEmpty
         ? null
         : accessToken.trim();
@@ -40,7 +43,6 @@ class ApiClient {
       body: {'refreshToken': refreshToken},
     );
     final session = AuthSession.fromJson(asMap(response));
-    setSession(session);
     return session;
   }
 
@@ -987,6 +989,7 @@ class ApiClient {
     required bool postOnly,
     String? bboPriceMode,
     String? productLine,
+    String? clientOrderId,
   }) async {
     final json = await post(
       '/api/v1/gateway/trading',
@@ -1003,6 +1006,7 @@ class ApiClient {
         reduceOnly: reduceOnly,
         postOnly: postOnly,
         bboPriceMode: bboPriceMode,
+        clientOrderId: clientOrderId,
       ),
       userId: userId,
       productLine: productLine,
@@ -1823,6 +1827,8 @@ class ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    final originalToken = _accessToken;
+    final originalUser = _sessionUserId;
     try {
       return await _sendOnce(
         method,
@@ -1836,6 +1842,8 @@ class ApiClient {
       );
     } on ApiException catch (error) {
       if (error.statusCode != 401 ||
+          originalToken != _accessToken ||
+          originalUser != _sessionUserId ||
           _refreshToken == null ||
           path.startsWith('/api/v1/auth/')) {
         rethrow;
@@ -1872,10 +1880,13 @@ class ApiClient {
   Future<AuthSession?> _refreshAccessTokenOnce(String refreshToken) async {
     try {
       final session = await refresh(refreshToken);
+      if (_refreshToken != refreshToken) return null;
+      setSession(session);
       await onSessionRefreshed?.call(session);
       return session;
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {
+        if (_refreshToken != refreshToken) return null;
         setSession(null);
         await onSessionExpired?.call();
         return null;
@@ -1894,6 +1905,10 @@ class ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    final token = _accessToken;
+    if (userId != null && _sessionUserId != null && userId != _sessionUserId) {
+      throw ApiException(401, '登录账户已变化，未发送请求');
+    }
     if (path.startsWith('/api/v1/gateway/') && !path.contains('/wallet/')) {
       final symbol = asString(body?['symbol'] ?? query?['symbol']);
       final instrument = instrumentCatalog
@@ -1922,6 +1937,10 @@ class ApiClient {
     final request = await _httpClient
         .openUrl(method, uri)
         .timeout(const Duration(seconds: 6));
+    if (token != _accessToken) {
+      request.abort();
+      throw ApiException(401, '登录账户已变化，未发送请求');
+    }
     request.headers.contentType = ContentType.json;
     request.headers.set(
       'X-Trace-Id',
@@ -2019,6 +2038,20 @@ class PendingTradingCommand extends ApiException {
   final String commandId;
   @override
   String toString() => message;
+}
+
+bool isDefinitiveOrderRejection(Object error) {
+  if (error is! ApiException) return false;
+  final receipt = asMap(_decodeJson(error.message));
+  if (receipt['commandId'] is String &&
+      receipt['code'] is String &&
+      (receipt['outcome'] == 'NOT_ACCEPTED' ||
+          (receipt['outcome'] == 'TERMINAL' && receipt['code'] != 'NONE'))) {
+    return true;
+  }
+  return error.statusCode >= 400 &&
+      error.statusCode < 500 &&
+      ![408, 409, 425, 429].contains(error.statusCode);
 }
 
 class ApiException implements Exception {

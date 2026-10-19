@@ -212,28 +212,77 @@ class AppState extends ChangeNotifier {
   LoginChallenge? pendingLoginChallenge;
   List<Map<String, dynamic>> recentTrades = [];
   bool submittingOrder = false;
-  ({int userId, ProductMode product, String commandId})? pendingTradingCommand;
-  bool get tradingCommandPending =>
-      pendingTradingCommand?.userId == userId && pendingTradingCommand != null;
+  // Per user so a late response cannot replace another account's unresolved order.
+  final Map<int, PendingTradingOrder> _pendingTradingOrders = {};
+  PendingTradingOrder? get pendingTradingCommand =>
+      _pendingTradingOrders[userId];
+  bool get tradingCommandPending => pendingTradingCommand != null;
+  Future<void> _settingsWriteTail = Future<void>.value();
 
   Future<void> checkPendingTradingCommand() async {
     final pending = pendingTradingCommand;
     if (pending == null || pending.userId != userId || submittingOrder) return;
+    final epoch = _walletSessionVersion;
+    bool current() =>
+        epoch == _walletSessionVersion && userId == pending.userId;
     submittingOrder = true;
     lastError = null;
     notifyListeners();
     try {
-      final receipt = await api.get(
-        '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId)}',
-        userId: pending.userId,
-        productLine: pending.product.productLine,
-      );
-      if (pendingTradingCommand != pending || userId != pending.userId) return;
-      if (receipt['outcome'] == 'TERMINAL' ||
-          receipt['outcome'] == 'NOT_ACCEPTED') {
-        pendingTradingCommand = null;
+      bool? confirmed;
+      if (pending.clientOrderId != null && pending.instrumentId != null) {
+        try {
+          final order = await api.get(
+            '/api/v1/gateway/trading/by-client-order-id',
+            userId: pending.userId,
+            productLine: pending.product.productLine,
+            query: {
+              'userId': '${pending.userId}',
+              'clientOrderId': pending.clientOrderId!,
+            },
+          );
+          if (asInt(order['userId']) != pending.userId ||
+              order['clientOrderId'] != pending.clientOrderId ||
+              asString(order['instrumentId']) != pending.instrumentId ||
+              asInt(order['orderId']) <= 0 ||
+              ![
+                'PENDING_RESERVE',
+                'ACCEPTED',
+                'REJECTED',
+                'CANCEL_REQUESTED',
+                'CANCELED',
+                'PARTIALLY_FILLED',
+                'FILLED',
+              ].contains(order['status'])) {
+            throw const FormatException('委托恢复资料不匹配');
+          }
+          confirmed = order['status'] != 'REJECTED';
+        } on ApiException catch (error) {
+          if (error.statusCode != 404) rethrow;
+        }
+      }
+      if (confirmed == null && pending.commandId != null) {
+        final receipt = await api.get(
+          '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId!)}',
+          userId: pending.userId,
+          productLine: pending.product.productLine,
+        );
+        if (receipt['commandId'] != pending.commandId) {
+          throw const FormatException('委托回执不匹配');
+        }
+        // NOT_ACCEPTED here concerns the lookup, not the original trading command.
+        if (receipt['outcome'] == 'TERMINAL' &&
+            receipt['code'] is String &&
+            asString(receipt['code']).isNotEmpty) {
+          confirmed = receipt['code'] == 'NONE';
+        }
+      }
+      if (!current() || pendingTradingCommand != pending) return;
+      if (confirmed != null) {
+        _pendingTradingOrders.remove(pending.userId);
         await _writeSettings();
-        if (receipt['outcome'] == 'TERMINAL' && receipt['code'] == 'NONE') {
+        if (!current()) return;
+        if (confirmed) {
           lastNotice = '委托处理结果已确认，订单状态以最新账户数据为准';
           await refreshPrivateData();
         } else {
@@ -243,10 +292,12 @@ class AppState extends ChangeNotifier {
         lastNotice = '委托结果仍待确认，请勿重复提交';
       }
     } catch (error) {
-      lastError = '查询委托结果失败：${clientErrorMessage(error)}';
+      if (current()) lastError = '查询委托结果失败：${clientErrorMessage(error)}';
     } finally {
-      submittingOrder = false;
-      notifyListeners();
+      if (current()) {
+        submittingOrder = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -593,11 +644,37 @@ class AppState extends ChangeNotifier {
           .where((p) => p.productLine == values['pendingTradingProduct'])
           .firstOrNull;
       if (command != null && commandUser != null && commandProduct != null) {
-        pendingTradingCommand = (
+        _pendingTradingOrders[commandUser] = PendingTradingOrder(
           userId: commandUser,
           product: commandProduct,
           commandId: command,
         );
+      }
+      for (final row in asList(
+        jsonDecode(values['pendingTradingOrders'] ?? '[]'),
+      )) {
+        final value = asMap(row);
+        final id = asInt(value['userId']);
+        final product = ProductMode.values
+            .where((p) => p.productLine == value['productLine'])
+            .firstOrNull;
+        final commandId = _nonEmpty(asString(value['commandId']));
+        final clientOrderId = _nonEmpty(asString(value['clientOrderId']));
+        final instrumentId = _nonEmpty(asString(value['instrumentId']));
+        if (id > 0 &&
+            product != null &&
+            (commandId != null ||
+                (product.isSpot &&
+                    clientOrderId != null &&
+                    instrumentId != null))) {
+          _pendingTradingOrders[id] = PendingTradingOrder(
+            userId: id,
+            product: product,
+            commandId: commandId,
+            clientOrderId: clientOrderId,
+            instrumentId: instrumentId,
+          );
+        }
       }
     } catch (_) {
       clientTheme = ClientTheme.dark;
@@ -612,6 +689,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> _writeSettings() async {
+    final previous = _settingsWriteTail;
+    final completed = Completer<void>();
+    _settingsWriteTail = completed.future;
+    await previous;
     try {
       final values = <String, String>{
         'theme': clientTheme.code,
@@ -628,18 +709,27 @@ class AppState extends ChangeNotifier {
       if (withdrawalUserId != null) {
         values['withdrawalUserId'] = '$withdrawalUserId';
       }
-      final pending = pendingTradingCommand;
-      if (pending != null) {
-        values['pendingTradingCommand'] = pending.commandId;
-        values['pendingTradingUser'] = '${pending.userId}';
-        values['pendingTradingProduct'] = pending.product.productLine;
-      }
+      values['pendingTradingOrders'] = jsonEncode(
+        _pendingTradingOrders.values
+            .map(
+              (pending) => {
+                'userId': pending.userId,
+                'productLine': pending.product.productLine,
+                'commandId': pending.commandId,
+                'clientOrderId': pending.clientOrderId,
+                'instrumentId': pending.instrumentId,
+              },
+            )
+            .toList(),
+      );
       if (withdrawalOutcomeLocked) values['withdrawalLocked'] = 'true';
       if (withdrawalOutcomeUnknown) values['withdrawalUnknown'] = 'true';
       await settingsStore.write(values);
       return true;
     } catch (_) {
       return false;
+    } finally {
+      completed.complete();
     }
   }
 
@@ -830,15 +920,21 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _refreshStoredSession(AuthSession stored) async {
+    final epoch = _walletSessionVersion;
+    final previous = session;
+    bool current() =>
+        epoch == _walletSessionVersion && identical(previous, session);
     if (stored.refreshTokenExpired) {
       await sessionStore.clear();
       return;
     }
     try {
       final refreshed = await api.refresh(stored.refreshToken);
+      if (!current()) return;
       await _activateSession(refreshed, persist: true);
       lastNotice = '已恢复登录状态';
     } on ApiException catch (error) {
+      if (!current()) return;
       if (error.statusCode == 401 || error.statusCode == 403) {
         await sessionStore.clear();
         lastError = '登录状态已失效，请重新登录';
@@ -846,6 +942,7 @@ class AppState extends ChangeNotifier {
         lastNotice = '网络暂不可用，登录状态将在连接恢复后重试';
       }
     } catch (_) {
+      if (!current()) return;
       lastNotice = '网络暂不可用，登录状态将在连接恢复后重试';
     }
   }
@@ -952,6 +1049,7 @@ class AppState extends ChangeNotifier {
 
   void _clearWalletData() {
     ++_walletSessionVersion;
+    submittingOrder = false;
     ++_walletVersion;
     withdrawalRulesLoading = false;
     ++_walletPricesVersion;
@@ -1553,6 +1651,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (instrument.symbol.isEmpty ||
+        (instrument.isSpot && instrument.instrumentId.isEmpty) ||
         quantitySteps <= 0 ||
         (orderType != 'MARKET' &&
             bboPriceMode == null &&
@@ -1575,16 +1674,45 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final epoch = _walletSessionVersion;
+    bool current() => epoch == _walletSessionVersion && userId == id;
+    final random = math.Random.secure();
+    final pendingIntent = instrument.isSpot
+        ? PendingTradingOrder(
+            userId: id,
+            product: instrument.mode,
+            instrumentId: instrument.instrumentId,
+            clientOrderId:
+                'app-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}',
+          )
+        : null;
+    var issued = false;
+    var outcomeConfirmed = false;
     submittingOrder = true;
     notifyListeners();
     try {
       final productLine = instrument.mode.productLine;
+      final intent = pendingIntent;
+      if (intent != null) {
+        _pendingTradingOrders[id] = intent;
+        if (!await _writeSettings()) {
+          _pendingTradingOrders.remove(id);
+          if (current()) lastError = '无法保存委托恢复资料，未发送订单';
+          return;
+        }
+        if (!current()) {
+          _pendingTradingOrders.remove(id);
+          await _writeSettings();
+          return;
+        }
+      }
       final effectivePositionSide =
           instrument.isSpot || positionMode == 'ONE_WAY'
           ? 'NET'
           : positionSide == 'NET'
           ? (side == 'SELL' ? 'SHORT' : 'LONG')
           : positionSide;
+      issued = true;
       final order = await api.placeOrder(
         userId: id,
         symbol: instrument.symbol,
@@ -1603,9 +1731,30 @@ class AppState extends ChangeNotifier {
         postOnly: postOnly,
         bboPriceMode: bboPriceMode,
         productLine: productLine,
+        clientOrderId: intent?.clientOrderId,
       );
-      if (order.status == 'REJECTED' || order.orderId <= 0) {
-        throw const FormatException('订单未被接受，请检查委托结果后重试');
+      if (order.orderId <= 0 ||
+          (instrument.isSpot &&
+              ![
+                'PENDING_RESERVE',
+                'ACCEPTED',
+                'REJECTED',
+                'CANCEL_REQUESTED',
+                'CANCELED',
+                'PARTIALLY_FILLED',
+                'FILLED',
+              ].contains(order.status))) {
+        throw const FormatException('委托响应不完整，请查询原委托结果');
+      }
+      outcomeConfirmed = true;
+      if (intent != null) {
+        _pendingTradingOrders.remove(id);
+        await _writeSettings();
+      }
+      if (!current()) return;
+      if (order.status == 'REJECTED') {
+        lastError = '订单未被接受，请检查委托结果后重试';
+        return;
       }
       if (mode == instrument.mode &&
           selectedSymbol == instrument.symbol &&
@@ -1615,19 +1764,34 @@ class AppState extends ChangeNotifier {
       lastNotice = '订单已提交 #${order.orderId}';
       await refreshPrivateData();
     } on PendingTradingCommand catch (pending) {
-      pendingTradingCommand = (
+      _pendingTradingOrders[id] = PendingTradingOrder(
         userId: id,
         product: instrument.mode,
-        commandId: pending.commandId,
+        commandId: _nonEmpty(pending.commandId),
+        clientOrderId: pendingIntent?.clientOrderId,
+        instrumentId: pendingIntent?.instrumentId,
       );
       await _writeSettings();
-      lastNotice = pending.message;
+      if (current()) lastNotice = pending.message;
     } catch (error) {
-      lastError = '下单失败：${clientErrorMessage(error)}';
+      if (pendingIntent != null &&
+          issued &&
+          !outcomeConfirmed &&
+          !isDefinitiveOrderRejection(error)) {
+        if (current()) lastNotice = '委托结果待确认，请勿重复提交';
+      } else {
+        if (pendingIntent != null) {
+          _pendingTradingOrders.remove(id);
+          await _writeSettings();
+        }
+        if (current()) lastError = '下单失败：${clientErrorMessage(error)}';
+      }
     } finally {
-      submittingOrder = false;
+      if (current()) {
+        submittingOrder = false;
+        notifyListeners();
+      }
     }
-    notifyListeners();
   }
 
   Future<void> cancelOrder(OrderModel order) async {
@@ -1652,7 +1816,7 @@ class AppState extends ChangeNotifier {
       lastNotice = '撤单已提交 #${order.orderId}';
       await refreshPrivateData();
     } on PendingTradingCommand catch (pending) {
-      pendingTradingCommand = (
+      _pendingTradingOrders[id] = PendingTradingOrder(
         userId: id,
         product: product,
         commandId: pending.commandId,

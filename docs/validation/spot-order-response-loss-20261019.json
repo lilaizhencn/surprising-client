@@ -1,0 +1,270 @@
+{
+  "date": "2026-10-19",
+  "scope": "普通现货下单的响应丢失恢复；保留完整多产品目标，本轮没有调试其他产品的交易流程",
+  "rootCauses": [
+    "两端收到 commandId 才保存待确认状态，已发送但响应丢失时会丢掉原请求身份",
+    "手工查询将查询请求自身的 NOT_ACCEPTED 当作原订单未被接受，可能过早解锁",
+    "异步登录刷新或连接建立期间的账户变更可能让旧请求借用新凭证重发",
+    "client 原先只存一条全局待确认记录，其他用户晚到响应可能覆盖该记录"
+  ],
+  "changes": [
+    "普通现货 POST 前持久化 userId/productLine/clientOrderId/instrumentId，存储失败不发送",
+    "网络错误、5xx、无法解析的响应保留待确认，明确拒绝或完整订单确认后才清理",
+    "按原 clientOrderId 查询 realtime 活动视图及提交投影，校验用户、请求号、交易对和有效订单号",
+    "404 不证明未被受理；视图不可用或身份不匹配不解锁，也不回退到 Core 业务状态查询",
+    "已有 commandId 仍可查询处理回执；查询自身的 NOT_ACCEPTED 不解锁，只有原命令终态才确认",
+    "Web 使用每个请求独立的 localStorage 记录和跨标签页通知；现有 tab 回执记录读取时迁入",
+    "client 按用户保存 PendingTradingOrder，串行写入已有安全设置；原单条回执记录读取时迁入同一集合",
+    "Web JSON 请求在登录刷新后核对预期用户；client 连接建立后检查凭证，旧刷新不能替换新会话",
+    "不自动重发未知结果的 POST；恢复使用查询"
+  ],
+  "ownership": {
+    "web": "state/pendingOrders.ts 只保存未决请求身份，API 在发送前写入，页面监听同一持久记录；不是订单或资金状态副本",
+    "client": "PendingTradingOrder 是不可变的未决请求身份；AppState 按用户持有并写入现有 ClientSettingsStore；串行写入防止旧设置覆盖新记录",
+    "backend": "本轮没有后端源码、资金模型或协议变更；现有 OrderService.getByClientOrderId 读取 ValkeyUserQueries 与已提交终态投影"
+  },
+  "redGreen": {
+    "web": {
+      "before": "TypeError: connection reset after sending；预期 PendingTradingCommand，旧实现仅抛出传输错误",
+      "testsBeforeFix": 5,
+      "failedBeforeFix": 1,
+      "after": "相同传输错误保留原请求记录并阻止另一条 POST"
+    },
+    "client": {
+      "before": "SocketException 后 tradingCommandPending 预期 true，旧实现为 false",
+      "failedBeforeFix": 1,
+      "after": "相同用例通过；冷启动后按原 clientOrderId 只读恢复"
+    }
+  },
+  "verification": {
+    "web": {
+      "commands": [
+        "npm run lint",
+        "npm run build",
+        "npm test"
+      ],
+      "testFiles": 28,
+      "tests": 170,
+      "failed": 0,
+      "lintErrors": 0,
+      "lintWarnings": 0,
+      "note": "保留已有 lint 信息及构建 chunk 体积提示，退出码均为 0"
+    },
+    "client": {
+      "commands": [
+        "flutter analyze",
+        "flutter test --reporter expanded"
+      ],
+      "tests": 147,
+      "failed": 0,
+      "analysisIssues": 0,
+      "targetedTicketTests": 17,
+      "boundaries": [
+        "真实 HTTP 读完 POST 后直接断开响应，随后一条 GET 恢复已成交订单",
+        "冷启动恢复原请求号",
+        "存储失败时不调用 POST",
+        "明确校验拒绝清理、服务异常保留",
+        "无效响应、503、身份不匹配保留待确认",
+        "查询 NOT_ACCEPTED 不解锁",
+        "双用户记录隔离和旧响应不改变新界面",
+        "旧刷新不能重发 POST 或替换新用户，回调次数为零",
+        "dispose 后迟到结果不通知界面",
+        "320px 深浅主题实际点击下单、查询 404、查到订单解锁，全程一个 POST"
+      ]
+    },
+    "backend": {
+      "jdk": "Amazon Corretto 27 HotSpot",
+      "command": "mvn -o -pl surprising-gateway -am '-Dtest=OrderServiceTest,LocalBusinessApiTest,OrderControllerTest,StableOrderIdentityTest' -Dsurefire.failIfNoSpecifiedTests=false test",
+      "tests": 116,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "classes": {
+        "OrderServiceTest": 81,
+        "LocalBusinessApiTest": 24,
+        "OrderControllerTest": 9,
+        "StableOrderIdentityTest": 2
+      },
+      "evidence": "终态 clientOrderId 查询的参数化测试覆盖六产品身份，断言读取提交投影且 verifyNoInteractions(aeronOrders)；本轮未启动其他产品服务"
+    },
+    "browser": {
+      "type": "本地 Vite + Chromium，受控 HTTP/WS 夹具；不是生产服务或真实撮合成交",
+      "results": [
+        {
+          "width": 1440,
+          "theme": "dark",
+          "persistedBeforePost": true,
+          "posts": [
+            {
+              "userId": 1,
+              "clientOrderId": "web-cbb1585d-6d2d-4c24-a1d1-22076d9340c8",
+              "instrumentId": "1",
+              "side": "BUY",
+              "orderType": "LIMIT",
+              "timeInForce": "GTC",
+              "priceTicks": "1000",
+              "quantitySteps": "9",
+              "marginMode": "CROSS",
+              "positionSide": "NET",
+              "reduceOnly": false,
+              "postOnly": false
+            }
+          ],
+          "queries": [
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-cbb1585d-6d2d-4c24-a1d1-22076d9340c8",
+              "product": "SPOT"
+            },
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-cbb1585d-6d2d-4c24-a1d1-22076d9340c8",
+              "product": "SPOT"
+            }
+          ],
+          "reloadPreservedLock": true,
+          "notFoundPreservedLock": true,
+          "filledProjectionUnlocked": true,
+          "errors": [],
+          "overflow": false
+        },
+        {
+          "width": 1440,
+          "theme": "light",
+          "persistedBeforePost": true,
+          "posts": [
+            {
+              "userId": 1,
+              "clientOrderId": "web-40de1b76-7d48-4983-87f2-5b04e3c4b305",
+              "instrumentId": "1",
+              "side": "BUY",
+              "orderType": "LIMIT",
+              "timeInForce": "GTC",
+              "priceTicks": "1000",
+              "quantitySteps": "9",
+              "marginMode": "CROSS",
+              "positionSide": "NET",
+              "reduceOnly": false,
+              "postOnly": false
+            }
+          ],
+          "queries": [
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-40de1b76-7d48-4983-87f2-5b04e3c4b305",
+              "product": "SPOT"
+            },
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-40de1b76-7d48-4983-87f2-5b04e3c4b305",
+              "product": "SPOT"
+            }
+          ],
+          "reloadPreservedLock": true,
+          "notFoundPreservedLock": true,
+          "filledProjectionUnlocked": true,
+          "errors": [],
+          "overflow": false
+        },
+        {
+          "width": 390,
+          "theme": "dark",
+          "persistedBeforePost": true,
+          "posts": [
+            {
+              "userId": 1,
+              "clientOrderId": "web-978b30ad-ee0c-412d-8b4b-1efdab567832",
+              "instrumentId": "1",
+              "side": "BUY",
+              "orderType": "LIMIT",
+              "timeInForce": "GTC",
+              "priceTicks": "1000",
+              "quantitySteps": "9",
+              "marginMode": "CROSS",
+              "positionSide": "NET",
+              "reduceOnly": false,
+              "postOnly": false
+            }
+          ],
+          "queries": [
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-978b30ad-ee0c-412d-8b4b-1efdab567832",
+              "product": "SPOT"
+            },
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-978b30ad-ee0c-412d-8b4b-1efdab567832",
+              "product": "SPOT"
+            }
+          ],
+          "reloadPreservedLock": true,
+          "notFoundPreservedLock": true,
+          "filledProjectionUnlocked": true,
+          "errors": [],
+          "overflow": false
+        },
+        {
+          "width": 390,
+          "theme": "light",
+          "persistedBeforePost": true,
+          "posts": [
+            {
+              "userId": 1,
+              "clientOrderId": "web-38a32976-3b3a-4a27-9002-02761f90ce64",
+              "instrumentId": "1",
+              "side": "BUY",
+              "orderType": "LIMIT",
+              "timeInForce": "GTC",
+              "priceTicks": "1000",
+              "quantitySteps": "9",
+              "marginMode": "CROSS",
+              "positionSide": "NET",
+              "reduceOnly": false,
+              "postOnly": false
+            }
+          ],
+          "queries": [
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-38a32976-3b3a-4a27-9002-02761f90ce64",
+              "product": "SPOT"
+            },
+            {
+              "path": "/api/v1/gateway/trading/by-client-order-id",
+              "clientOrderId": "web-38a32976-3b3a-4a27-9002-02761f90ce64",
+              "product": "SPOT"
+            }
+          ],
+          "reloadPreservedLock": true,
+          "notFoundPreservedLock": true,
+          "filledProjectionUnlocked": true,
+          "errors": [],
+          "overflow": false
+        }
+      ]
+    }
+  },
+  "remainingRequirements": [
+    "请求未到达服务端，或回执过保留期且没有订单投影时，仍缺少可证明未执行的负确认机制；保留待确认且不重发",
+    "Core CommandResultLedger.MAX_IDEMPOTENCY_RESULTS 当前为 128，查询无回执不能区分从未提交和已过保留期；后续应补齐 realtime 的持久交易处理结果与确认边界",
+    "普通现货下单以外的撤单、改单、批量、触发和算法写入尚未扩展发送前持久化",
+    "专用查询继续逐项检查；不能据本轮声称所有 Core 查询已迁出",
+    "本轮未运行 FUSED 真实做市栈、真实资金守恒验收或原生真机安装；此前实链路记录不代替新增恢复行为的验收",
+    "交割、期权及其余产品完整代码/UI/交互验收仍未完成；总目标保持 active"
+  ],
+  "cleanup": {
+    "state": "complete",
+    "ownedViteStopped": true,
+    "port5189Released": true,
+    "browserClosed": true,
+    "javaServicesStarted": false,
+    "walletStarted": false,
+    "externalDatabaseRedisKafkaWrites": false,
+    "ownedTemporaryRoot": "/var/folders/hx/xjj38_ln7kq9t86kzh9jz_9h0000gn/T/surprising-spot-recovery-ui-t2xveuzy",
+    "ownedTemporaryRootRemoved": true,
+    "ownedLogsRemoved": true,
+    "fourCurrentSurefireReportPairsRemoved": true,
+    "note": "临时路径只作历史定位。仅清理本轮文件，保留既有 PostgreSQL 和构建依赖"
+  }
+}

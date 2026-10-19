@@ -763,6 +763,20 @@ class Position {
   }
 }
 
+/// A persisted submission identity, kept until a receipt or realtime order confirms it.
+class PendingTradingOrder {
+  const PendingTradingOrder({
+    required this.userId,
+    required this.product,
+    this.commandId,
+    this.clientOrderId,
+    this.instrumentId,
+  });
+  final int userId;
+  final ProductMode product;
+  final String? commandId, clientOrderId, instrumentId;
+}
+
 class OrderModel {
   const OrderModel({
     required this.orderId,

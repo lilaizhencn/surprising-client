@@ -193,3 +193,7 @@ analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已�
 断网、空/不匹配回执与服务不可用保留“确认并继续撤单”；重启恢复时 GET 已发送批次，确认后才提交原计划尚未发送的后续批次，不重发原批、不加入新委托。初始或进度存储失败停止发送，换账户停止旧账户后续批次，结果只对所属账户显示。订单和资金状态仍以 realtime 为准。
 
 依赖后端 SQL 迁移、realtime 更新及必要的旧批次逐项结果回补，然后发布 gateway 与两端。本轮没有安装原生 iOS/Android 或重跑完整 FUSED 服务栈；旧底层直接 cancel-open、批量下单/改单、其他产品 UI 仍待逐项验收。见 [验证记录](docs/validation/spot-bulk-cancellation-20261019.json)。
+
+现货 FUSED 实链路补充：可选 `test/spot_fused_live_test.dart` 使用真实 AppState、HTTP 和 WebSocket，在真实做市下处理 52 笔委托。网关处理首批后丢弃响应、暂停本轮 realtime 产生真实 202；恢复并重建 AppState 后原键保留，总共两次不同批次 POST，51 成功/1 已结束，最终真实盘口存在且私有冻结为零，320px 暗色面板可看失败详情。测试注入内存设置/SessionStore 以在 host Flutter 测试中运行；没有安装 iOS/Android 设备。
+
+实栈用例只在设置 `SPOT_FUSED_LIVE_FIXTURE` 和 `SPOT_FUSED_REALTIME_PID_FILE` 后运行，需要后端 `SixProductLineContractLiveTest` 的四分钟交接窗口，并校验 PID launcher identity。命令为 `flutter test test/spot_fused_live_test.dart --reporter expanded`；普通全量回归默认跳过该用例。后端复现流程见 `docs/realtime-command-results.md`，本仓库 [实测证据](docs/validation/spot-fused-clients-20261019.json)。

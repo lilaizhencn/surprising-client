@@ -212,6 +212,44 @@ class AppState extends ChangeNotifier {
   LoginChallenge? pendingLoginChallenge;
   List<Map<String, dynamic>> recentTrades = [];
   bool submittingOrder = false;
+  ({int userId, ProductMode product, String commandId})? pendingTradingCommand;
+  bool get tradingCommandPending =>
+      pendingTradingCommand?.userId == userId && pendingTradingCommand != null;
+
+  Future<void> checkPendingTradingCommand() async {
+    final pending = pendingTradingCommand;
+    if (pending == null || pending.userId != userId || submittingOrder) return;
+    submittingOrder = true;
+    lastError = null;
+    notifyListeners();
+    try {
+      final receipt = await api.get(
+        '/api/v1/gateway/trading-orders/commands/${Uri.encodeComponent(pending.commandId)}',
+        userId: pending.userId,
+        productLine: pending.product.productLine,
+      );
+      if (pendingTradingCommand != pending || userId != pending.userId) return;
+      if (receipt['outcome'] == 'TERMINAL' ||
+          receipt['outcome'] == 'NOT_ACCEPTED') {
+        pendingTradingCommand = null;
+        await _writeSettings();
+        if (receipt['outcome'] == 'TERMINAL' && receipt['code'] == 'NONE') {
+          lastNotice = '委托处理结果已确认，订单状态以最新账户数据为准';
+          await refreshPrivateData();
+        } else {
+          lastError = '委托未被接受，请检查订单状态';
+        }
+      } else {
+        lastNotice = '委托结果仍待确认，请勿重复提交';
+      }
+    } catch (error) {
+      lastError = '查询委托结果失败：${clientErrorMessage(error)}';
+    } finally {
+      submittingOrder = false;
+      notifyListeners();
+    }
+  }
+
   bool submittingTriggers = false;
   int _selectionVersion = 0;
   int _instrumentRequestVersion = 0;
@@ -513,6 +551,18 @@ class AppState extends ChangeNotifier {
       _withdrawalIntentUserId = int.tryParse(values['withdrawalUserId'] ?? '');
       withdrawalOutcomeLocked = values['withdrawalLocked'] == 'true';
       withdrawalOutcomeUnknown = values['withdrawalUnknown'] == 'true';
+      final command = _nonEmpty(values['pendingTradingCommand']);
+      final commandUser = int.tryParse(values['pendingTradingUser'] ?? '');
+      final commandProduct = ProductMode.values
+          .where((p) => p.productLine == values['pendingTradingProduct'])
+          .firstOrNull;
+      if (command != null && commandUser != null && commandProduct != null) {
+        pendingTradingCommand = (
+          userId: commandUser,
+          product: commandProduct,
+          commandId: command,
+        );
+      }
     } catch (_) {
       clientTheme = ClientTheme.dark;
       language = ClientLanguage.zhHans;
@@ -541,6 +591,12 @@ class AppState extends ChangeNotifier {
       final withdrawalUserId = _withdrawalIntentUserId;
       if (withdrawalUserId != null) {
         values['withdrawalUserId'] = '$withdrawalUserId';
+      }
+      final pending = pendingTradingCommand;
+      if (pending != null) {
+        values['pendingTradingCommand'] = pending.commandId;
+        values['pendingTradingUser'] = '${pending.userId}';
+        values['pendingTradingProduct'] = pending.product.productLine;
       }
       if (withdrawalOutcomeLocked) values['withdrawalLocked'] = 'true';
       if (withdrawalOutcomeUnknown) values['withdrawalUnknown'] = 'true';
@@ -1428,15 +1484,31 @@ class AppState extends ChangeNotifier {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? bboPriceMode,
     Instrument? targetInstrument,
   }) async {
-    if (submittingOrder) return;
+    if (submittingOrder || tradingCommandPending) return;
     lastError = null;
     lastNotice = null;
     final instrument = targetInstrument ?? selectedInstrument;
+    try {
+      validateOrderPolicy(orderType, timeInForce, postOnly, bboPriceMode);
+    } on FormatException catch (error) {
+      lastError = error.message;
+      notifyListeners();
+      return;
+    }
+    if (instrument.status != 'TRADING') {
+      lastError = instrument.status == 'PRE_TRADING'
+          ? '该交易对尚未开放交易'
+          : '该交易对已暂停交易';
+      notifyListeners();
+      return;
+    }
     if (instrument.symbol.isEmpty ||
         quantitySteps <= 0 ||
         (orderType != 'MARKET' &&
+            bboPriceMode == null &&
             (!price.isFinite ||
                 price <= 0 ||
                 decimalIncrement(
@@ -1470,16 +1542,20 @@ class AppState extends ChangeNotifier {
         side: side,
         orderType: orderType,
         timeInForce: timeInForce,
-        priceTicks: orderType == 'MARKET'
+        priceTicks: orderType == 'MARKET' || bboPriceMode != null
             ? 0
             : instrument.ticksFromPrice(price),
         quantitySteps: quantitySteps,
-        marginMode: marginMode,
+        marginMode: instrument.isSpot ? 'CROSS' : marginMode,
         positionSide: effectivePositionSide,
-        reduceOnly: reduceOnly,
+        reduceOnly: !instrument.isSpot && reduceOnly,
         postOnly: postOnly,
+        bboPriceMode: bboPriceMode,
         productLine: productLine,
       );
+      if (order.status == 'REJECTED' || order.orderId <= 0) {
+        throw const FormatException('订单未被接受，请检查委托结果后重试');
+      }
       if (mode == instrument.mode &&
           selectedSymbol == instrument.symbol &&
           userId == id) {
@@ -1487,6 +1563,14 @@ class AppState extends ChangeNotifier {
       }
       lastNotice = '订单已提交 #${order.orderId}';
       await refreshPrivateData();
+    } on PendingTradingCommand catch (pending) {
+      pendingTradingCommand = (
+        userId: id,
+        product: instrument.mode,
+        commandId: pending.commandId,
+      );
+      await _writeSettings();
+      lastNotice = pending.message;
     } catch (error) {
       lastError = '下单失败：${clientErrorMessage(error)}';
     } finally {
@@ -1497,9 +1581,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> cancelOrder(OrderModel order) async {
     final id = userId;
-    if (id == null) return;
+    if (id == null || submittingOrder || tradingCommandPending) return;
     final product = mode;
     final token = session?.accessToken;
+    submittingOrder = true;
+    notifyListeners();
     try {
       final cancelled = await api.cancelOrder(
         id,
@@ -1514,8 +1600,18 @@ class AppState extends ChangeNotifier {
       }
       lastNotice = '撤单已提交 #${order.orderId}';
       await refreshPrivateData();
+    } on PendingTradingCommand catch (pending) {
+      pendingTradingCommand = (
+        userId: id,
+        product: product,
+        commandId: pending.commandId,
+      );
+      await _writeSettings();
+      lastNotice = pending.message;
     } catch (error) {
       lastError = '撤单失败：${clientErrorMessage(error)}';
+    } finally {
+      submittingOrder = false;
     }
     notifyListeners();
   }

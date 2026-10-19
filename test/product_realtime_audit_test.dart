@@ -436,6 +436,7 @@ class CloseApi extends ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? bboPriceMode,
     String? productLine,
   }) async {
     this.symbol = symbol;

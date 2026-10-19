@@ -96,3 +96,24 @@ Trading-detail verification result: `flutter analyze` reported no issues; all 90
 `dart run tool/account_readonly_smoke.dart` asks for credentials through hidden terminal input and prints only counts/statuses. The production run authenticated successfully and read MFA, 8 security scenes, 3 login verification methods, active sessions, login history, API keys, KYC/documents and positive USD/CNY rates. Both `/api/v1/gateway/wallet/app/portfolio` and `/api/v1/gateway/wallet/app/orders` returned HTTP 504. Funding totals and records therefore **did not pass live acceptance**; the client displays unavailable/error rather than a fabricated zero. No transfer, withdrawal or security mutation was made.
 
 Verification: `flutter analyze` clean; 98 unit/widget tests passed; all 8 account-display cases passed on the iPhone 17 Pro iOS 26.5 simulator. Android device acceptance and live security mutations remain unverified.
+
+## 现货委托对齐进度（2026-10-19）
+
+本轮只调试 SPOT，其他产品页的完整业务验收仍待逐条完成。Client 增加与 Web 一致的
+BBO 对手/同向 1、5 档；限价由服务端提交时确定，发送 priceTicks=0，不用本地盘口假装已确定限价。
+市价单只显示 IOC/FOK；限价支持 GTC/IOC/FOK/GTX，Post Only 与有效方式联动。
+现货不显示只减仓选项，接入层固定 CROSS/NET/reduceOnly=false；暂停或预交易品种不能提交。
+手动取最优价时，买入取卖一、卖出取买一；切换产品/交易对仍由独立页面 key 清空表单。
+
+订单 API 现在解析后端 OrderCommandReceipt.result，避免把回执当订单得到 #0。
+MATCHING_PENDING/RESULT_UNKNOWN 记录命令、用户和产品，阻止继续下单/撤单；用户通过
+“查询委托结果”读取原产品的命令状态。待确认记录存入已有安全设置存储，冷启动按用户恢复；
+终态才清除，不因一次查询错误解锁，也不重发 POST。交易期间网络彻底中断且未收到 commandId 的
+恢复流程、现货余额百分比输入、更多币种精度、完整真实做市/API/WS 交互仍需继续验收，不能据此声称现货全功能完成。
+
+验证：新增 spot_order_ticket_test.dart 覆盖四种 BBO 请求、真实本机 HTTP 回执解码、
+待确认重复提交保护与存储清除、原产品命令查询、暂停交易、320px 深/浅色表单操作。
+回执回归已验证：去掉解码时 orderId 从预期 42 变成 0，恢复解码后通过。
+后台资金路径沿用 FUSED：仅运行 CoreSpotAssetUnitsTest，覆盖 4 种碎片成交/快照恢复组合，
+包含做市方对手单、买卖冻结、手续费和资金守恒、撤单解冻；未启动其他产品或常驻 Java 服务。
+本轮没有真机安装或接入真实全套服务，所有发布声明以实际测试范围为限。

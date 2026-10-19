@@ -172,6 +172,38 @@ String orderTypeLabel(String type) {
   };
 }
 
+const bboPriceModes = [
+  'OPPONENT_1',
+  'OPPONENT_5',
+  'SAME_SIDE_1',
+  'SAME_SIDE_5',
+];
+
+String bboPriceModeLabel(String mode) => switch (mode) {
+  'OPPONENT_1' => '对手价 1',
+  'OPPONENT_5' => '对手价 5',
+  'SAME_SIDE_1' => '同向价 1',
+  'SAME_SIDE_5' => '同向价 5',
+  _ => mode,
+};
+
+void validateOrderPolicy(String type, String tif, bool postOnly, String? bbo) {
+  if (!['LIMIT', 'MARKET'].contains(type) ||
+      !['GTC', 'IOC', 'FOK', 'GTX'].contains(tif)) {
+    throw const FormatException('请选择有效的委托方式');
+  }
+  if (type == 'MARKET' &&
+      (!['IOC', 'FOK'].contains(tif) || postOnly || bbo != null)) {
+    throw const FormatException('市价单仅支持 IOC/FOK，不能使用只挂单或 BBO');
+  }
+  if (postOnly && !['GTC', 'GTX'].contains(tif)) {
+    throw const FormatException('只挂单不能与 IOC/FOK 同时使用');
+  }
+  if (bbo != null && !bboPriceModes.contains(bbo)) {
+    throw const FormatException('请选择有效的 BBO 定价方式');
+  }
+}
+
 String timeInForceLabel(String type) {
   return switch (type) {
     'GTC' => 'GTC',

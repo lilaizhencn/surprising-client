@@ -940,6 +940,7 @@ class ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? bboPriceMode,
     String? productLine,
   }) async {
     final json = await post(
@@ -956,6 +957,7 @@ class ApiClient {
         positionSide: positionSide,
         reduceOnly: reduceOnly,
         postOnly: postOnly,
+        bboPriceMode: bboPriceMode,
       ),
       userId: userId,
       productLine: productLine,
@@ -975,6 +977,7 @@ class ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? bboPriceMode,
     String? productLine,
   }) async {
     final json = await post(
@@ -991,6 +994,7 @@ class ApiClient {
         positionSide: positionSide,
         reduceOnly: reduceOnly,
         postOnly: postOnly,
+        bboPriceMode: bboPriceMode,
         clientOrderId: 'app-test-${DateTime.now().microsecondsSinceEpoch}',
       ),
       userId: userId,
@@ -1675,8 +1679,10 @@ class ApiClient {
     required String positionSide,
     required bool reduceOnly,
     required bool postOnly,
+    String? bboPriceMode,
     String? clientOrderId,
   }) {
+    validateOrderPolicy(orderType, timeInForce, postOnly, bboPriceMode);
     return {
       'userId': userId,
       'clientOrderId':
@@ -1685,7 +1691,10 @@ class ApiClient {
       'side': side,
       'orderType': orderType,
       'timeInForce': timeInForce,
-      'priceTicks': orderType == 'MARKET' ? 0 : priceTicks,
+      'priceTicks': orderType == 'MARKET' || bboPriceMode != null
+          ? 0
+          : priceTicks,
+      'bboPriceMode': ?bboPriceMode,
       'quantitySteps': quantitySteps,
       'marginMode': marginMode,
       'positionSide': positionSide,
@@ -1894,6 +1903,20 @@ class ApiClient {
     }
     if (payload.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(payload);
+    if (method == 'POST' &&
+        path.startsWith('/api/v1/gateway/trading') &&
+        decoded is Map &&
+        decoded.containsKey('outcome')) {
+      final receipt = asMap(decoded);
+      final result = receipt['result'];
+      if (receipt['outcome'] == 'TERMINAL' && result is Map) {
+        return normalizeInstruments(result, productLine);
+      }
+      if (['MATCHING_PENDING', 'RESULT_UNKNOWN'].contains(receipt['outcome'])) {
+        throw PendingTradingCommand(asString(receipt['commandId']));
+      }
+      throw ApiException(409, jsonEncode(receipt));
+    }
     if (unwrapResponseResult) {
       final json = asMap(decoded);
       return _unwrapResponseResult(json);
@@ -1944,6 +1967,13 @@ String clientErrorMessage(Object error) {
     return detail;
   }
   return '操作未完成，请稍后重试';
+}
+
+class PendingTradingCommand extends ApiException {
+  PendingTradingCommand(this.commandId) : super(202, '委托已受理，结果待确认，请勿重复提交');
+  final String commandId;
+  @override
+  String toString() => message;
 }
 
 class ApiException implements Exception {

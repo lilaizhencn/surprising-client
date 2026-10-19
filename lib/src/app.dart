@@ -1306,6 +1306,8 @@ class _TradePageState extends State<TradePage> {
   String positionSide = 'NET';
   bool reduceOnly = false;
   bool postOnly = false;
+  bool bboEnabled = false;
+  String bboPriceMode = 'OPPONENT_1';
   bool priceInitialized = false;
 
   @override
@@ -1452,6 +1454,12 @@ class _TradePageState extends State<TradePage> {
                           positionSide: positionSide,
                           reduceOnly: reduceOnly,
                           postOnly: postOnly,
+                          bboEnabled: bboEnabled,
+                          bboPriceMode: bboPriceMode,
+                          onBboEnabled: (value) =>
+                              setState(() => bboEnabled = value),
+                          onBboPriceMode: (value) =>
+                              setState(() => bboPriceMode = value),
                           priceController: priceController,
                           quantityController: quantityController,
                           instrument: instrument,
@@ -1459,18 +1467,24 @@ class _TradePageState extends State<TradePage> {
                           onSide: (value) => setState(() => side = value),
                           onOrderType: (value) => setState(() {
                             orderType = value;
-                            if (value == 'MARKET') postOnly = false;
+                            postOnly = false;
+                            bboEnabled = false;
+                            timeInForce = value == 'MARKET' ? 'IOC' : 'GTC';
                           }),
-                          onTimeInForce: (value) =>
-                              setState(() => timeInForce = value),
+                          onTimeInForce: (value) => setState(() {
+                            timeInForce = value;
+                            postOnly = value == 'GTX';
+                          }),
                           onMarginMode: (value) =>
                               setState(() => marginMode = value),
                           onPositionSide: (value) =>
                               setState(() => positionSide = value),
                           onReduceOnly: (value) =>
                               setState(() => reduceOnly = value),
-                          onPostOnly: (value) =>
-                              setState(() => postOnly = value),
+                          onPostOnly: (value) => setState(() {
+                            postOnly = value;
+                            timeInForce = value ? 'GTX' : 'GTC';
+                          }),
                           onSubmit: () {
                             if (state.submittingOrder) return;
                             if (!state.isLoggedIn) {
@@ -1478,6 +1492,7 @@ class _TradePageState extends State<TradePage> {
                               return;
                             }
                             if (orderType != 'MARKET' &&
+                                !bboEnabled &&
                                 decimalIncrement(
                                       priceController.text,
                                       instrument.priceTickUnits,
@@ -1517,6 +1532,9 @@ class _TradePageState extends State<TradePage> {
                                     ? false
                                     : reduceOnly,
                                 postOnly: postOnly,
+                                bboPriceMode: orderType == 'LIMIT' && bboEnabled
+                                    ? bboPriceMode
+                                    : null,
                               ),
                             );
                           },
@@ -1530,7 +1548,13 @@ class _TradePageState extends State<TradePage> {
                           orderBook: state.orderBook,
                           latestPrice: latestPrice,
                           onPrice: (price) {
-                            priceController.text = price;
+                            setState(() {
+                              bboEnabled = false;
+                              orderType = 'LIMIT';
+                              timeInForce = 'GTC';
+                              postOnly = false;
+                              priceController.text = price;
+                            });
                           },
                         ),
                       ),
@@ -5021,6 +5045,10 @@ class OrderTicket extends StatelessWidget {
     required this.positionSide,
     required this.reduceOnly,
     required this.postOnly,
+    required this.bboEnabled,
+    required this.bboPriceMode,
+    required this.onBboEnabled,
+    required this.onBboPriceMode,
     required this.priceController,
     required this.quantityController,
     required this.instrument,
@@ -5044,6 +5072,10 @@ class OrderTicket extends StatelessWidget {
   final String positionSide;
   final bool reduceOnly;
   final bool postOnly;
+  final bool bboEnabled;
+  final String bboPriceMode;
+  final ValueChanged<bool> onBboEnabled;
+  final ValueChanged<String> onBboPriceMode;
   final TextEditingController priceController;
   final TextEditingController quantityController;
   final Instrument instrument;
@@ -5107,7 +5139,9 @@ class OrderTicket extends StatelessWidget {
                 Expanded(
                   child: SmallDropdown(
                     value: timeInForce,
-                    values: const ['GTC', 'IOC', 'FOK', 'GTX'],
+                    values: orderType == 'MARKET'
+                        ? const ['IOC', 'FOK']
+                        : const ['GTC', 'IOC', 'FOK', 'GTX'],
                     labelBuilder: timeInForceLabel,
                     onChanged: onTimeInForce,
                   ),
@@ -5141,31 +5175,56 @@ class OrderTicket extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 5),
-            Row(
-              children: [
-                Expanded(
-                  child: TradeNumericField(
-                    controller: priceController,
-                    label: '价格 (${instrument.quoteAsset})',
-                    enabled: orderType != 'MARKET',
-                    onMinus: () => stepPrice(-1),
-                    onPlus: () => stepPrice(1),
+            if (orderType == 'LIMIT') ...[
+              ToggleLine(
+                label: 'BBO 最优价',
+                value: bboEnabled,
+                onChanged: onBboEnabled,
+              ),
+              if (bboEnabled) ...[
+                SmallDropdown(
+                  key: const ValueKey('bbo-price-mode'),
+                  value: bboPriceMode,
+                  values: bboPriceModes,
+                  labelBuilder: bboPriceModeLabel,
+                  onChanged: onBboPriceMode,
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '提交时按所选盘口档位确定限价，不随行情自动改价。',
+                    style: TextStyle(fontSize: 10),
                   ),
                 ),
-                const SizedBox(width: 5),
-                BestPriceButton(
-                  enabled: orderType != 'MARKET',
-                  onTap: () {
-                    final bids = AppScope.of(context).orderBook.bids;
-                    if (bids.isEmpty) return;
-                    priceController.text = money(
-                      instrument.priceFromTicks(bids.first.priceTicks),
-                      digits: instrument.pricePrecision,
-                    );
-                  },
-                ),
               ],
-            ),
+            ],
+            if (!bboEnabled || orderType == 'MARKET')
+              Row(
+                children: [
+                  Expanded(
+                    child: TradeNumericField(
+                      controller: priceController,
+                      label: '价格 (${instrument.quoteAsset})',
+                      enabled: orderType != 'MARKET',
+                      onMinus: () => stepPrice(-1),
+                      onPlus: () => stepPrice(1),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  BestPriceButton(
+                    enabled: orderType != 'MARKET',
+                    onTap: () {
+                      final book = AppScope.of(context).orderBook;
+                      final levels = buy ? book.asks : book.bids;
+                      if (levels.isEmpty) return;
+                      priceController.text = money(
+                        instrument.priceFromTicks(levels.first.priceTicks),
+                        digits: instrument.pricePrecision,
+                      );
+                    },
+                  ),
+                ],
+              ),
             const SizedBox(height: 5),
             TradeNumericField(
               controller: quantityController,
@@ -5185,24 +5244,42 @@ class OrderTicket extends StatelessWidget {
             const SizedBox(height: 3),
             Row(
               children: [
-                Expanded(
-                  child: ToggleLine(
-                    label: '只减仓',
-                    value: reduceOnly,
-                    enabled: instrument.isDerivative,
-                    onChanged: onReduceOnly,
+                if (instrument.isDerivative)
+                  Expanded(
+                    child: ToggleLine(
+                      label: '只减仓',
+                      value: reduceOnly,
+                      enabled: instrument.isDerivative,
+                      onChanged: onReduceOnly,
+                    ),
                   ),
-                ),
                 Expanded(
                   child: ToggleLine(
                     label: 'Post',
                     value: postOnly,
+                    enabled: orderType == 'LIMIT',
                     onChanged: onPostOnly,
                   ),
                 ),
               ],
             ),
+            if (instrument.status != 'TRADING')
+              Text(
+                instrument.status == 'PRE_TRADING' ? '该交易对尚未开放交易' : '该交易对已暂停交易',
+                style: const TextStyle(fontSize: 11),
+              ),
             const SizedBox(height: 6),
+            if (AppScope.of(context).tradingCommandPending) ...[
+              const Text('委托结果待确认，请勿重复提交', style: TextStyle(fontSize: 11)),
+              TextButton(
+                onPressed: AppScope.of(context).submittingOrder
+                    ? null
+                    : () => unawaited(
+                        AppScope.of(context).checkPendingTradingCommand(),
+                      ),
+                child: const Text('查询委托结果'),
+              ),
+            ],
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: loggedIn
@@ -5219,7 +5296,12 @@ class OrderTicket extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              onPressed: AppScope.of(context).submittingOrder ? null : onSubmit,
+              onPressed:
+                  AppScope.of(context).submittingOrder ||
+                      AppScope.of(context).tradingCommandPending ||
+                      (loggedIn && instrument.status != 'TRADING')
+                  ? null
+                  : onSubmit,
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn

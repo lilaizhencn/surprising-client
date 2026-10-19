@@ -7,10 +7,17 @@ import 'package:surprising_client/src/funding_records_page.dart';
 import 'package:surprising_client/src/models.dart';
 
 void main() {
+  final line =
+      Platform.environment['DELIVERY_EXPIRY_PRODUCT'] ?? 'LINEAR_DELIVERY';
+  final mode = line == 'INVERSE_DELIVERY'
+      ? ProductMode.inverseDelivery
+      : ProductMode.linearDelivery;
+  final cashUnits = line == 'INVERSE_DELIVERY' ? '78431' : '200000000';
+  final cashText = line == 'INVERSE_DELIVERY' ? 'BTC 0.00078431' : 'USDT 2';
   final email = Platform.environment['LINEAR_DELIVERY_EXPIRY_EMAIL'];
   final id = Platform.environment['LINEAR_DELIVERY_EXPIRY_INSTRUMENT'];
   testWidgets(
-    'LINEAR_DELIVERY FUSED ended contract and actual cash ledger remain queryable',
+    '$line FUSED ended contract and actual cash ledger remain queryable',
     (tester) async {
       await tester.runAsync(
         () => HttpOverrides.runWithHttpOverrides(() async {
@@ -32,10 +39,7 @@ void main() {
               }),
             );
             api.setSession(session);
-            final contract = await api.instrumentLatest(
-              id!,
-              ProductMode.linearDelivery,
-            );
+            final contract = await api.instrumentLatest(id!, mode);
             expect(contract.status, 'CLOSED');
             expect(contract.canPlaceOrder(reduceOnly: true), false);
             state =
@@ -44,7 +48,7 @@ void main() {
                     apiClient: api,
                     seedInstruments: [contract],
                   )
-                  ..mode = ProductMode.linearDelivery
+                  ..mode = mode
                   ..session = session;
             await state.refreshInstruments();
             expect(state.selectedInstrument.instrumentId, id);
@@ -54,7 +58,7 @@ void main() {
               try {
                 positions = await api.positions(
                   session.user.userId,
-                  productLine: 'LINEAR_DELIVERY',
+                  productLine: line,
                 );
                 break;
               } on ApiException catch (error) {
@@ -71,12 +75,12 @@ void main() {
             final page = await api.accountRecords(
               category: 'delivery-ledger',
               userId: session.user.userId,
-              product: ProductMode.linearDelivery,
+              product: mode,
             );
             final row = page.rows.singleWhere(
               (r) => asString(r['instrumentId']) == id,
             );
-            expect(row['amountUnits'], '200000000');
+            expect(row['amountUnits'], cashUnits);
             for (final brightness in Brightness.values) {
               tester.view.physicalSize = const Size(320, 900);
               tester.view.devicePixelRatio = 1;
@@ -93,7 +97,7 @@ void main() {
               await Future<void>.delayed(const Duration(milliseconds: 500));
               await tester.pump();
               await tester.scrollUntilVisible(
-                find.text('USDT 2'),
+                find.text(cashText),
                 150,
                 scrollable: find
                     .descendant(
@@ -102,13 +106,13 @@ void main() {
                     )
                     .first,
               );
-              expect(find.text('USDT 2'), findsOneWidget);
+              expect(find.text(cashText), findsOneWidget);
               expect(find.text(contract.symbol), findsOneWidget);
               expect(tester.takeException(), isNull);
               await tester.pumpWidget(const SizedBox.shrink());
             }
             debugPrint(
-              'LINEAR_DELIVERY_EXPIRY_CLIENT_PASS status=CLOSED selectionRetained=true cash=2USDT positions=0 widths=320 themes=dark,light',
+              '${line}_EXPIRY_CLIENT_PASS status=CLOSED selectionRetained=true cash=$cashText positions=0 widths=320 themes=dark,light',
             );
           } finally {
             await tester.pumpWidget(const SizedBox.shrink());

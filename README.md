@@ -208,4 +208,6 @@ analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已�
 
 `ApiClient.instruments` 只返回查询结果，合并目录由 AppState 在校验全部请求后统一发布，异步请求中也不短暂替换为不完整目录；已有回归覆盖合并期间的目录一致性。验证记录见 [U 本位交割实测](docs/validation/linear-delivery-trading-20261019.json)。
 
-U 本位交割结束后，客户端目录刷新会按已选合约的明确 ID 读取 CLOSED 元数据并保留历史查询；该状态禁止所有新委托。交易页可进入“交割现金流水”，默认沿当前产品线查询既有产品账本 API，固定 DELIVERY_SETTLEMENT 类型。流水展示实际现金变动、合约身份和变动后余额，金额按币种精度使用整数计算。它不包含零现金变化的交割报告。320 宽度的深浅色测试及可选本地 FUSED 真实读取测试分别位于 test/delivery_ledger_test.dart 和 test/linear_delivery_expiry_live_test.dart；后者要求明确的隔离 QA 用户及合约环境变量，原生 iOS/Android 设备尚未在本轮验证。
+U 本位与币本位交割结束后，客户端目录刷新会按已选合约的明确 ID 读取 CLOSED 元数据并保留历史查询；该状态禁止所有新委托。交易页可进入“交割现金流水”，默认沿当前产品线查询既有产品账本 API，固定 DELIVERY_SETTLEMENT 类型。流水展示实际现金变动、合约身份和变动后余额，金额按币种精度使用整数计算。它不包含零现金变化的交割报告。320 宽度的深浅色测试及可选本地 FUSED 真实读取测试分别位于 test/delivery_ledger_test.dart 和 test/linear_delivery_expiry_live_test.dart；后者要求明确的隔离 QA 用户及合约环境变量，原生 iOS/Android 设备尚未在本轮验证。
+
+币本位交割与 U 本位共用交割状态策略和单笔持久请求恢复；目录按当前产品线完整刷新，CLOSED 元数据按明确 ID 保留查询。币本位生命周期面板按报价币种显示每张固定面值，现金记录按 BTC 精度展示实际交割变动。两条交割的政策、方向/保证金/数量保护及 320 深浅色测试均参数化覆盖。可选真实测试仍使用 LINEAR_DELIVERY_LIVE_FIXTURE / LINEAR_DELIVERY_REALTIME_PID_FILE，另以 DELIVERY_LIVE_PRODUCT=INVERSE_DELIVERY 指定产品线；到期读取用 DELIVERY_EXPIRY_PRODUCT 指定，并传入隔离 QA 用户与合约。测试记录见 docs/validation/inverse-delivery-trading-20261020.json，Flutter 主机验收不等于 iOS/Android 真机验收。

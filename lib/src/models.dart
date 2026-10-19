@@ -14,8 +14,7 @@ enum ProductMode {
   final String contractType;
 
   bool get isSpot => this == ProductMode.spot;
-  bool get tracksSingleOrderIntent =>
-      isSpot || this == ProductMode.linearDelivery;
+  bool get tracksSingleOrderIntent => isSpot || isDelivery;
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>
@@ -486,10 +485,7 @@ class Instrument {
   String get contractLabel => mode.contractLabel;
 
   bool canPlaceOrder({required bool reduceOnly}) =>
-      status == 'TRADING' ||
-      (mode == ProductMode.linearDelivery &&
-          status == 'SETTLING' &&
-          reduceOnly);
+      status == 'TRADING' || (isDelivery && status == 'SETTLING' && reduceOnly);
 
   bool effectiveReduceOnly({
     required bool reduceOnly,
@@ -498,7 +494,7 @@ class Instrument {
     required String positionSide,
   }) =>
       reduceOnly ||
-      (mode == ProductMode.linearDelivery &&
+      (isDelivery &&
           positionMode == 'HEDGE' &&
           ((positionSide == 'LONG' && side == 'SELL') ||
               (positionSide == 'SHORT' && side == 'BUY')));
@@ -567,7 +563,9 @@ class Instrument {
       maxLeveragePpm: asInt(json['maxLeveragePpm'], fallback: 1000000),
       status: asString(
         json['status'],
-        fallback: json['contractType'] == 'LINEAR_DELIVERY'
+        fallback:
+            (json['contractType'] == 'LINEAR_DELIVERY' ||
+                json['contractType'] == 'INVERSE_DELIVERY')
             ? 'UNAVAILABLE'
             : 'TRADING',
       ),

@@ -1221,13 +1221,13 @@ class AppState extends ChangeNotifier {
     final old = selectedInstrument;
     try {
       final base = await api.instruments();
-      final loaded = mode == ProductMode.linearDelivery
+      final loaded = mode.isDelivery
           ? [
-              ...base.where((i) => i.mode != ProductMode.linearDelivery),
-              ...await api.linearDeliveryInstruments(),
+              ...base.where((i) => i.mode != mode),
+              ...await api.deliveryInstruments(mode),
             ]
           : base;
-      if (old.mode == ProductMode.linearDelivery &&
+      if (old.mode.isDelivery &&
           old.instrumentId.isNotEmpty &&
           !loaded.any(
             (i) => i.mode == old.mode && i.instrumentId == old.instrumentId,
@@ -1792,9 +1792,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (!instrument.canPlaceOrder(reduceOnly: effectiveReduceOnly)) {
-      lastError =
-          instrument.mode == ProductMode.linearDelivery &&
-              instrument.status == 'SETTLING'
+      lastError = instrument.isDelivery && instrument.status == 'SETTLING'
           ? '合约结算中，仅允许减仓'
           : instrument.status == 'PRE_TRADING'
           ? '该交易对尚未开放交易'
@@ -1825,7 +1823,7 @@ class AppState extends ChangeNotifier {
         : positionSide == 'NET'
         ? (side == 'SELL' ? 'SHORT' : 'LONG')
         : positionSide;
-    if (instrument.mode == ProductMode.linearDelivery && effectiveReduceOnly) {
+    if (instrument.isDelivery && effectiveReduceOnly) {
       final position = positions
           .where(
             (p) =>

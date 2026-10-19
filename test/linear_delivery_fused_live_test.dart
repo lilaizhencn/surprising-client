@@ -10,29 +10,31 @@ import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
 
 void main() {
+  final line =
+      Platform.environment['DELIVERY_LIVE_PRODUCT'] ?? 'LINEAR_DELIVERY';
+  final mode = line == 'INVERSE_DELIVERY'
+      ? ProductMode.inverseDelivery
+      : ProductMode.linearDelivery;
+  final rootPrefix = line == 'INVERSE_DELIVERY'
+      ? '/tmp/surprising-inverse-delivery-fused-'
+      : '/tmp/surprising-linear-delivery-fused-';
   final fixturePath = Platform.environment['LINEAR_DELIVERY_LIVE_FIXTURE'];
   testWidgets(
-    'LINEAR_DELIVERY FUSED settling closes and recovers a lost response without another order',
+    '$line FUSED settling closes and recovers a lost response without another order',
     (tester) async {
       await tester.runAsync(
         () => HttpOverrides.runWithHttpOverrides(() async {
-          expect(
-            fixturePath,
-            startsWith('/tmp/surprising-linear-delivery-fused-'),
-          );
+          expect(fixturePath, startsWith(rootPrefix));
           final fixture = asMap(
             jsonDecode(await File(fixturePath!).readAsString()),
           );
-          expect(fixture['productLine'], 'LINEAR_DELIVERY');
+          expect(fixture['productLine'], line);
           final session = AuthSession.fromJson(asMap(fixture['session']));
           final instrumentId = asString(fixture['instrumentId']);
           final pidFile = File(
             Platform.environment['LINEAR_DELIVERY_REALTIME_PID_FILE']!,
           );
-          expect(
-            pidFile.path,
-            startsWith('/tmp/surprising-linear-delivery-fused-'),
-          );
+          expect(pidFile.path, startsWith(rootPrefix));
           final pid = int.parse((await pidFile.readAsString()).trim());
           final identity = await Process.run('ps', [
             '-p',
@@ -67,7 +69,7 @@ void main() {
                   ).single,
                 );
                 expect(pending['clientOrderId'], body['clientOrderId']);
-                expect(pending['productLine'], 'LINEAR_DELIVERY');
+                expect(pending['productLine'], line);
                 if (!lost) {
                   expect(Process.killPid(pid, ProcessSignal.sigstop), true);
                   paused = true;
@@ -133,7 +135,7 @@ void main() {
                 sessionStore: _Sessions(),
                 seedInstruments: [instrument],
               )
-              ..mode = ProductMode.linearDelivery
+              ..mode = mode
               ..session = session;
           }
 
@@ -145,7 +147,7 @@ void main() {
             final raw = await direct.get(
               '/api/v1/gateway/instrument/latest',
               query: {'instrumentId': instrumentId},
-              productLine: 'LINEAR_DELIVERY',
+              productLine: line,
             );
             final scales = await direct.assetScales();
             final instrument = Instrument.fromJson({
@@ -225,7 +227,7 @@ void main() {
             expect(tester.takeException(), isNull);
             await File('$fixturePath.client-evidence.json').writeAsString(
               jsonEncode({
-                'productLine': 'LINEAR_DELIVERY',
+                'productLine': line,
                 'status': 'SETTLING',
                 'openBlocked': true,
                 'closeQuantity': 1,
@@ -240,7 +242,7 @@ void main() {
               }),
             );
             debugPrint(
-              'LINEAR_DELIVERY_CLIENT_PASS status=SETTLING openBlocked=true closeQuantity=1 posts=1 pausedUnknown=true restartRestored=true positions=0 locked=0',
+              '${line}_CLIENT_PASS status=SETTLING openBlocked=true closeQuantity=1 posts=1 pausedUnknown=true restartRestored=true positions=0 locked=0',
             );
             await tester.pumpWidget(const SizedBox.shrink());
           } finally {

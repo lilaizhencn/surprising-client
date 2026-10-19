@@ -731,9 +731,10 @@ class ApiClient {
       _loadInstruments({'status': 'TRADING'});
 
   /// Visible lifecycle states remain selectable for existing delivery positions and orders.
-  Future<List<Instrument>> linearDeliveryInstruments() async {
-    final loaded = await _loadInstruments({'productLine': 'LINEAR_DELIVERY'});
-    if (loaded.any((i) => i.mode != ProductMode.linearDelivery)) {
+  Future<List<Instrument>> deliveryInstruments(ProductMode product) async {
+    if (!product.isDelivery) throw const FormatException('交割合约目录产品线不匹配');
+    final loaded = await _loadInstruments({'productLine': product.productLine});
+    if (loaded.any((i) => i.mode != product)) {
       throw const FormatException('交割合约目录产品线不匹配');
     }
     return loaded;

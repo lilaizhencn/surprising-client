@@ -5254,8 +5254,7 @@ class OrderTicket extends StatelessWidget {
                     Expanded(
                       child: SmallDropdown(
                         value: positionSide == 'NET'
-                            ? (instrument.mode == ProductMode.linearDelivery &&
-                                      side == 'SELL'
+                            ? (instrument.isDelivery && side == 'SELL'
                                   ? 'SHORT'
                                   : 'LONG')
                             : positionSide,
@@ -5381,8 +5380,7 @@ class OrderTicket extends StatelessWidget {
             ),
             if (instrument.status != 'TRADING')
               Text(
-                instrument.mode == ProductMode.linearDelivery &&
-                        instrument.status == 'SETTLING'
+                instrument.isDelivery && instrument.status == 'SETTLING'
                     ? '合约结算中，仅允许减仓；撤单与持仓仍可查看'
                     : instrument.status == 'CLOSED'
                     ? '合约已结束，可查看历史记录'
@@ -5391,7 +5389,7 @@ class OrderTicket extends StatelessWidget {
                     : '该交易对已暂停交易',
                 style: const TextStyle(fontSize: 11),
               ),
-            if (instrument.mode == ProductMode.linearDelivery)
+            if (instrument.isDelivery)
               TextButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -5452,8 +5450,7 @@ class OrderTicket extends StatelessWidget {
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn
-                    ? instrument.mode == ProductMode.linearDelivery &&
-                              effectiveReduceOnly
+                    ? instrument.isDelivery && effectiveReduceOnly
                           ? (buy ? '买入平空' : '卖出平多')
                           : instrument.isSpot
                           ? (buy ? '买入' : '卖出')
@@ -7865,6 +7862,15 @@ class ProductLifecyclePanel extends StatelessWidget {
             runSpacing: 6,
             children: [
               LifecycleChip(label: '状态', value: instrument.status),
+              if (instrument.mode == ProductMode.inverseDelivery)
+                LifecycleChip(
+                  label: '每张面值',
+                  value:
+                      (instrument.notionalMultiplierUnits ?? 0) > 0 &&
+                          (instrument.quoteScaleUnits ?? 0) > 0
+                      ? '${scaledAmount(BigInt.from(instrument.notionalMultiplierUnits!), instrument.quoteScaleUnits)} ${instrument.quoteAsset}'
+                      : '--',
+                ),
               LifecycleChip(
                 label: '到期',
                 value: shortDateTime(instrument.expiryTime),
@@ -7874,11 +7880,9 @@ class ProductLifecyclePanel extends StatelessWidget {
                 value: shortDateTime(instrument.deliveryTime),
               ),
               LifecycleChip(
-                label: instrument.mode == ProductMode.linearDelivery
-                    ? '距到期'
-                    : '剩余',
+                label: instrument.isDelivery ? '距到期' : '剩余',
                 value: timeLeft(
-                  instrument.mode == ProductMode.linearDelivery
+                  instrument.isDelivery
                       ? instrument.expiryTime
                       : instrument.deliveryTime ?? instrument.expiryTime,
                 ),

@@ -5322,14 +5322,25 @@ class OrderTicket extends StatelessWidget {
               ),
             const SizedBox(height: 6),
             if (AppScope.of(context).tradingCommandPending) ...[
-              const Text('委托结果待确认，请勿重复提交', style: TextStyle(fontSize: 11)),
+              Text(
+                AppScope.of(context).pendingTradingCommand?.cancelOrderId !=
+                        null
+                    ? '撤单结果待确认，请勿重复提交'
+                    : '委托结果待确认，请勿重复提交',
+                style: const TextStyle(fontSize: 11),
+              ),
               TextButton(
                 onPressed: AppScope.of(context).submittingOrder
                     ? null
                     : () => unawaited(
                         AppScope.of(context).checkPendingTradingCommand(),
                       ),
-                child: const Text('查询委托结果'),
+                child: Text(
+                  AppScope.of(context).pendingTradingCommand?.cancelOrderId !=
+                          null
+                      ? '查询撤单结果'
+                      : '查询委托结果',
+                ),
               ),
             ],
             FilledButton.icon(
@@ -6269,6 +6280,15 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (state.pendingTradingCommand?.cancelOrderId != null) ...[
+          const Text('撤单结果待确认，请勿重复提交'),
+          TextButton(
+            onPressed: state.submittingOrder
+                ? null
+                : state.checkPendingTradingCommand,
+            child: const Text('查询撤单结果'),
+          ),
+        ],
         if (state.isLoggedIn &&
             !(state.privateViews[state.mode]?.ready ?? false))
           const Text('账户同步中 / Syncing account'),
@@ -6354,7 +6374,9 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                       )
                       .firstOrNull ??
                   Instrument.empty(state.mode),
-              onCancel: () => state.cancelOrder(order),
+              onCancel: state.submittingOrder || state.tradingCommandPending
+                  ? null
+                  : () => state.cancelOrder(order),
             ),
         ],
         if (!state.isLoggedIn)
@@ -6384,7 +6406,9 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                       )
                       .firstOrNull ??
                   Instrument.empty(state.mode),
-              onCancel: () => state.cancelOrder(order),
+              onCancel: state.submittingOrder || state.tradingCommandPending
+                  ? null
+                  : () => state.cancelOrder(order),
             ),
           ),
           if (state.openOrdersHasMore)

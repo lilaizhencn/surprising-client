@@ -771,8 +771,10 @@ class PendingTradingOrder {
     this.commandId,
     this.clientOrderId,
     this.instrumentId,
+    this.cancelOrderId,
   });
   final int userId;
+  final int? cancelOrderId;
   final ProductMode product;
   final String? commandId, clientOrderId, instrumentId;
 }

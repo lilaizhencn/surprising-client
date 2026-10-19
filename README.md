@@ -169,3 +169,11 @@ NOT_ACCEPTED 不再被当成原订单拒绝。已受理订单可从 realtime 的
 `AppState.checkPendingTradingCommand` 先读原产品的 `GET /api/v1/gateway/trading/submission`，验证原用户、clientOrderId、instrumentId 与已知 commandId，TERMINAL 才按命令成功/拒绝解除锁定。即使拒单未生成订单、订单视图还未就绪，也直接使用已提交回执。只有明确 RESULT_UNKNOWN 才继续查询 realtime by-client-order-id；未知、404、503 或资料不匹配仍待确认，不重发 POST。仅有 commandId 的历史记录继续查询 commands，后端也已改读 realtime SQL 投影。
 
 依赖后端先完成数据库迁移、realtime 更新与历史回补，再更新 gateway 和客户端；缺失回执仍不能作原请求的负确认。analyze 无问题，148 项测试通过，包括订单视图 503 时从回执恢复拒单、本机 HTTP 收到 POST 后断开连接，以及 320px 深浅色交互。本轮未安装 iOS/Android 真机、未启动完整 FUSED 栈。详见 [验证记录](docs/validation/committed-command-results-20261019.json)。
+
+## 现货撤单的待确认与恢复（2026-10-19）
+
+`AppState.cancelOrder` 发送现货撤单前，将用户、产品和原订单号写入原 pending 集合；设置存储失败不发送。响应中断、错误或资料不完整时保留待确认，冷启动恢复同一身份，只读 `GET /api/v1/gateway/trading/cancellations/{orderId}` 的 realtime 已提交回执。查询核对原订单及已知命令号；未知或不可用不解锁，也不再次发送 POST。迟到响应不修改另一用户或已 dispose 的界面。
+
+订单列表旁增加“查询撤单结果”，未确认期间隐藏重复撤单操作，确认处理结果后解除锁定，成功时刷新账户；拒绝时提醒检查订单状态。依赖先发布新 gateway，且上一轮 realtime 回执迁移和历史回补已完成。请求未到 Core 的负确认、批量/改单等写入仍待继续验收。
+
+analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已复现。新增真实本机 HTTP 接收撤单后断开连接，以两次 GET 恢复，覆盖 64 位订单号；320px 深浅色实际交互验证列表撤单、锁定和结果查询。本轮没有 iOS/Android 真机或完整 FUSED 服务栈验收，见 [验证记录](docs/validation/spot-cancel-recovery-20261019.json)。

@@ -49,7 +49,246 @@ Future<void> submitSpot(AppState state) => state.placeOrder(
   bboPriceMode: 'OPPONENT_1',
 );
 
+OrderModel cancelTarget({int id = 91, String status = 'ACCEPTED'}) =>
+    OrderModel.fromJson({
+      'orderId': id,
+      'symbol': 'BTC-USDT',
+      'instrumentId': '1',
+      'side': 'BUY',
+      'orderType': 'LIMIT',
+      'status': status,
+      'priceTicks': 100,
+      'quantitySteps': 2,
+      'remainingQuantitySteps': 2,
+    });
+
 void main() {
+  test(
+    'loopback HTTP cancellation loses the POST reply then recovers by read only with a 64 bit order ID',
+    () async {
+      const orderId = 9007199254740993;
+      final requests = <String>[];
+      var terminal = false;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        requests.add('${request.method} ${request.uri.path}');
+        expect(request.headers.value('X-Product-Line'), 'SPOT');
+        expect(request.headers.value('X-User-Id'), '1');
+        final body = await utf8.decoder.bind(request).join();
+        if (request.method == 'POST') {
+          expect(asMap(jsonDecode(body))['orderId'], orderId);
+          final socket = await request.response.detachSocket(
+            writeHeaders: false,
+          );
+          socket.destroy();
+        } else {
+          expect(
+            request.uri.path,
+            '/api/v1/gateway/trading/cancellations/$orderId',
+          );
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              'commandId': 'cancel-1',
+              'prospectiveOrderIds': [orderId],
+              'outcome': terminal ? 'TERMINAL' : 'RESULT_UNKNOWN',
+              'code': terminal ? 'NONE' : 'RESULT_UNKNOWN',
+            }),
+          );
+          await request.response.close();
+        }
+      });
+      final http = HttpOverrides.runWithHttpOverrides(
+        () => HttpClient(),
+        _RealHttp(),
+      );
+      final api = ApiClient(
+        AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
+        httpClient: http,
+      )..setSession(session);
+      final state = _SpotState(api)..session = session;
+      addTearDown(() async {
+        state.dispose();
+        http.close(force: true);
+        await server.close(force: true);
+      });
+      await state.cancelOrder(cancelTarget(id: orderId));
+      expect(state.pendingTradingCommand?.cancelOrderId, orderId);
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isTrue);
+      terminal = true;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isFalse);
+      expect(requests, [
+        'POST /api/v1/gateway/trading/cancel',
+        'GET /api/v1/gateway/trading/cancellations/$orderId',
+        'GET /api/v1/gateway/trading/cancellations/$orderId',
+      ]);
+    },
+  );
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'spot cancellation stays locked until confirmed on a 320px ${brightness.name} screen',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final api = _SpotApi();
+        final state = _SpotState(api)..session = session;
+        state.openOrders = [cancelTarget()];
+        addTearDown(state.dispose);
+        await tester.pumpWidget(
+          AppScope(
+            notifier: state,
+            child: MaterialApp(
+              theme: ThemeData(brightness: brightness),
+              home: const Scaffold(body: TradePage()),
+            ),
+          ),
+        );
+        final ordersTab = find.text('当前委托 (1)');
+        await tester.ensureVisible(ordersTab);
+        await tester.tap(ordersTab);
+        await tester.pumpAndSettle();
+        final cancel = find.widgetWithText(TextButton, '撤单');
+        await tester.ensureVisible(cancel);
+        await tester.tap(cancel);
+        await tester.pumpAndSettle();
+        expect(api.cancellations, 1);
+        expect(state.tradingCommandPending, isTrue);
+        // Pending cancellation removes the active action from every visible order row.
+        expect(find.widgetWithText(TextButton, '撤单'), findsNothing);
+        final check = find.descendant(
+          of: find.byType(PrivateTradingPanel),
+          matching: find.text('查询撤单结果'),
+        );
+        await tester.ensureVisible(check);
+        await tester.tap(check);
+        await tester.pumpAndSettle();
+        expect(state.tradingCommandPending, isTrue);
+        api.terminal = true;
+        await tester.tap(check);
+        await tester.pumpAndSettle();
+        expect(state.tradingCommandPending, isFalse);
+        expect(api.cancellations, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  test(
+    'spot cancellation survives lost response and cold start without resending',
+    () async {
+      final settings = _MemorySettings(), api = _SpotApi();
+      api.beforeCancel = () {
+        final saved = asMap(
+          asList(jsonDecode(settings.values['pendingTradingOrders']!)).single,
+        );
+        expect(saved['cancelOrderId'], 91);
+        expect(saved['productLine'], 'SPOT');
+      };
+      final state = _SpotState(api, settings: settings)..session = session;
+      await state.cancelOrder(cancelTarget());
+      expect(state.pendingTradingCommand?.cancelOrderId, 91);
+      await state.cancelOrder(cancelTarget(id: 92));
+      await submitSpot(state);
+      expect(api.cancellations, 1);
+      expect(api.calls, 0);
+      state.dispose();
+      final restored = _SpotState(api, settings: settings);
+      addTearDown(restored.dispose);
+      await restored.bootstrap();
+      restored.session = session;
+      expect(restored.pendingTradingCommand?.cancelOrderId, 91);
+      await restored.checkPendingTradingCommand();
+      expect(restored.tradingCommandPending, isTrue);
+      api.terminal = true;
+      await restored.checkPendingTradingCommand();
+      expect(restored.tradingCommandPending, isFalse);
+      expect(restored.lastNotice, contains('撤单处理结果已确认'));
+      expect(api.cancellations, 1);
+      expect(api.cancelQueries, 2);
+      expect(jsonDecode(settings.values['pendingTradingOrders']!), isEmpty);
+    },
+  );
+  test(
+    'spot cancellation sends nothing on storage failure and clears definitive refusal',
+    () async {
+      final settings = _MemorySettings()..failWrites = true;
+      final api = _SpotApi();
+      final active = _SpotState(api, settings: settings)..session = session;
+      addTearDown(active.dispose);
+      await active.cancelOrder(cancelTarget());
+      expect(api.cancellations, 0);
+      expect(active.lastError, contains('未发送撤单'));
+      expect(active.tradingCommandPending, isFalse);
+      settings.failWrites = false;
+      api.cancelFailure = ApiException(400, 'invalid order');
+      await active.cancelOrder(cancelTarget());
+      expect(active.tradingCommandPending, isFalse);
+      expect(api.cancellations, 1);
+    },
+  );
+  test(
+    'spot cancellation keeps unavailable or mismatched queries pending and recovers a committed rejection',
+    () async {
+      final api = _SpotApi()..cancelFailure = PendingTradingCommand('cancel-1');
+      final state = _SpotState(api)..session = session;
+      addTearDown(state.dispose);
+      await state.cancelOrder(cancelTarget());
+      api.queryFailure = ApiException(503, 'view unavailable');
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isTrue);
+      api.queryFailure = null;
+      api.recoveredCancelId = 92;
+      api.terminal = true;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isTrue);
+      expect(state.lastError, contains('不匹配'));
+      api.recoveredCancelId = 91;
+      api.submissionCode = 'ORDER_NOT_FOUND';
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isFalse);
+      expect(state.lastError, contains('撤单请求被拒绝'));
+      expect(api.cancellations, 1);
+    },
+  );
+  test(
+    'malformed cancellation replies stay pending and late responses cannot mutate another user or disposed state',
+    () async {
+      final api = _SpotApi()..cancelResponse = Completer<OrderModel>();
+      final state = _SpotState(api)..session = session;
+      final sent = state.cancelOrder(cancelTarget());
+      while (api.cancellations == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      state.session = const AuthSession(
+        user: AuthUser(userId: 2, username: 'new', email: '', status: 'ACTIVE'),
+        accessToken: 'new',
+        refreshToken: 'new',
+      );
+      api.cancelResponse!.complete(cancelTarget(id: 92, status: 'CANCELED'));
+      await sent;
+      expect(state.lastNotice, isNull);
+      expect(state.lastError, isNull);
+      state.session = session;
+      expect(state.pendingTradingCommand?.cancelOrderId, 91);
+      state.dispose();
+      final disposedApi = _SpotApi()..cancelResponse = Completer<OrderModel>();
+      final disposed = _SpotState(disposedApi)..session = session;
+      final late = disposed.cancelOrder(cancelTarget());
+      while (disposedApi.cancellations == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      disposed.dispose();
+      disposedApi.cancelResponse!.completeError(
+        PendingTradingCommand('cancel-1'),
+      );
+      await late;
+    },
+  );
+
   test(
     'a committed rejected submission is recovered without an order entity',
     () async {
@@ -923,6 +1162,24 @@ class _SpotState extends AppState {
 class _SpotApi extends ApiClient {
   _SpotApi() : super(const AppConfig());
   int calls = 0, commandQueries = 0, submissionQueries = 0;
+  int cancellations = 0, cancelQueries = 0;
+  int? recoveredCancelId;
+  VoidCallback? beforeCancel;
+  Object cancelFailure = const SocketException('lost cancellation response');
+  Completer<OrderModel>? cancelResponse;
+  @override
+  Future<OrderModel> cancelOrder(
+    int userId,
+    int orderId, {
+    String? productLine,
+  }) async {
+    expect(productLine, 'SPOT');
+    cancellations++;
+    beforeCancel?.call();
+    if (cancelResponse != null) return cancelResponse!.future;
+    throw cancelFailure;
+  }
+
   String submissionCode = 'NONE';
   bool terminal = false;
   bool lookupNotAccepted = false, orderFound = false;
@@ -976,6 +1233,19 @@ class _SpotApi extends ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    if (path.startsWith('/api/v1/gateway/trading/cancellations/')) {
+      cancelQueries++;
+      expect(productLine, 'SPOT');
+      expect(path, '/api/v1/gateway/trading/cancellations/91');
+      expect(userId, 1);
+      if (queryFailure != null) throw queryFailure!;
+      return {
+        'commandId': 'cancel-1',
+        'prospectiveOrderIds': [recoveredCancelId ?? 91],
+        'outcome': terminal ? 'TERMINAL' : 'RESULT_UNKNOWN',
+        'code': terminal ? submissionCode : 'RESULT_UNKNOWN',
+      };
+    }
     if (path == '/api/v1/gateway/trading/submission') {
       submissionQueries++;
       expect(productLine, 'SPOT');

@@ -718,7 +718,20 @@ class ApiClient {
   Future<Map<String, dynamic>> refreshKycSession() =>
       post('/api/v1/compliance/kyc/session/refresh', const {});
 
-  Future<List<Instrument>> instruments() async {
+  // AppState publishes a complete, validated catalog after all required requests finish.
+  Future<List<Instrument>> instruments() =>
+      _loadInstruments({'status': 'TRADING'});
+
+  /// Visible lifecycle states remain selectable for existing delivery positions and orders.
+  Future<List<Instrument>> linearDeliveryInstruments() async {
+    final loaded = await _loadInstruments({'productLine': 'LINEAR_DELIVERY'});
+    if (loaded.any((i) => i.mode != ProductMode.linearDelivery)) {
+      throw const FormatException('交割合约目录产品线不匹配');
+    }
+    return loaded;
+  }
+
+  Future<List<Instrument>> _loadInstruments(Map<String, String> filters) async {
     final scales = await assetScales();
     final loaded = <String, Instrument>{};
     final cursors = <String>{};
@@ -726,11 +739,7 @@ class ApiClient {
     while (true) {
       final json = await get(
         '/api/v1/gateway/instrument/list',
-        query: {
-          'status': 'TRADING',
-          'includeMarketSummary': 'true',
-          'cursor': ?cursor,
-        },
+        query: {...filters, 'includeMarketSummary': 'true', 'cursor': ?cursor},
       );
       for (final row in asList(json['instruments'] ?? json['items'])) {
         final raw = asMap(row);
@@ -750,8 +759,7 @@ class ApiClient {
         throw const FormatException('合约列表分页游标无效');
       }
     }
-    instrumentCatalog = loaded.values.toList();
-    return instrumentCatalog;
+    return loaded.values.toList();
   }
 
   Future<List<Map<String, dynamic>>> recentTrades(

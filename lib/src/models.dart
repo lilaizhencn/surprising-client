@@ -14,6 +14,8 @@ enum ProductMode {
   final String contractType;
 
   bool get isSpot => this == ProductMode.spot;
+  bool get tracksSingleOrderIntent =>
+      isSpot || this == ProductMode.linearDelivery;
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>
@@ -483,6 +485,24 @@ class Instrument {
   bool get isOption => mode.isOption;
   String get contractLabel => mode.contractLabel;
 
+  bool canPlaceOrder({required bool reduceOnly}) =>
+      status == 'TRADING' ||
+      (mode == ProductMode.linearDelivery &&
+          status == 'SETTLING' &&
+          reduceOnly);
+
+  bool effectiveReduceOnly({
+    required bool reduceOnly,
+    required String side,
+    required String positionMode,
+    required String positionSide,
+  }) =>
+      reduceOnly ||
+      (mode == ProductMode.linearDelivery &&
+          positionMode == 'HEDGE' &&
+          ((positionSide == 'LONG' && side == 'SELL') ||
+              (positionSide == 'SHORT' && side == 'BUY')));
+
   String get displayName => symbol.replaceAll('-SPOT', '');
 
   double? get strikePrice {
@@ -545,7 +565,12 @@ class Instrument {
       pricePrecision: asInt(json['pricePrecision'], fallback: 2),
       quantityPrecision: asInt(json['quantityPrecision'], fallback: 0),
       maxLeveragePpm: asInt(json['maxLeveragePpm'], fallback: 1000000),
-      status: asString(json['status'], fallback: 'TRADING'),
+      status: asString(
+        json['status'],
+        fallback: json['contractType'] == 'LINEAR_DELIVERY'
+            ? 'UNAVAILABLE'
+            : 'TRADING',
+      ),
       expiryTime: asNullableDateTime(json['expiryTime']),
       deliveryTime: asNullableDateTime(json['deliveryTime']),
       underlyingSymbol: nullableString(json['underlyingSymbol']),

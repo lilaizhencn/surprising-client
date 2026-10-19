@@ -197,3 +197,13 @@ analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已�
 现货 FUSED 实链路补充：可选 `test/spot_fused_live_test.dart` 使用真实 AppState、HTTP 和 WebSocket，在真实做市下处理 52 笔委托。网关处理首批后丢弃响应、暂停本轮 realtime 产生真实 202；恢复并重建 AppState 后原键保留，总共两次不同批次 POST，51 成功/1 已结束，最终真实盘口存在且私有冻结为零，320px 暗色面板可看失败详情。测试注入内存设置/SessionStore 以在 host Flutter 测试中运行；没有安装 iOS/Android 设备。
 
 实栈用例只在设置 `SPOT_FUSED_LIVE_FIXTURE` 和 `SPOT_FUSED_REALTIME_PID_FILE` 后运行，需要后端 `SixProductLineContractLiveTest` 的四分钟交接窗口，并校验 PID launcher identity。命令为 `flutter test test/spot_fused_live_test.dart --reporter expanded`；普通全量回归默认跳过该用例。后端复现流程见 `docs/realtime-command-results.md`，本仓库 [实测证据](docs/validation/spot-fused-clients-20261019.json)。
+
+### U 本位交割结算中减仓（2026-10-19）
+
+`ApiClient.linearDeliveryInstruments` 与 `AppState.refreshInstruments` 保留结算中交割合约的完整元数据，目录失败不发布半份结果。SETTLING 仅允许直接减仓；提交前核对当前持仓、方向、保证金模式和数量，HEDGE 平仓显式 reduceOnly。320px 深浅色票据显示对应平仓方向，距到期使用 expiryTime。
+
+单笔下单和撤单沿用已有安全设置持久化原请求；保存失败不发送，丢失响应或重启后只 GET realtime 原提交/撤单结果，错误回执不解锁。先发布 gateway 的 SETTLING 合约公开查询修复，并保留此前 realtime 回执迁移与导出。
+
+可选 `test/linear_delivery_fused_live_test.dart` 需要 `LINEAR_DELIVERY_LIVE_FIXTURE` 和 `LINEAR_DELIVERY_REALTIME_PID_FILE`；未设置时普通回归默认跳过。它在后端四分钟交接中接续 Web，使用真实 AppState、HTTP/WS 和测试设置/SessionStore，平剩余一张持仓并检查断响应、暂停投影、重建状态及只读恢复。该 host Flutter 测试不等于安装原生 iOS/Android，也未验证实际到期交割结算或其他产品全部流程。
+
+`ApiClient.instruments` 只返回查询结果，合并目录由 AppState 在校验全部请求后统一发布，异步请求中也不短暂替换为不完整目录；已有回归覆盖合并期间的目录一致性。验证记录见 [U 本位交割实测](docs/validation/linear-delivery-trading-20261019.json)。

@@ -5157,6 +5157,12 @@ class OrderTicket extends StatelessWidget {
   Widget build(BuildContext context) {
     final buy = side == 'BUY';
     final hedgeMode = instrument.isDerivative && positionMode == 'HEDGE';
+    final effectiveReduceOnly = instrument.effectiveReduceOnly(
+      reduceOnly: reduceOnly,
+      side: side,
+      positionMode: positionMode,
+      positionSide: positionSide,
+    );
     void stepPrice(int direction) {
       if (orderType == 'MARKET') return;
       if (instrument.isSpot) {
@@ -5247,7 +5253,12 @@ class OrderTicket extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: SmallDropdown(
-                        value: positionSide == 'NET' ? 'LONG' : positionSide,
+                        value: positionSide == 'NET'
+                            ? (instrument.mode == ProductMode.linearDelivery &&
+                                      side == 'SELL'
+                                  ? 'SHORT'
+                                  : 'LONG')
+                            : positionSide,
                         values: const ['LONG', 'SHORT'],
                         labelBuilder: positionSideLabel,
                         onChanged: onPositionSide,
@@ -5351,8 +5362,10 @@ class OrderTicket extends StatelessWidget {
                   Expanded(
                     child: ToggleLine(
                       label: '只减仓',
-                      value: reduceOnly,
-                      enabled: instrument.isDerivative,
+                      value: effectiveReduceOnly,
+                      enabled:
+                          instrument.isDerivative &&
+                          !(effectiveReduceOnly && !reduceOnly),
                       onChanged: onReduceOnly,
                     ),
                   ),
@@ -5368,7 +5381,12 @@ class OrderTicket extends StatelessWidget {
             ),
             if (instrument.status != 'TRADING')
               Text(
-                instrument.status == 'PRE_TRADING' ? '该交易对尚未开放交易' : '该交易对已暂停交易',
+                instrument.mode == ProductMode.linearDelivery &&
+                        instrument.status == 'SETTLING'
+                    ? '合约结算中，仅允许减仓；撤单与持仓仍可查看'
+                    : instrument.status == 'PRE_TRADING'
+                    ? '该交易对尚未开放交易'
+                    : '该交易对已暂停交易',
                 style: const TextStyle(fontSize: 11),
               ),
             const SizedBox(height: 6),
@@ -5411,13 +5429,19 @@ class OrderTicket extends StatelessWidget {
               onPressed:
                   AppScope.of(context).submittingOrder ||
                       AppScope.of(context).tradingCommandPending ||
-                      (loggedIn && instrument.status != 'TRADING')
+                      (loggedIn &&
+                          !instrument.canPlaceOrder(
+                            reduceOnly: effectiveReduceOnly,
+                          ))
                   ? null
                   : onSubmit,
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
               label: Text(
                 loggedIn
-                    ? instrument.isSpot
+                    ? instrument.mode == ProductMode.linearDelivery &&
+                              effectiveReduceOnly
+                          ? (buy ? '买入平空' : '卖出平多')
+                          : instrument.isSpot
                           ? (buy ? '买入' : '卖出')
                           : hedgeMode
                           ? (buy ? '买入' : '卖出')
@@ -7836,9 +7860,13 @@ class ProductLifecyclePanel extends StatelessWidget {
                 value: shortDateTime(instrument.deliveryTime),
               ),
               LifecycleChip(
-                label: '剩余',
+                label: instrument.mode == ProductMode.linearDelivery
+                    ? '距到期'
+                    : '剩余',
                 value: timeLeft(
-                  instrument.deliveryTime ?? instrument.expiryTime,
+                  instrument.mode == ProductMode.linearDelivery
+                      ? instrument.expiryTime
+                      : instrument.deliveryTime ?? instrument.expiryTime,
                 ),
               ),
               LifecycleChip(

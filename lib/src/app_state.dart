@@ -775,8 +775,8 @@ class AppState extends ChangeNotifier {
                     amendOrderId > 0 &&
                     clientOrderId != null &&
                     instrumentId != null) ||
-                (product.isSpot && cancelOrderId > 0) ||
-                (product.isSpot &&
+                (product.tracksSingleOrderIntent && cancelOrderId > 0) ||
+                (product.tracksSingleOrderIntent &&
                     clientOrderId != null &&
                     instrumentId != null))) {
           _pendingTradingOrders[id] = PendingTradingOrder(
@@ -1219,7 +1219,13 @@ class AppState extends ChangeNotifier {
     if (offline) return;
     final request = ++_instrumentRequestVersion;
     try {
-      final loaded = await api.instruments();
+      final base = await api.instruments();
+      final loaded = mode == ProductMode.linearDelivery
+          ? [
+              ...base.where((i) => i.mode != ProductMode.linearDelivery),
+              ...await api.linearDeliveryInstruments(),
+            ]
+          : base;
       if (request != _instrumentRequestVersion) {
         api.instrumentCatalog = instruments;
         return;
@@ -1247,6 +1253,7 @@ class AppState extends ChangeNotifier {
       lastError = null;
     } catch (error) {
       if (request != _instrumentRequestVersion) return;
+      api.instrumentCatalog = instruments;
       if (silent) {
         _recordRealtimeIssue('加载交易对失败：${clientErrorMessage(error)}');
       } else {
@@ -1749,6 +1756,12 @@ class AppState extends ChangeNotifier {
     lastError = null;
     lastNotice = null;
     final instrument = targetInstrument ?? selectedInstrument;
+    final effectiveReduceOnly = instrument.effectiveReduceOnly(
+      reduceOnly: reduceOnly,
+      side: side,
+      positionMode: positionMode,
+      positionSide: positionSide,
+    );
     final exactSpotPrice =
         instrument.isSpot && orderType != 'MARKET' && bboPriceMode == null
         ? decimalIncrement(
@@ -1764,8 +1777,12 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (instrument.status != 'TRADING') {
-      lastError = instrument.status == 'PRE_TRADING'
+    if (!instrument.canPlaceOrder(reduceOnly: effectiveReduceOnly)) {
+      lastError =
+          instrument.mode == ProductMode.linearDelivery &&
+              instrument.status == 'SETTLING'
+          ? '合约结算中，仅允许减仓'
+          : instrument.status == 'PRE_TRADING'
           ? '该交易对尚未开放交易'
           : '该交易对已暂停交易';
       notifyListeners();
@@ -1789,6 +1806,31 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final effectivePositionSide = instrument.isSpot || positionMode == 'ONE_WAY'
+        ? 'NET'
+        : positionSide == 'NET'
+        ? (side == 'SELL' ? 'SHORT' : 'LONG')
+        : positionSide;
+    if (instrument.mode == ProductMode.linearDelivery && effectiveReduceOnly) {
+      final position = positions
+          .where(
+            (p) =>
+                p.instrumentId == instrument.instrumentId &&
+                p.marginMode == marginMode &&
+                (positionMode == 'ONE_WAY' ||
+                    p.positionSide == effectivePositionSide),
+          )
+          .firstOrNull;
+      if (position == null ||
+          position.signedQuantitySteps == 0 ||
+          (position.signedQuantitySteps > 0 ? 'SELL' : 'BUY') != side ||
+          BigInt.from(quantitySteps) >
+              BigInt.from(position.signedQuantitySteps).abs()) {
+        lastError = '减仓方向或数量与当前持仓不匹配，请刷新账户后重试';
+        notifyListeners();
+        return;
+      }
+    }
     final id = userId;
     if (id == null) {
       lastError = '请先登录再下单';
@@ -1798,7 +1840,7 @@ class AppState extends ChangeNotifier {
     final epoch = _walletSessionVersion;
     bool current() => epoch == _walletSessionVersion && userId == id;
     final random = math.Random.secure();
-    final pendingIntent = instrument.isSpot
+    final pendingIntent = instrument.mode.tracksSingleOrderIntent
         ? PendingTradingOrder(
             userId: id,
             product: instrument.mode,
@@ -1827,12 +1869,6 @@ class AppState extends ChangeNotifier {
           return;
         }
       }
-      final effectivePositionSide =
-          instrument.isSpot || positionMode == 'ONE_WAY'
-          ? 'NET'
-          : positionSide == 'NET'
-          ? (side == 'SELL' ? 'SHORT' : 'LONG')
-          : positionSide;
       issued = true;
       final order = await api.placeOrder(
         userId: id,
@@ -1848,14 +1884,14 @@ class AppState extends ChangeNotifier {
         quantitySteps: quantitySteps,
         marginMode: instrument.isSpot ? 'CROSS' : marginMode,
         positionSide: effectivePositionSide,
-        reduceOnly: !instrument.isSpot && reduceOnly,
+        reduceOnly: !instrument.isSpot && effectiveReduceOnly,
         postOnly: postOnly,
         bboPriceMode: bboPriceMode,
         productLine: productLine,
         clientOrderId: intent?.clientOrderId,
       );
       if (order.orderId <= 0 ||
-          (instrument.isSpot &&
+          (instrument.mode.tracksSingleOrderIntent &&
               ![
                 'PENDING_RESERVE',
                 'ACCEPTED',
@@ -2268,7 +2304,7 @@ class AppState extends ChangeNotifier {
     final product = mode;
     final epoch = _walletSessionVersion;
     bool current() => epoch == _walletSessionVersion && userId == id;
-    final intent = product.isSpot
+    final intent = product.tracksSingleOrderIntent
         ? PendingTradingOrder(
             userId: id,
             product: product,

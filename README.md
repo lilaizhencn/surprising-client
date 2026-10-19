@@ -185,3 +185,11 @@ analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已�
 `AppState.amendSpotOrder` 在发送前持久保存随机 clientRequestId、新客户订单号、原订单和交易对，`ApiClient.amendOrder` 补齐原先遗漏的必填请求身份。存储失败不发送；即时结果必须含匹配的已撤原单和有效新单，异常或丢响应保留锁定。冷启动后从 realtime 的 `GET /api/v1/gateway/trading/amendments` 查询原请求，未知或不可用不解锁，不重发 POST；订单列表旁提供“查询改单结果”。确认的是处理结果，最终状态仍按 realtime 账户视图展示。
 
 166 项测试通过，analyze 无问题，包括 320px 深浅色表单、冷启动、存储失败、迟到响应/账户切换/dispose、64 位新单号，以及真实本机 HTTP 的必填字段/两张订单解码和丢失响应后的 POST+GET+GET。遗漏 clientRequestId 的回归已先复现失败。先更新 gateway，且此前 realtime 回执迁移、导出及历史回补已完成；本轮未安装 iOS/Android 真机、未启动完整 FUSED 栈，批量和其他产品继续验收。见 [记录](docs/validation/spot-amendment-20261019.json)。
+
+### 现货全部撤单与恢复（2026-10-19）
+
+当前委托面板增加“撤销当前交易对委托／撤销全部现货委托”，沿用“仅当前交易对”筛选，提交前显示明确范围。`AppState.cancelOpenSpotOrders` 从 realtime 一次取得完整固定目标，安全保存订单 ID、每批键和发送断点后以原生 50 笔分批；`ApiClient.cancelOrderBatch` 显式传递必填 batchKey。部分失败显示成功/失败计数，可查看失败订单及原因。
+
+断网、空/不匹配回执与服务不可用保留“确认并继续撤单”；重启恢复时 GET 已发送批次，确认后才提交原计划尚未发送的后续批次，不重发原批、不加入新委托。初始或进度存储失败停止发送，换账户停止旧账户后续批次，结果只对所属账户显示。订单和资金状态仍以 realtime 为准。
+
+依赖后端 SQL 迁移、realtime 更新及必要的旧批次逐项结果回补，然后发布 gateway 与两端。本轮没有安装原生 iOS/Android 或重跑完整 FUSED 服务栈；旧底层直接 cancel-open、批量下单/改单、其他产品 UI 仍待逐项验收。见 [验证记录](docs/validation/spot-bulk-cancellation-20261019.json)。

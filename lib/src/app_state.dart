@@ -213,6 +213,7 @@ class AppState extends ChangeNotifier {
   LoginChallenge? pendingLoginChallenge;
   List<Map<String, dynamic>> recentTrades = [];
   bool submittingOrder = false;
+  CancellationSummary? lastCancellationResult;
   // Per user so a late response cannot replace another account's unresolved order.
   final Map<int, PendingTradingOrder> _pendingTradingOrders = {};
   PendingTradingOrder? get pendingTradingCommand =>
@@ -230,6 +231,10 @@ class AppState extends ChangeNotifier {
     lastError = null;
     notifyListeners();
     try {
+      if (pending.cancelPlan != null) {
+        await _driveCancellationPlan(pending);
+        return;
+      }
       bool? confirmed;
       if (pending.amendRequestId != null) {
         final receipt = await api.get(
@@ -758,9 +763,13 @@ class AppState extends ChangeNotifier {
         final cancelOrderId = asInt(value['cancelOrderId']);
         final amendRequestId = _nonEmpty(asString(value['amendRequestId']));
         final amendOrderId = asInt(value['amendOrderId']);
+        final cancelPlan = value['cancelPlan'] == null
+            ? null
+            : CancellationPlan.fromJson(asMap(value['cancelPlan']));
         if (id > 0 &&
             product != null &&
-            (commandId != null ||
+            ((product.isSpot && cancelPlan != null) ||
+                commandId != null ||
                 (product.isSpot &&
                     amendRequestId != null &&
                     amendOrderId > 0 &&
@@ -777,6 +786,7 @@ class AppState extends ChangeNotifier {
             clientOrderId: clientOrderId,
             instrumentId: instrumentId,
             cancelOrderId: cancelOrderId > 0 ? cancelOrderId : null,
+            cancelPlan: cancelPlan,
             amendRequestId: amendRequestId,
             amendOrderId: amendOrderId > 0 ? amendOrderId : null,
           );
@@ -827,6 +837,7 @@ class AppState extends ChangeNotifier {
                 'cancelOrderId': pending.cancelOrderId,
                 'amendRequestId': pending.amendRequestId,
                 'amendOrderId': pending.amendOrderId,
+                'cancelPlan': pending.cancelPlan?.toJson(),
               },
             )
             .toList(),
@@ -1183,6 +1194,7 @@ class AppState extends ChangeNotifier {
     await realtime.close();
     await sessionStore.clear();
     session = null;
+    lastCancellationResult = null;
     api.setSession(null);
     await _connectRealtime();
     await refreshAnnouncements();
@@ -1900,6 +1912,222 @@ class AppState extends ChangeNotifier {
         submittingOrder = false;
         notifyListeners();
       }
+    }
+  }
+
+  String _newCancellationKey() {
+    final random = math.Random.secure();
+    return 'app-cancel-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+  }
+
+  Future<void> cancelOpenSpotOrders({required bool onlyCurrentPair}) async {
+    final id = userId;
+    if (id == null ||
+        mode != ProductMode.spot ||
+        submittingOrder ||
+        tradingCommandPending) {
+      return;
+    }
+    final instrument = onlyCurrentPair ? selectedInstrument.instrumentId : null;
+    if (onlyCurrentPair && (instrument == null || instrument.isEmpty)) {
+      lastError = '交易对资料未就绪，未发送撤单';
+      notifyListeners();
+      return;
+    }
+    final epoch = _walletSessionVersion;
+    bool current() => epoch == _walletSessionVersion && userId == id;
+    submittingOrder = true;
+    lastError = null;
+    lastNotice = null;
+    lastCancellationResult = null;
+    notifyListeners();
+    try {
+      final ids = await api.cancellationPlan(id, instrumentId: instrument);
+      if (!current()) return;
+      if (ids.isEmpty) {
+        lastNotice = '当前范围没有可撤销委托';
+        return;
+      }
+      final batches = <CancellationBatch>[];
+      for (var start = 0; start < ids.length; start += 50) {
+        batches.add(
+          CancellationBatch(
+            _newCancellationKey(),
+            ids.sublist(start, math.min(start + 50, ids.length)),
+          ),
+        );
+      }
+      final pending = PendingTradingOrder(
+        userId: id,
+        product: ProductMode.spot,
+        cancelPlan: CancellationPlan(
+          id: _newCancellationKey(),
+          batches: batches,
+          instrumentId: instrument,
+        ),
+      );
+      _pendingTradingOrders[id] = pending;
+      if (!await _writeSettings()) {
+        _pendingTradingOrders.remove(id);
+        if (current()) lastError = '无法保存批量撤单资料，未发送撤单';
+        return;
+      }
+      if (!current()) {
+        _pendingTradingOrders.remove(id);
+        await _writeSettings();
+        return;
+      }
+      await _driveCancellationPlan(pending);
+    } catch (error) {
+      if (current()) lastError = '批量撤单失败：${clientErrorMessage(error)}';
+    } finally {
+      if (current()) {
+        submittingOrder = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _driveCancellationPlan(PendingTradingOrder initial) async {
+    var pending = initial;
+    final epoch = _walletSessionVersion;
+    bool current() =>
+        epoch == _walletSessionVersion && userId == pending.userId;
+    bool owns() => identical(_pendingTradingOrders[pending.userId], pending);
+    try {
+      while (pending.cancelPlan!.index < pending.cancelPlan!.batches.length) {
+        if (!current() || !owns()) return;
+        final plan = pending.cancelPlan!, batch = plan.batches[plan.index];
+        late OrderBatchResult result;
+        if (plan.issued) {
+          Map<String, dynamic> receipt;
+          try {
+            receipt = await api.get(
+              '/api/v1/gateway/trading/cancellation-batches',
+              userId: pending.userId,
+              productLine: 'SPOT',
+              query: {'userId': '${pending.userId}', 'batchKey': batch.key},
+            );
+          } on ApiException catch (error) {
+            final parsed = asMap(jsonDecode(error.message));
+            if (parsed['outcome'] != 'TERMINAL') rethrow;
+            receipt = parsed;
+          }
+          if (receipt['commandId'] is! String ||
+              asString(receipt['commandId']).isEmpty ||
+              (pending.commandId != null &&
+                  receipt['commandId'] != pending.commandId)) {
+            throw const FormatException('批量撤单回执不匹配');
+          }
+          if (receipt['outcome'] == 'RESULT_UNKNOWN' ||
+              receipt['outcome'] == 'MATCHING_PENDING') {
+            if (current()) lastNotice = '批量撤单结果待确认，请确认后继续';
+            return;
+          }
+          final ids = asList(
+            receipt['prospectiveOrderIds'],
+          ).map(asInt).toList();
+          if (receipt['outcome'] != 'TERMINAL' ||
+              ids.length != batch.orderIds.length ||
+              !List.generate(
+                ids.length,
+                (i) => ids[i] == batch.orderIds[i],
+              ).every((same) => same)) {
+            throw const FormatException('批量撤单目标不匹配');
+          }
+          result = OrderBatchResult.fromCancellationJson(
+            asMap(receipt['result']),
+          );
+        } else {
+          final before = pending;
+          pending = PendingTradingOrder(
+            userId: pending.userId,
+            product: ProductMode.spot,
+            cancelPlan: plan.markIssued(),
+          );
+          if (!identical(_pendingTradingOrders[pending.userId], before)) return;
+          _pendingTradingOrders[pending.userId] = pending;
+          if (!await _writeSettings()) {
+            _pendingTradingOrders[pending.userId] = before;
+            throw const FormatException('未能保存批量撤单进度，未发送本批');
+          }
+          if (!current()) {
+            if (owns()) {
+              _pendingTradingOrders[pending.userId] = before;
+              await _writeSettings();
+            }
+            return;
+          }
+          try {
+            result = await api.cancelOrderBatch(
+              pending.userId,
+              batch.orderIds,
+              productLine: 'SPOT',
+              batchKey: batch.key,
+            );
+          } on PendingTradingCommand catch (command) {
+            if (!owns()) return;
+            pending = PendingTradingOrder(
+              userId: pending.userId,
+              product: ProductMode.spot,
+              cancelPlan: pending.cancelPlan,
+              commandId: _nonEmpty(command.commandId),
+            );
+            _pendingTradingOrders[pending.userId] = pending;
+            await _writeSettings();
+            if (current()) lastNotice = '批量撤单结果待确认，请确认后继续';
+            return;
+          } catch (error) {
+            if (!isDefinitiveOrderRejection(error)) rethrow;
+            String code = 'REQUEST_REJECTED';
+            if (error is ApiException) {
+              try {
+                final raw = asMap(jsonDecode(error.message));
+                code = _nonEmpty(asString(raw['code'])) ?? code;
+              } catch (_) {}
+            }
+            result = OrderBatchResult(
+              requested: batch.orderIds.length,
+              completed: 0,
+              failed: batch.orderIds.length,
+              results: List.generate(
+                batch.orderIds.length,
+                (i) => OrderBatchItem(index: i, success: false, message: code),
+              ),
+            );
+          }
+        }
+        if (!owns()) return;
+        final previous = pending, advanced = plan.advance(result);
+        pending = PendingTradingOrder(
+          userId: pending.userId,
+          product: ProductMode.spot,
+          cancelPlan: advanced,
+        );
+        _pendingTradingOrders[pending.userId] = pending;
+        if (!await _writeSettings()) {
+          _pendingTradingOrders[pending.userId] = previous;
+          throw const FormatException('未能保存已确认进度，请确认后继续');
+        }
+        if (current()) notifyListeners();
+      }
+      if (!owns()) return;
+      final plan = pending.cancelPlan!;
+      _pendingTradingOrders.remove(pending.userId);
+      await _writeSettings();
+      if (!current()) return;
+      lastCancellationResult = CancellationSummary(
+        pending.userId,
+        plan.requested,
+        plan.completed,
+        plan.failed,
+        plan.failures,
+      );
+      lastNotice =
+          '批量撤单已处理 ${plan.requested} 笔，成功 ${plan.completed} 笔，失败 ${plan.failed} 笔，请查看最新委托状态';
+      await refreshPrivateData();
+    } catch (error) {
+      if (current()) lastError = '批量撤单尚未确认：${clientErrorMessage(error)}';
     }
   }
 

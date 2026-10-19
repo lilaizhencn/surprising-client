@@ -763,6 +763,160 @@ class Position {
   }
 }
 
+/// Fixed cancellation targets and confirmed progress, not live order state.
+class CancellationBatch {
+  CancellationBatch(this.key, List<int> orderIds)
+    : orderIds = List.unmodifiable(orderIds) {
+    if (key.isEmpty ||
+        key.length > 64 ||
+        orderIds.isEmpty ||
+        orderIds.length > 50 ||
+        orderIds.any((id) => id <= 0)) {
+      throw const FormatException('批量撤单资料无效');
+    }
+  }
+  final String key;
+  final List<int> orderIds;
+  Map<String, dynamic> toJson() => {'key': key, 'orderIds': orderIds};
+  factory CancellationBatch.fromJson(Map<String, dynamic> json) =>
+      CancellationBatch(
+        asString(json['key']),
+        asList(json['orderIds']).map(asInt).toList(),
+      );
+}
+
+class CancellationPlan {
+  CancellationPlan({
+    required this.id,
+    required List<CancellationBatch> batches,
+    this.index = 0,
+    this.issued = false,
+    this.completed = 0,
+    this.failed = 0,
+    List<({int orderId, String code})> failures = const [],
+    this.instrumentId,
+  }) : batches = List.unmodifiable(batches),
+       failures = List.unmodifiable(failures) {
+    if (id.isEmpty ||
+        batches.isEmpty ||
+        index < 0 ||
+        index > batches.length ||
+        completed < 0 ||
+        failed < 0 ||
+        completed + failed !=
+            batches.take(index).fold<int>(0, (n, b) => n + b.orderIds.length) ||
+        failures.length != failed ||
+        (index == batches.length && issued) ||
+        batches.map((b) => b.key).toSet().length != batches.length ||
+        batches.expand((b) => b.orderIds).toSet().length !=
+            batches.fold<int>(0, (n, b) => n + b.orderIds.length) ||
+        failures.any(
+          (f) =>
+              f.orderId <= 0 ||
+              f.code.isEmpty ||
+              !batches.take(index).any((b) => b.orderIds.contains(f.orderId)),
+        )) {
+      throw const FormatException('批量撤单恢复资料无效');
+    }
+  }
+  final String id;
+  final String? instrumentId;
+  final List<CancellationBatch> batches;
+  final int index, completed, failed;
+  final bool issued;
+  final List<({int orderId, String code})> failures;
+  int get requested => batches.fold(0, (n, b) => n + b.orderIds.length);
+  CancellationPlan markIssued() => CancellationPlan(
+    id: id,
+    batches: batches,
+    index: index,
+    issued: true,
+    completed: completed,
+    failed: failed,
+    failures: failures,
+    instrumentId: instrumentId,
+  );
+  CancellationPlan advance(OrderBatchResult result) {
+    final ids = batches[index].orderIds;
+    if (result.requested != ids.length ||
+        result.results.length != ids.length ||
+        result.completed + result.failed != ids.length) {
+      throw const FormatException('批量撤单回执不完整');
+    }
+    final rejected = <({int orderId, String code})>[];
+    var applied = 0;
+    for (var i = 0; i < ids.length; i++) {
+      final item = result.results[i];
+      if (item.index != i ||
+          item.message.isEmpty ||
+          (item.success && item.message != 'NONE') ||
+          (!item.success && item.message == 'NONE') ||
+          (item.order != null && item.order!.orderId != ids[i])) {
+        throw const FormatException('批量撤单回执不匹配');
+      }
+      if (item.success) {
+        applied++;
+      } else {
+        rejected.add((orderId: ids[i], code: item.message));
+      }
+    }
+    if (result.completed != applied || result.failed != rejected.length) {
+      throw const FormatException('批量撤单计数不匹配');
+    }
+    return CancellationPlan(
+      id: id,
+      batches: batches,
+      index: index + 1,
+      issued: false,
+      completed: completed + applied,
+      failed: failed + rejected.length,
+      failures: [...failures, ...rejected],
+      instrumentId: instrumentId,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'instrumentId': instrumentId,
+    'batches': batches.map((b) => b.toJson()).toList(),
+    'index': index,
+    'issued': issued,
+    'completed': completed,
+    'failed': failed,
+    'failures': failures
+        .map((f) => {'orderId': f.orderId, 'code': f.code})
+        .toList(),
+  };
+  factory CancellationPlan.fromJson(Map<String, dynamic> json) =>
+      CancellationPlan(
+        id: asString(json['id']),
+        instrumentId: json['instrumentId'] as String?,
+        batches: asList(
+          json['batches'],
+        ).map((b) => CancellationBatch.fromJson(asMap(b))).toList(),
+        index: asInt(json['index']),
+        issued: asBool(json['issued']),
+        completed: asInt(json['completed']),
+        failed: asInt(json['failed']),
+        failures: asList(json['failures']).map((f) {
+          final row = asMap(f);
+          return (orderId: asInt(row['orderId']), code: asString(row['code']));
+        }).toList(),
+      );
+}
+
+class CancellationSummary {
+  const CancellationSummary(
+    this.userId,
+    this.requested,
+    this.completed,
+    this.failed,
+    this.failures,
+  );
+  final int userId, requested, completed, failed;
+  final List<({int orderId, String code})> failures;
+}
+
 /// A persisted submission identity, kept until a receipt or realtime order confirms it.
 class PendingTradingOrder {
   const PendingTradingOrder({
@@ -774,7 +928,9 @@ class PendingTradingOrder {
     this.cancelOrderId,
     this.amendRequestId,
     this.amendOrderId,
+    this.cancelPlan,
   });
+  final CancellationPlan? cancelPlan;
   final String? amendRequestId;
   final int? amendOrderId;
   final int userId;
@@ -946,6 +1102,28 @@ class OrderBatchResult {
   final int completed;
   final int failed;
   final List<OrderBatchItem> results;
+
+  /// Cancellation progress must not accept defaulted fields from an incomplete receipt.
+  factory OrderBatchResult.fromCancellationJson(Map<String, dynamic> json) {
+    final rows = json['results'];
+    if (json['requested'] is! int ||
+        json['completed'] is! int ||
+        json['failed'] is! int ||
+        rows is! List ||
+        rows.isEmpty ||
+        rows.length > 50) {
+      throw const FormatException('批量撤单回执不完整');
+    }
+    for (final value in rows) {
+      final item = asMap(value);
+      if (item['index'] is! int ||
+          item['success'] is! bool ||
+          item['message'] is! String) {
+        throw const FormatException('批量撤单回执字段无效');
+      }
+    }
+    return OrderBatchResult.fromJson(json);
+  }
 
   factory OrderBatchResult.fromJson(Map<String, dynamic> json) {
     return OrderBatchResult(

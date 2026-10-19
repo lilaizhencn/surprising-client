@@ -48,6 +48,56 @@ String _announcementCategory(Object? value, ClientLanguage language) {
   };
 }
 
+String tradingRecoveryLabel(PendingTradingOrder? pending) {
+  if (pending?.cancelPlan != null) return '确认并继续撤单';
+  if (pending?.amendRequestId != null) return '查询改单结果';
+  if (pending?.cancelOrderId != null) return '查询撤单结果';
+  return '查询委托结果';
+}
+
+String tradingPendingMessage(PendingTradingOrder? pending) {
+  final plan = pending?.cancelPlan;
+  if (plan != null) {
+    return '现货批量撤单：已确认 ${plan.completed + plan.failed}/${plan.requested} 笔，请确认后继续';
+  }
+  if (pending?.amendRequestId != null) return '改单结果待确认，请勿重复提交';
+  if (pending?.cancelOrderId != null) return '撤单结果待确认，请勿重复提交';
+  return '委托结果待确认，请勿重复提交';
+}
+
+Future<void> confirmSpotCancellation(
+  BuildContext context,
+  AppState state,
+) async {
+  final user = state.userId,
+      onlyCurrent = state.onlyCurrentTradingPair,
+      symbol = state.selectedSymbol;
+  final accepted = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: Text(onlyCurrent ? '撤销 $symbol 当前委托？' : '撤销全部现货委托？'),
+      content: const Text('只处理本次读取到的委托。部分成交或已结束的订单可能无法撤销，请查看逐项结果。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialog, false),
+          child: const Text('返回'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialog, true),
+          child: const Text('确认撤单'),
+        ),
+      ],
+    ),
+  );
+  if (accepted == true &&
+      context.mounted &&
+      state.userId == user &&
+      state.mode == ProductMode.spot &&
+      (!onlyCurrent || state.selectedSymbol == symbol)) {
+    await state.cancelOpenSpotOrders(onlyCurrentPair: onlyCurrent);
+  }
+}
+
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({
     required AppState super.notifier,
@@ -5324,15 +5374,9 @@ class OrderTicket extends StatelessWidget {
             const SizedBox(height: 6),
             if (AppScope.of(context).tradingCommandPending) ...[
               Text(
-                AppScope.of(context).pendingTradingCommand?.cancelOrderId !=
-                        null
-                    ? '撤单结果待确认，请勿重复提交'
-                    : AppScope.of(
-                            context,
-                          ).pendingTradingCommand?.amendRequestId !=
-                          null
-                    ? '改单结果待确认，请勿重复提交'
-                    : '委托结果待确认，请勿重复提交',
+                tradingPendingMessage(
+                  AppScope.of(context).pendingTradingCommand,
+                ),
                 style: const TextStyle(fontSize: 11),
               ),
               TextButton(
@@ -5342,15 +5386,9 @@ class OrderTicket extends StatelessWidget {
                         AppScope.of(context).checkPendingTradingCommand(),
                       ),
                 child: Text(
-                  AppScope.of(context).pendingTradingCommand?.cancelOrderId !=
-                          null
-                      ? '查询撤单结果'
-                      : AppScope.of(
-                              context,
-                            ).pendingTradingCommand?.amendRequestId !=
-                            null
-                      ? '查询改单结果'
-                      : '查询委托结果',
+                  tradingRecoveryLabel(
+                    AppScope.of(context).pendingTradingCommand,
+                  ),
                 ),
               ),
             ],
@@ -6292,21 +6330,14 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.pendingTradingCommand?.cancelOrderId != null ||
-            state.pendingTradingCommand?.amendRequestId != null) ...[
-          Text(
-            state.pendingTradingCommand?.amendRequestId != null
-                ? '改单结果待确认，请勿重复提交'
-                : '撤单结果待确认，请勿重复提交',
-          ),
+            state.pendingTradingCommand?.amendRequestId != null ||
+            state.pendingTradingCommand?.cancelPlan != null) ...[
+          Text(tradingPendingMessage(state.pendingTradingCommand)),
           TextButton(
             onPressed: state.submittingOrder
                 ? null
                 : state.checkPendingTradingCommand,
-            child: Text(
-              state.pendingTradingCommand?.amendRequestId != null
-                  ? '查询改单结果'
-                  : '查询撤单结果',
-            ),
+            child: Text(tradingRecoveryLabel(state.pendingTradingCommand)),
           ),
         ],
         if (state.isLoggedIn &&
@@ -6433,6 +6464,55 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
             ...state.positions.map(
               (position) => PositionRow(position: position, state: state),
             ),
+        ],
+        if (tab == 1 && state.mode == ProductMode.spot && state.isLoggedIn) ...[
+          OutlinedButton(
+            onPressed: state.submittingOrder || state.tradingCommandPending
+                ? null
+                : () => confirmSpotCancellation(context, state),
+            child: Text(
+              state.onlyCurrentTradingPair ? '撤销当前交易对委托' : '撤销全部现货委托',
+            ),
+          ),
+          if (state.lastCancellationResult?.userId == state.userId) ...[
+            Text(
+              '已处理 ${state.lastCancellationResult!.requested} 笔，成功 ${state.lastCancellationResult!.completed} 笔，失败 ${state.lastCancellationResult!.failed} 笔',
+            ),
+            if (state.lastCancellationResult!.failed > 0)
+              TextButton(
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  builder: (context) => AnimatedBuilder(
+                    animation: state,
+                    builder: (context, _) {
+                      final result = state.lastCancellationResult;
+                      if (result == null || result.userId != state.userId) {
+                        return const SafeArea(child: Text('账户已变化，请关闭此窗口'));
+                      }
+                      return SafeArea(
+                        child: ListView.builder(
+                          itemCount: result.failures.length,
+                          itemBuilder: (context, i) {
+                            final failure = result.failures[i];
+                            return ListTile(
+                              title: Text('订单 #${failure.orderId}'),
+                              subtitle: Text(
+                                failure.code == 'ORDER_NOT_FOUND'
+                                    ? '订单不存在或已结束'
+                                    : failure.code == 'ORDER_OWNER_MISMATCH'
+                                    ? '批次包含其他账户订单，未执行该批'
+                                    : '撤单未被接受，请查看最新订单状态',
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                child: const Text('查看失败订单'),
+              ),
+          ],
         ],
         if (tab == 1 && state.openOrders.isEmpty)
           const TradingEmptyState(text: '暂无委托'),

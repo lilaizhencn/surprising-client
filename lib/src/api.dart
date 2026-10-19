@@ -1139,10 +1139,14 @@ class ApiClient {
     int userId,
     List<int> orderIds, {
     String? productLine,
+    String? batchKey,
   }) async {
     final json = await post(
       '/api/v1/gateway/trading/batch-cancel',
       {
+        'batchKey':
+            batchKey ??
+            'app-cancel-batch-$userId-${DateTime.now().microsecondsSinceEpoch}',
         'orders': orderIds
             .map((orderId) => {'userId': userId, 'orderId': orderId})
             .toList(),
@@ -1150,7 +1154,27 @@ class ApiClient {
       userId: userId,
       productLine: productLine,
     );
-    return OrderBatchResult.fromJson(json);
+    return OrderBatchResult.fromCancellationJson(json);
+  }
+
+  Future<List<int>> cancellationPlan(int userId, {String? instrumentId}) async {
+    final json = await get(
+      '/api/v1/gateway/trading/cancellation-plan',
+      userId: userId,
+      productLine: 'SPOT',
+      query: {'userId': '$userId', 'instrumentId': ?instrumentId},
+    );
+    if (asInt(json['userId']) != userId ||
+        json['productLine'] != 'SPOT' ||
+        json['instrumentId'] != instrumentId ||
+        json['orderIds'] is! List) {
+      throw const FormatException('批量撤单范围不匹配');
+    }
+    final ids = asList(json['orderIds']).map(asInt).toList();
+    if (ids.any((id) => id <= 0) || ids.toSet().length != ids.length) {
+      throw const FormatException('批量撤单目标无效');
+    }
+    return ids;
   }
 
   Future<OrderBatchResult> cancelOpenOrders(

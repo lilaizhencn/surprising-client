@@ -1,0 +1,160 @@
+{
+  "date": "2026-10-19",
+  "scope": "SPOT fixed-target bulk cancellation and resumable unissued batches",
+  "releaseOrder": [
+    "apply 20261019-cancel-batch-results.sql after the prior receipt-table migration",
+    "upgrade realtime; for historical batch receipts create a NEW independent .command-repair checkpoint and backfill retained log prefix to a fixed bound",
+    "verify target batch facts then publish gateway",
+    "publish Web/client; do not reset live exporter or republish Kafka"
+  ],
+  "limits": [
+    "SPOT UI only; shared identity/plan services tested across the six product enum values.",
+    "Controlled browser API/WS and real loopback client HTTP are not a full FUSED deployment. No native iOS/Android installation in this round.",
+    "Missing commit facts retain unknown state. A request which never reached Core cannot be inferred rejected.",
+    "Existing direct server cancel-open aggregation and client low-level direct helper, algo/trigger bulk paths, batch place/amend and other product UIs remain outside this round.",
+    "Web requires Web Locks; unsupported browsers send no cancellation. Current account/order views remain authoritative after a receipt is confirmed."
+  ],
+  "cleanup": {
+    "status": "complete; owned database dropped, Vite stopped, browser exited, owned temporary logs/scripts/screenshots and selected test reports removed after digest archive",
+    "ownedDatabase": "surprising_bulk_3961793428",
+    "ownedVitePid": 13783,
+    "ownedVitePort": 5197,
+    "browserContexts": "all eight closed; Chromium process exited",
+    "paths": [
+      "/tmp/surprising-bulk-backend-final.log",
+      "/tmp/surprising-bulk-backend-green.log",
+      "/tmp/surprising-bulk-backend.log",
+      "/tmp/surprising-bulk-browser-error.png",
+      "/tmp/surprising-bulk-browser-error.txt",
+      "/tmp/surprising-bulk-browser.json",
+      "/tmp/surprising-bulk-browser.log",
+      "/tmp/surprising-bulk-browser.mjs",
+      "/tmp/surprising-bulk-client-all-tests.log",
+      "/tmp/surprising-bulk-client-analyze.log",
+      "/tmp/surprising-bulk-client-fix.log",
+      "/tmp/surprising-bulk-client-format.log",
+      "/tmp/surprising-bulk-client-red.log",
+      "/tmp/surprising-bulk-client-test.log",
+      "/tmp/surprising-bulk-compile.log",
+      "/tmp/surprising-bulk-gateway-final.log",
+      "/tmp/surprising-bulk-gateway-green.log",
+      "/tmp/surprising-bulk-migration.log",
+      "/tmp/surprising-bulk-orders-1440-dark.png",
+      "/tmp/surprising-bulk-orders-1440-light.png",
+      "/tmp/surprising-bulk-orders-390-dark.png",
+      "/tmp/surprising-bulk-orders-390-light.png",
+      "/tmp/surprising-bulk-owned-db",
+      "/tmp/surprising-bulk-package.log",
+      "/tmp/surprising-bulk-report-cleanup.json",
+      "/tmp/surprising-bulk-reports.json",
+      "/tmp/surprising-bulk-trade-1440-dark.png",
+      "/tmp/surprising-bulk-trade-1440-light.png",
+      "/tmp/surprising-bulk-trade-390-dark.png",
+      "/tmp/surprising-bulk-trade-390-light.png",
+      "/tmp/surprising-bulk-vite.log",
+      "/tmp/surprising-bulk-web-all-tests.log",
+      "/tmp/surprising-bulk-web-build.log",
+      "/tmp/surprising-bulk-web-final-build.log",
+      "/tmp/surprising-bulk-web-final-format.log",
+      "/tmp/surprising-bulk-web-final-lint.log",
+      "/tmp/surprising-bulk-web-final-tests.log",
+      "/tmp/surprising-bulk-web-format.log",
+      "/tmp/surprising-bulk-web-last-build.log",
+      "/tmp/surprising-bulk-web-last-format.log",
+      "/tmp/surprising-bulk-web-last-lint.log",
+      "/tmp/surprising-bulk-web-last-tests.log",
+      "/tmp/surprising-bulk-web-lint.log",
+      "/tmp/surprising-bulk-web-test.log",
+      "/tmp/surprising-bulk-web-type.log",
+      "/tmp/surprising-bulk-web-ui-format.log"
+    ],
+    "preserved": [
+      "system PostgreSQL process and all other databases",
+      "unrelated social project processes/tests",
+      "dependency caches/build dependencies and existing .codegraph metadata"
+    ],
+    "generatedReportsRemoved": [
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-aeron-core/surprising-aeron-service/target/surefire-reports/TEST-com.surprising.aeron.service.orchestration.CommittedTradeReplayTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-aeron-core/surprising-aeron-service/target/surefire-reports/com.surprising.aeron.service.orchestration.CommittedTradeReplayTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-aeron-core/surprising-aeron-service/target/surefire-reports/TEST-com.surprising.aeron.service.orchestration.CoreSpotAssetUnitsTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-aeron-core/surprising-aeron-service/target/surefire-reports/com.surprising.aeron.service.orchestration.CoreSpotAssetUnitsTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.ExportBatchTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.ExportBatchTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.CommittedFundingRepairIntegrationTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.CommittedFundingRepairIntegrationTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.CommittedTradeExportIntegrationTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.CommittedTradeExportIntegrationTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.CommittedOrderProjectionPostgresTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.CommittedOrderProjectionPostgresTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.repository.CommittedCommandResultQueryPostgresTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/com.surprising.trading.order.repository.CommittedCommandResultQueryPostgresTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.controller.OrderControllerTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/com.surprising.trading.order.controller.OrderControllerTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.service.OrderServiceTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/com.surprising.trading.order.service.OrderServiceTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/TEST-com.surprising.gateway.provider.local.LocalBusinessApiTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/com.surprising.gateway.provider.local.LocalBusinessApiTest.txt",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.service.AeronOrderCommandServiceTest.xml",
+      "/Users/atomex/Desktop/surprising/surprising-ex/surprising-gateway/target/surefire-reports/com.surprising.trading.order.service.AeronOrderCommandServiceTest.txt"
+    ]
+  },
+  "verification": {
+    "tests": 185,
+    "newBulkTests": 19,
+    "failures": 0,
+    "analysis": "flutter analyze: No issues found",
+    "commands": [
+      "flutter analyze",
+      "flutter test --reporter expanded"
+    ],
+    "regression": "Removed only the batchKey payload field temporarily: direct API test failed (null mandatory key). Restored source and full 185 tests passed.",
+    "scenarios": [
+      "1205 fixed targets -> 25 sequential native batches with per-item failures",
+      "restart restores original keys, query unknown, query terminal, then only unsent original target chunks",
+      "lookup400/503, wrong target, bad count/code, missing result/success field retain issued intent",
+      "initial/issued/progress settings failure, empty scope, account logout/switch and competing recovery clicks",
+      "real loopback HTTP GET plan, lost POST reply, GET unknown, GET terminal, POST remaining two chunks; exact64-bit IDs and SPOT/user headers asserted",
+      "320px dark/light widget tests: scope dialog, no POST before confirmation, partial counts, failure-order detail sheet, unknown lock and confirmed recovery"
+    ],
+    "ownership": "Secure settings retain one pending operation per user; CancellationPlan records only operation targets and progress. Current order/account state remains realtime-owned."
+  },
+  "artifacts": {
+    "surprising-bulk-client-all-tests.log": {
+      "historicalPath": "/tmp/surprising-bulk-client-all-tests.log",
+      "sha256": "d950f008303d7851292bfcbf5d8aeb9183cb793fb56d4cb3a194c6d99601a313",
+      "bytes": 42225,
+      "status": "archived digest; owned temporary file removed after validation"
+    },
+    "surprising-bulk-client-analyze.log": {
+      "historicalPath": "/tmp/surprising-bulk-client-analyze.log",
+      "sha256": "97b0ce08c12cf7ec125a0753cebe76854f851754fc611c1f87af0ce17373bae1",
+      "bytes": 96,
+      "status": "archived digest; owned temporary file removed after validation"
+    },
+    "surprising-bulk-client-fix.log": {
+      "historicalPath": "/tmp/surprising-bulk-client-fix.log",
+      "sha256": "168599c8630e56fdc51056b616f47e06acc5b97dfeb7a64dc1d2e217d82d95f4",
+      "bytes": 184,
+      "status": "archived digest; owned temporary file removed after validation"
+    },
+    "surprising-bulk-client-format.log": {
+      "historicalPath": "/tmp/surprising-bulk-client-format.log",
+      "sha256": "8cd9e60bb3c6e9bd0ce061d267e80db7d5cc2b1e711c3945d7e5daf0cf8907bc",
+      "bytes": 158,
+      "status": "archived digest; owned temporary file removed after validation"
+    },
+    "surprising-bulk-client-red.log": {
+      "historicalPath": "/tmp/surprising-bulk-client-red.log",
+      "sha256": "7397c218e1b27ee62b9180fe9db7fd5e064cbc8844cb5806ac3ce20089522156",
+      "bytes": 2222,
+      "status": "archived digest; owned temporary file removed after validation"
+    },
+    "surprising-bulk-client-test.log": {
+      "historicalPath": "/tmp/surprising-bulk-client-test.log",
+      "sha256": "b71620eb5ec7d9348112040f282de9355c7add46c3f2367cc38d96430834220b",
+      "bytes": 1419,
+      "status": "archived digest; owned temporary file removed after validation"
+    }
+  },
+  "backendCommit": "888f58d6d12f9dedd936fdbd8a04eb7df664e7f8"
+}

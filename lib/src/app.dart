@@ -19,6 +19,7 @@ import 'kyc_documents_page.dart';
 import 'deposit_page.dart';
 import 'models.dart';
 import 'spot_order.dart';
+import 'spot_amend_order_sheet.dart';
 
 const _ink = Color(0xFFF2F0F3);
 const _muted = Color(0xFFC6CAD6);
@@ -5326,6 +5327,11 @@ class OrderTicket extends StatelessWidget {
                 AppScope.of(context).pendingTradingCommand?.cancelOrderId !=
                         null
                     ? '撤单结果待确认，请勿重复提交'
+                    : AppScope.of(
+                            context,
+                          ).pendingTradingCommand?.amendRequestId !=
+                          null
+                    ? '改单结果待确认，请勿重复提交'
                     : '委托结果待确认，请勿重复提交',
                 style: const TextStyle(fontSize: 11),
               ),
@@ -5339,6 +5345,11 @@ class OrderTicket extends StatelessWidget {
                   AppScope.of(context).pendingTradingCommand?.cancelOrderId !=
                           null
                       ? '查询撤单结果'
+                      : AppScope.of(
+                              context,
+                            ).pendingTradingCommand?.amendRequestId !=
+                            null
+                      ? '查询改单结果'
                       : '查询委托结果',
                 ),
               ),
@@ -6280,13 +6291,22 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (state.pendingTradingCommand?.cancelOrderId != null) ...[
-          const Text('撤单结果待确认，请勿重复提交'),
+        if (state.pendingTradingCommand?.cancelOrderId != null ||
+            state.pendingTradingCommand?.amendRequestId != null) ...[
+          Text(
+            state.pendingTradingCommand?.amendRequestId != null
+                ? '改单结果待确认，请勿重复提交'
+                : '撤单结果待确认，请勿重复提交',
+          ),
           TextButton(
             onPressed: state.submittingOrder
                 ? null
                 : state.checkPendingTradingCommand,
-            child: const Text('查询撤单结果'),
+            child: Text(
+              state.pendingTradingCommand?.amendRequestId != null
+                  ? '查询改单结果'
+                  : '查询撤单结果',
+            ),
           ),
         ],
         if (state.isLoggedIn &&
@@ -6374,6 +6394,28 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                       )
                       .firstOrNull ??
                   Instrument.empty(state.mode),
+              onAmend:
+                  !state.mode.isSpot ||
+                      state.submittingOrder ||
+                      state.tradingCommandPending
+                  ? null
+                  : () {
+                      final instrument = state.instruments
+                          .where(
+                            (i) =>
+                                i.mode == state.mode &&
+                                i.symbol == order.symbol,
+                          )
+                          .firstOrNull;
+                      if (instrument != null) {
+                        showSpotAmendOrderSheet(
+                          context,
+                          state,
+                          order,
+                          instrument,
+                        );
+                      }
+                    },
               onCancel: state.submittingOrder || state.tradingCommandPending
                   ? null
                   : () => state.cancelOrder(order),
@@ -6406,6 +6448,28 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                       )
                       .firstOrNull ??
                   Instrument.empty(state.mode),
+              onAmend:
+                  !state.mode.isSpot ||
+                      state.submittingOrder ||
+                      state.tradingCommandPending
+                  ? null
+                  : () {
+                      final instrument = state.instruments
+                          .where(
+                            (i) =>
+                                i.mode == state.mode &&
+                                i.symbol == order.symbol,
+                          )
+                          .firstOrNull;
+                      if (instrument != null) {
+                        showSpotAmendOrderSheet(
+                          context,
+                          state,
+                          order,
+                          instrument,
+                        );
+                      }
+                    },
               onCancel: state.submittingOrder || state.tradingCommandPending
                   ? null
                   : () => state.cancelOrder(order),
@@ -9470,11 +9534,13 @@ class OrderRow extends StatelessWidget {
     required this.order,
     required this.instrument,
     required this.onCancel,
+    this.onAmend,
     super.key,
   });
   final OrderModel order;
   final Instrument instrument;
   final VoidCallback? onCancel;
+  final VoidCallback? onAmend;
   @override
   Widget build(BuildContext context) {
     final average = double.tryParse(order.averagePriceTicks ?? '');
@@ -9510,6 +9576,11 @@ class OrderRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (canCancel &&
+                  order.orderType == 'LIMIT' &&
+                  order.status != 'PENDING_RESERVE' &&
+                  onAmend != null)
+                TextButton(onPressed: onAmend, child: const Text('改单')),
               if (canCancel && onCancel != null)
                 TextButton(onPressed: onCancel, child: const Text('撤单')),
             ],

@@ -9,6 +9,7 @@ import 'models.dart';
 import 'realtime_state.dart';
 import 'account_records.dart';
 import 'session_store.dart';
+import 'spot_order.dart';
 
 class WithdrawalAssetRule {
   const WithdrawalAssetRule({
@@ -230,7 +231,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       bool? confirmed;
-      if (pending.cancelOrderId != null) {
+      if (pending.amendRequestId != null) {
+        final receipt = await api.get(
+          '/api/v1/gateway/trading/amendments',
+          userId: pending.userId,
+          productLine: pending.product.productLine,
+          query: {
+            'userId': '${pending.userId}',
+            'clientRequestId': pending.amendRequestId!,
+          },
+        );
+        if (receipt['commandId'] is! String ||
+            asString(receipt['commandId']).isEmpty ||
+            (pending.commandId != null &&
+                receipt['commandId'] != pending.commandId)) {
+          throw const FormatException('改单回执资料不匹配');
+        }
+        if (receipt['outcome'] == 'TERMINAL' &&
+            receipt['code'] is String &&
+            asString(receipt['code']).isNotEmpty) {
+          confirmed = receipt['code'] == 'NONE';
+        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
+            receipt['code'] != 'RESULT_UNKNOWN') {
+          throw const FormatException('改单回执资料不完整');
+        }
+      } else if (pending.cancelOrderId != null) {
         final receipt = await api.get(
           '/api/v1/gateway/trading/cancellations/${pending.cancelOrderId}',
           userId: pending.userId,
@@ -321,6 +346,7 @@ class AppState extends ChangeNotifier {
       if (confirmed == null &&
           pending.clientOrderId == null &&
           pending.cancelOrderId == null &&
+          pending.amendRequestId == null &&
           pending.commandId != null) {
         final receipt = await api.get(
           '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId!)}',
@@ -343,12 +369,16 @@ class AppState extends ChangeNotifier {
         await _writeSettings();
         if (!current()) return;
         if (confirmed) {
-          lastNotice = pending.cancelOrderId != null
+          lastNotice = pending.amendRequestId != null
+              ? '改单处理结果已确认，请查看原单和新委托状态'
+              : pending.cancelOrderId != null
               ? '撤单处理结果已确认，请查看最新订单状态'
               : '委托处理结果已确认，订单状态以最新账户数据为准';
           await refreshPrivateData();
         } else {
-          lastError = pending.cancelOrderId != null
+          lastError = pending.amendRequestId != null
+              ? '改单请求被拒绝，请查看原单状态'
+              : pending.cancelOrderId != null
               ? '撤单请求被拒绝，请查看最新订单状态'
               : '委托未被接受，请检查订单状态';
         }
@@ -726,9 +756,16 @@ class AppState extends ChangeNotifier {
         final clientOrderId = _nonEmpty(asString(value['clientOrderId']));
         final instrumentId = _nonEmpty(asString(value['instrumentId']));
         final cancelOrderId = asInt(value['cancelOrderId']);
+        final amendRequestId = _nonEmpty(asString(value['amendRequestId']));
+        final amendOrderId = asInt(value['amendOrderId']);
         if (id > 0 &&
             product != null &&
             (commandId != null ||
+                (product.isSpot &&
+                    amendRequestId != null &&
+                    amendOrderId > 0 &&
+                    clientOrderId != null &&
+                    instrumentId != null) ||
                 (product.isSpot && cancelOrderId > 0) ||
                 (product.isSpot &&
                     clientOrderId != null &&
@@ -740,6 +777,8 @@ class AppState extends ChangeNotifier {
             clientOrderId: clientOrderId,
             instrumentId: instrumentId,
             cancelOrderId: cancelOrderId > 0 ? cancelOrderId : null,
+            amendRequestId: amendRequestId,
+            amendOrderId: amendOrderId > 0 ? amendOrderId : null,
           );
         }
       }
@@ -786,6 +825,8 @@ class AppState extends ChangeNotifier {
                 'clientOrderId': pending.clientOrderId,
                 'instrumentId': pending.instrumentId,
                 'cancelOrderId': pending.cancelOrderId,
+                'amendRequestId': pending.amendRequestId,
+                'amendOrderId': pending.amendOrderId,
               },
             )
             .toList(),
@@ -1853,6 +1894,132 @@ class AppState extends ChangeNotifier {
           await _writeSettings();
         }
         if (current()) lastError = '下单失败：${clientErrorMessage(error)}';
+      }
+    } finally {
+      if (current()) {
+        submittingOrder = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> amendSpotOrder(
+    OrderModel order,
+    Instrument instrument,
+    String price,
+    String quantity,
+  ) async {
+    final id = userId;
+    if (id == null || submittingOrder || tradingCommandPending) return;
+    lastError = null;
+    lastNotice = null;
+    late final ({int priceTicks, int quantitySteps}) terms;
+    try {
+      if (mode != ProductMode.spot) throw const FormatException('请切换至现货产品');
+      terms = spotAmendmentTerms(instrument, order, price, quantity);
+    } on FormatException catch (error) {
+      lastError = error.message;
+      notifyListeners();
+      return;
+    }
+    final epoch = _walletSessionVersion;
+    bool current() => epoch == _walletSessionVersion && userId == id;
+    final random = math.Random.secure();
+    final key =
+        'app-amend-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+    final intent = PendingTradingOrder(
+      userId: id,
+      product: ProductMode.spot,
+      amendRequestId: key,
+      amendOrderId: order.orderId,
+      clientOrderId: key,
+      instrumentId: instrument.instrumentId,
+    );
+    bool issued = false, confirmed = false;
+    submittingOrder = true;
+    notifyListeners();
+    try {
+      _pendingTradingOrders[id] = intent;
+      if (!await _writeSettings()) {
+        if (_pendingTradingOrders[id] == intent) {
+          _pendingTradingOrders.remove(id);
+        }
+        if (current()) lastError = '无法保存改单恢复资料，未发送改单';
+        return;
+      }
+      if (!current()) {
+        if (_pendingTradingOrders[id] == intent) {
+          _pendingTradingOrders.remove(id);
+        }
+        await _writeSettings();
+        return;
+      }
+      issued = true;
+      final result = await api.amendOrder(
+        userId: id,
+        orderId: order.orderId,
+        priceTicks: terms.priceTicks,
+        quantitySteps: terms.quantitySteps,
+        newClientOrderId: key,
+        clientRequestId: key,
+        timeInForce: order.timeInForce,
+        postOnly: order.postOnly,
+        productLine: 'SPOT',
+      );
+      if (result.originalOrder.orderId != order.orderId ||
+          result.originalOrder.status != 'CANCELED' ||
+          result.replacementOrder.orderId <= 0 ||
+          result.replacementOrder.orderId == order.orderId ||
+          !result.cancelRequested ||
+          result.replacementOrder.symbol != instrument.symbol ||
+          ![
+            'ACCEPTED',
+            'PARTIALLY_FILLED',
+            'FILLED',
+            'CANCELED',
+            'REJECTED',
+          ].contains(result.replacementOrder.status)) {
+        throw const FormatException('改单响应不完整，请查询原改单结果');
+      }
+      confirmed = true;
+      if (_pendingTradingOrders[id] == intent) {
+        _pendingTradingOrders.remove(id);
+        await _writeSettings();
+      }
+      if (!current()) return;
+      if (mode == ProductMode.spot && selectedSymbol == instrument.symbol) {
+        _upsertOrder(result.originalOrder);
+        _upsertOrder(result.replacementOrder);
+      }
+      if (result.replacementOrder.status == 'REJECTED') {
+        lastError = '新委托被拒绝，请查看原单和新委托状态';
+      } else {
+        lastNotice = '改单已处理，新委托 #${result.replacementOrder.orderId}';
+      }
+      await refreshPrivateData();
+    } on PendingTradingCommand catch (pending) {
+      if (_pendingTradingOrders[id] == intent) {
+        _pendingTradingOrders[id] = PendingTradingOrder(
+          userId: id,
+          product: ProductMode.spot,
+          amendRequestId: key,
+          amendOrderId: order.orderId,
+          clientOrderId: key,
+          instrumentId: instrument.instrumentId,
+          commandId: _nonEmpty(pending.commandId),
+        );
+        await _writeSettings();
+      }
+      if (current()) lastNotice = '改单结果待确认，请勿重复提交';
+    } catch (error) {
+      if (issued && !confirmed && !isDefinitiveOrderRejection(error)) {
+        if (current()) lastNotice = '改单结果待确认，请勿重复提交';
+      } else {
+        if (_pendingTradingOrders[id] == intent) {
+          _pendingTradingOrders.remove(id);
+          await _writeSettings();
+        }
+        if (current()) lastError = '改单失败：${clientErrorMessage(error)}';
       }
     } finally {
       if (current()) {

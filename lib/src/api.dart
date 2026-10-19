@@ -1074,14 +1074,17 @@ class ApiClient {
     String? timeInForce,
     bool? postOnly,
     String? newClientOrderId,
+    String? clientRequestId,
     String? productLine,
   }) async {
+    final replacementKey =
+        newClientOrderId ??
+        'app-amend-$userId-${DateTime.now().microsecondsSinceEpoch}';
     final payload = <String, dynamic>{
       'userId': userId,
       'orderId': orderId,
-      'newClientOrderId':
-          newClientOrderId ??
-          'app-amend-$userId-${DateTime.now().microsecondsSinceEpoch}',
+      'newClientOrderId': replacementKey,
+      'clientRequestId': clientRequestId ?? replacementKey,
     };
     if (priceTicks != null) {
       payload['priceTicks'] = priceTicks;

@@ -107,3 +107,62 @@ String? spotOrderQuantity({
   }
   return scaledAmount(steps * BigInt.from(unit), scale);
 }
+
+/// The replacement quantity is a new order quantity, not the original total.
+({int priceTicks, int quantitySteps}) spotAmendmentTerms(
+  Instrument instrument,
+  OrderModel order,
+  String price,
+  String quantity,
+) {
+  if (!instrument.isSpot ||
+      instrument.instrumentId.isEmpty ||
+      instrument.symbol != order.symbol ||
+      instrument.status != 'TRADING' ||
+      order.orderId <= 0 ||
+      order.orderType != 'LIMIT' ||
+      !['OPEN', 'NEW', 'ACCEPTED', 'PARTIALLY_FILLED'].contains(order.status)) {
+    throw const FormatException('当前订单或交易对不可改单');
+  }
+  final quoteScale = instrument.quoteScaleUnits,
+      baseScale = instrument.baseScaleUnits;
+  final minQ = instrument.minQuantitySteps, maxQ = instrument.maxQuantitySteps;
+  final minN = instrument.minNotionalUnits, maxN = instrument.maxNotionalUnits;
+  final multiplier = instrument.notionalMultiplierUnits;
+  if (quoteScale == null ||
+      baseScale == null ||
+      minQ == null ||
+      maxQ == null ||
+      minN == null ||
+      maxN == null ||
+      multiplier == null ||
+      multiplier <= 0) {
+    throw const FormatException('改单精度或交易规则未就绪，请刷新资料');
+  }
+  final p = decimalIncrement(
+    price,
+    instrument.priceTickUnits,
+    scaleUnits: quoteScale,
+  );
+  final q = decimalIncrement(
+    quantity,
+    instrument.quantityStepUnits,
+    scaleUnits: baseScale,
+  );
+  if (p == null || p <= 0 || q == null || q <= 0) {
+    throw const FormatException('价格或数量不符合最小步长');
+  }
+  final notional = BigInt.from(p) * BigInt.from(q) * BigInt.from(multiplier);
+  if (q < minQ ||
+      q > maxQ ||
+      notional < BigInt.from(minN) ||
+      notional > BigInt.from(maxN) ||
+      BigInt.from(q) * BigInt.from(instrument.quantityStepUnits) >
+          BigInt.from(9223372036854775807)) {
+    throw const FormatException('新委托数量或金额超出交易规则');
+  }
+  if (p == order.priceTicks && q == order.remainingQuantitySteps) {
+    throw const FormatException('请修改价格或新委托数量');
+  }
+  return (priceTicks: p, quantitySteps: q);
+}

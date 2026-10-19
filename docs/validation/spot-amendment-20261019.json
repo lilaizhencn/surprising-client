@@ -1,0 +1,185 @@
+{
+  "date": "2026-10-19",
+  "productDebugScope": "SPOT only; shared public query identity tested over the six product-line enum values",
+  "releaseOrder": [
+    "ensure prior ae61e530d SQL receipt migration, realtime exporter upgrade and required historical receipt backfill are complete",
+    "update gateway with amendment query route",
+    "update Web/client; no new SQL migration or Core/exporter deployment change in this round"
+  ],
+  "limits": [
+    "Missing or unavailable receipt remains unknown; no automatic POST resend or inferred original refusal.",
+    "This query confirms processing, not the latest state of the original or replacement order; realtime account/order views remain authoritative.",
+    "New quantity is independent of prior executed quantity; the form starts with the original remaining quantity.",
+    "The original fee buffer after a partial fill is retained until replacement/cancel; financial tests use initial reserve minus actual fill spending."
+  ],
+  "notVerified": [
+    "complete FUSED service stack and live maker in this round",
+    "iOS/Android device installation",
+    "online deployment or historical backfill",
+    "batch placement/amendment/cancellation recovery",
+    "other product UIs",
+    "durable negative confirmation for requests never committed to Core"
+  ],
+  "cleanup": {
+    "status": "complete",
+    "ownedDatabase": "surprising_amend_18a0b15630",
+    "databaseDroppedAndVerified": true,
+    "ownedVitePid": 89674,
+    "ownedVitePort": 5193,
+    "portClosed": true,
+    "browserClosed": true,
+    "historicalUiRoot": "/var/folders/hx/xjj38_ln7kq9t86kzh9jz_9h0000gn/T/surprising-amend-ui-eoqw78xg",
+    "uiRootRemoved": true,
+    "rawLogsRemovedAfterSummaryAndHashArchive": true,
+    "ownedSurefireReportsRemoved": [
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/TEST-com.surprising.aeron.service.orchestration.CoreSpotAssetUnitsTest.xml",
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/com.surprising.aeron.service.orchestration.CoreSpotAssetUnitsTest.txt",
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/TEST-com.surprising.aeron.service.orchestration.LaneReplacementResponseTest.xml",
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/com.surprising.aeron.service.orchestration.LaneReplacementResponseTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.repository.CommittedCommandResultQueryPostgresTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.trading.order.repository.CommittedCommandResultQueryPostgresTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.service.OrderServiceTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.trading.order.service.OrderServiceTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.gateway.provider.local.LocalBusinessApiTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.gateway.provider.local.LocalBusinessApiTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.controller.OrderControllerTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.trading.order.controller.OrderControllerTest.txt"
+    ],
+    "historicalUiArtifacts": {
+      "trade-390-light.png": {
+        "sha256": "98fdd556f1e7f0aca175c1dece4e7a9b7e5869d1c519468bfc603ac042400d35",
+        "bytes": 97415
+      },
+      "orders-390-light-editor.png": {
+        "sha256": "e51ed070aa14744e3eb6a8926ec41d02f7732cd495769647a08956cf124e5b80",
+        "bytes": 67382
+      },
+      "orders-1440-light.png": {
+        "sha256": "1572671ee74ac38d911dc45b1f0f74c5badd964c1bef5b53236e3a4966bb287f",
+        "bytes": 117299
+      },
+      "orders-1440-dark.png": {
+        "sha256": "0e149ad516fddb70f250dfbbff1671487c98a9acce11a06edcd21a849072aed2",
+        "bytes": 118143
+      },
+      "trade-390-light-editor.png": {
+        "sha256": "2f1f75b176399f5ad404c8509e06c673e52f6d438b22a9b448d0adbb0a9204d6",
+        "bytes": 99293
+      },
+      "result.json": {
+        "sha256": "79289b4c80b22c4bd5d8a32e6091321e053f1fc040576d5383a4f74a97372fd6",
+        "bytes": 7702
+      },
+      "trade-1440-light.png": {
+        "sha256": "9733376a85512614d9a46ca581250c5de4b699e6feef98d5cf4630f9f8984abb",
+        "bytes": 122652
+      },
+      "orders-390-dark-editor.png": {
+        "sha256": "ce07cbb46dcad0b363c48102b1fa821415ee77d81b5cdd54fd2b6831ca99d75d",
+        "bytes": 64593
+      },
+      "orders-390-dark.png": {
+        "sha256": "c4197020bb6067362a00cd981cf9f9455c30a60e18e896a979f6f49aca00121d",
+        "bytes": 68151
+      },
+      "orders-390-light.png": {
+        "sha256": "29efd4906f24a5fc641dd2e7b8852e60fa6db8e1ab7f1b4e07a17de2c1038771",
+        "bytes": 67531
+      },
+      "check.mjs": {
+        "sha256": "a8f5c255ccff0a0b98b9dc0f612f0ad372fb6d4a39f8d10ffbce7f0070964cf8",
+        "bytes": 8518
+      },
+      "trade-1440-dark.png": {
+        "sha256": "62a7c9f1d892dcccc5110bed77181f0586b0ad1a9f98dd70f6527398ad3c234a",
+        "bytes": 120182
+      },
+      "orders-1440-light-editor.png": {
+        "sha256": "73cc1b1b57177c52b0d89d16b4303ad53d2cd17706729b9812543d72ff56bcc0",
+        "bytes": 130045
+      },
+      "orders-1440-dark-editor.png": {
+        "sha256": "0938e7fd82110577081351f3fce5304a78d15269314c02f3527f30e3409bd8f4",
+        "bytes": 126027
+      },
+      "trade-1440-dark-editor.png": {
+        "sha256": "79a957ed335f3c51a627a8aecf41a9019b2b060aa7dbae1ec2ba576c1c2bf2ed",
+        "bytes": 131844
+      },
+      "trade-390-dark-editor.png": {
+        "sha256": "02bb582413339caf28967abecdfce089ce735c9651798741697edd1146828ad7",
+        "bytes": 97442
+      },
+      "trade-1440-light-editor.png": {
+        "sha256": "75e30e0117c436346a5b803ccb41553c977c8b774f4763940bcaf275ee07007a",
+        "bytes": 135178
+      },
+      "trade-390-dark.png": {
+        "sha256": "80f5f807e55adf2460cb1ae3a359efc9efe65ffdb683c637cf251d414d03f014",
+        "bytes": 96606
+      }
+    },
+    "preserved": "System PostgreSQL and unrelated databases/data, installed dependencies and compiled build outputs; no wallet or persistent FUSED trading stack started.",
+    "note": "Historical paths refer to removed temporary evidence; results, class counts and checksums remain here."
+  },
+  "baseCommit": "66d6d63ccbdbb87e65c430bebfeed86b329bf507",
+  "change": "SPOT order-row amendment bottom sheet, exact step/rule validation, required clientRequestId in API, durable original request before POST and readonly cold-start recovery",
+  "checks": {
+    "commands": [
+      "flutter analyze",
+      "flutter test --reporter expanded"
+    ],
+    "tests": 166,
+    "analyze": "No issues found"
+  },
+  "coverage": [
+    "320px dark/light row editor, modal inputs, pending lock and adjacent result lookup",
+    "exact decimal steps, unchanged draft, invalid precision and independent new quantity",
+    "cold restart and storage failure sends nothing",
+    "late response does not mutate a new user or disposed notifier",
+    "matching canceled original and positive 64-bit replacement required; original still open remains pending",
+    "real loopback HTTP required request ID and both order images decoded",
+    "real loopback HTTP receives amendment POST then closes without headers: one POST plus two GETs restore by original clientRequestId"
+  ],
+  "regression": "Omitted only the new API clientRequestId payload field; expected replacement-1, actual null. Restored field and full analyze/166 tests passed.",
+  "backendEvidence": "surprising-ex/docs/validation/spot-amendment-20261019.json",
+  "artifacts": {
+    "surprising-amend-client-analyze.log": {
+      "historicalPath": "/tmp/surprising-amend-client-analyze.log",
+      "sha256": "60fd297e82625b7d2393df2e1e50761733e5256db70e934ebebe367be4f0ecd8",
+      "bytes": 96,
+      "status": "passed or routine diagnostic"
+    },
+    "surprising-amend-client-fix.log": {
+      "historicalPath": "/tmp/surprising-amend-client-fix.log",
+      "sha256": "dc807f1441cd1de9998fbf1c25faa06c7bc8d4ddb681b6a03dba749e0dbe738d",
+      "bytes": 317,
+      "status": "passed or routine diagnostic"
+    },
+    "surprising-amend-client-format.log": {
+      "historicalPath": "/tmp/surprising-amend-client-format.log",
+      "sha256": "2b8a8eff92f9fa27c44a9c642749a3b4af021a46e6f8120a87d79ba42c9148af",
+      "bytes": 90,
+      "status": "passed or routine diagnostic"
+    },
+    "surprising-amend-client-red.log": {
+      "historicalPath": "/tmp/surprising-amend-client-red.log",
+      "sha256": "88db1e77fa6b9d70d393feac2716fe350670e93d1fd3382e2a7c1a9b1e7db536",
+      "bytes": 1213,
+      "status": "expected failure with the relevant fix omitted"
+    },
+    "surprising-amend-client-target.log": {
+      "historicalPath": "/tmp/surprising-amend-client-target.log",
+      "sha256": "8e6c327a4c9715e85c16b63d1b8f228023d1578e5489eacfc93bed55c0829f01",
+      "bytes": 21718,
+      "status": "passed or routine diagnostic"
+    },
+    "surprising-amend-client-tests.log": {
+      "historicalPath": "/tmp/surprising-amend-client-tests.log",
+      "sha256": "a7bb9deb892ee202d82b00f250aae993d1e8f63bb8363aa4399c41ecc0c851f2",
+      "bytes": 42370,
+      "status": "passed or routine diagnostic"
+    }
+  },
+  "backendCommit": "531ee2425c32c1d92984c4d257bad67efdf6541c"
+}

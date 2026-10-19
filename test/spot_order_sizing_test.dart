@@ -70,6 +70,35 @@ String? quantity({
 
 void main() {
   test(
+    'spot amendment uses new quantities and exact steps, rejecting unchanged drafts',
+    () {
+      final spec = instrument();
+      final order = OrderModel.fromJson({
+        'orderId': 91,
+        'symbol': 'BTC-USDT',
+        'orderType': 'LIMIT',
+        'status': 'PARTIALLY_FILLED',
+        'priceTicks': 1000,
+        'remainingQuantitySteps': 3,
+      });
+      expect(spotAmendmentTerms(spec, order, '101.1', '0.02'), (
+        priceTicks: 1011,
+        quantitySteps: 2,
+      ));
+      for (final draft in [
+        ('100', '0.03'),
+        ('100.01', '0.02'),
+        ('100', '0.001'),
+      ]) {
+        expect(
+          () => spotAmendmentTerms(spec, order, draft.$1, draft.$2),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+
+  test(
     'percentage reserves each fragmented step fee and floors the selected budget',
     () {
       expect(quantity(), '0.09');

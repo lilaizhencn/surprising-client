@@ -8,6 +8,7 @@ import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
+import 'package:surprising_client/src/spot_amend_order_sheet.dart';
 
 Instrument spot({String status = 'TRADING'}) => Instrument.fromJson({
   'instrumentId': '1',
@@ -56,13 +57,351 @@ OrderModel cancelTarget({int id = 91, String status = 'ACCEPTED'}) =>
       'instrumentId': '1',
       'side': 'BUY',
       'orderType': 'LIMIT',
+      'timeInForce': 'GTC',
       'status': status,
       'priceTicks': 100,
       'quantitySteps': 2,
       'remainingQuantitySteps': 2,
     });
 
+Future<void> amendSpot(AppState state) =>
+    state.amendSpotOrder(cancelTarget(), spot(), '1.10', '0.0003');
+AmendOrderResult amendmentResult() => AmendOrderResult(
+  originalOrder: cancelTarget(status: 'CANCELED'),
+  replacementOrder: cancelTarget(id: 9007199254740993),
+  cancelRequested: true,
+  message: 'amended',
+);
+
 void main() {
+  test(
+    'amendment success cannot be inferred when the original order is still open',
+    () async {
+      final api = _SpotApi()
+        ..amendResponse = (Completer<AmendOrderResult>()
+          ..complete(
+            AmendOrderResult(
+              originalOrder: cancelTarget(),
+              replacementOrder: cancelTarget(id: 92),
+              cancelRequested: true,
+              message: 'amended',
+            ),
+          ));
+      final state = _SpotState(api)..session = session;
+      addTearDown(state.dispose);
+      await amendSpot(state);
+      expect(state.tradingCommandPending, isTrue);
+      expect(state.lastNotice, contains('待确认'));
+    },
+  );
+
+  test(
+    'direct amendment API supplies the mandatory request identity',
+    () async {
+      final api = _AmendPayloadApi();
+      await api.amendOrder(
+        userId: 1,
+        orderId: 91,
+        newClientOrderId: 'replacement-1',
+        priceTicks: 110,
+        quantitySteps: 3,
+        productLine: 'SPOT',
+      );
+      expect(api.sent!['clientRequestId'], 'replacement-1');
+      expect(api.sent!['newClientOrderId'], 'replacement-1');
+    },
+  );
+
+  test(
+    'lost HTTP amendment reply is recovered by original request with one POST and read only queries',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final methods = <String>[];
+      String? key;
+      var queries = 0;
+      server.listen((request) async {
+        methods.add(request.method);
+        final body = await utf8.decoder.bind(request).join();
+        if (request.method == 'POST') {
+          final payload = asMap(jsonDecode(body));
+          key = asString(payload['clientRequestId']);
+          expect(key, isNotEmpty);
+          expect(payload['newClientOrderId'], key);
+          final socket = await request.response.detachSocket(
+            writeHeaders: false,
+          );
+          socket.destroy();
+        } else {
+          expect(request.uri.path, '/api/v1/gateway/trading/amendments');
+          expect(request.uri.queryParameters['clientRequestId'], key);
+          queries++;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              'commandId': '11111111-1111-1111-1111-111111111111',
+              'outcome': queries > 1 ? 'TERMINAL' : 'RESULT_UNKNOWN',
+              'code': queries > 1 ? 'NONE' : 'RESULT_UNKNOWN',
+            }),
+          );
+          await request.response.close();
+        }
+      });
+      final http = HttpOverrides.runWithHttpOverrides(
+        () => HttpClient(),
+        _RealHttp(),
+      );
+      final api =
+          ApiClient(
+              AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
+              httpClient: http,
+            )
+            ..setSession(session)
+            ..instrumentCatalog = [spot()];
+      final state = _SpotState(api)..session = session;
+      addTearDown(() async {
+        state.dispose();
+        http.close(force: true);
+        await server.close(force: true);
+      });
+      await amendSpot(state);
+      expect(state.tradingCommandPending, isTrue);
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isTrue);
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isFalse);
+      expect(methods, ['POST', 'GET', 'GET']);
+    },
+  );
+
+  test(
+    'spot amendment persists its original request before POST and survives cold start without resending',
+    () async {
+      final settings = _MemorySettings(), api = _SpotApi();
+      api.beforeAmend = () {
+        final saved = asMap(
+          asList(jsonDecode(settings.values['pendingTradingOrders']!)).single,
+        );
+        expect(saved['amendOrderId'], 91);
+        expect(saved['amendRequestId'], api.lastAmend!['clientRequestId']);
+      };
+      final state = _SpotState(api, settings: settings)..session = session;
+      await amendSpot(state);
+      final key = state.pendingTradingCommand?.amendRequestId;
+      expect(key, startsWith('app-amend-'));
+      expect(
+        api.lastAmend!['clientRequestId'],
+        api.lastAmend!['newClientOrderId'],
+      );
+      expect(api.lastAmend!['priceTicks'], 110);
+      expect(api.lastAmend!['quantitySteps'], 3);
+      await amendSpot(state);
+      await submitSpot(state);
+      expect(api.amendments, 1);
+      expect(api.calls, 0);
+      state.dispose();
+      final restored = _SpotState(api, settings: settings);
+      addTearDown(restored.dispose);
+      await restored.bootstrap();
+      restored.session = session;
+      expect(restored.pendingTradingCommand?.amendRequestId, key);
+      await restored.checkPendingTradingCommand();
+      expect(restored.tradingCommandPending, isTrue);
+      api.terminal = true;
+      await restored.checkPendingTradingCommand();
+      expect(restored.tradingCommandPending, isFalse);
+      expect(api.amendments, 1);
+      expect(api.amendQueries, 2);
+      expect(restored.lastNotice, contains('改单处理结果已确认'));
+    },
+  );
+  test(
+    'spot amendment does not send on storage or precision failure and keeps query errors locked',
+    () async {
+      final settings = _MemorySettings()..failWrites = true;
+      final api = _SpotApi();
+      final active = _SpotState(api, settings: settings)..session = session;
+      addTearDown(active.dispose);
+      await amendSpot(active);
+      expect(api.amendments, 0);
+      expect(active.lastError, contains('未发送改单'));
+      settings.failWrites = false;
+      await active.amendSpotOrder(cancelTarget(), spot(), '1.101', '0.0003');
+      expect(api.amendments, 0);
+      api.amendFailure = PendingTradingCommand('amend-1');
+      await amendSpot(active);
+      api.queryFailure = ApiException(503, 'unavailable');
+      await active.checkPendingTradingCommand();
+      expect(active.tradingCommandPending, isTrue);
+      api.queryFailure = null;
+      api.terminal = true;
+      api.submissionCode = 'INSUFFICIENT_AVAILABLE_BALANCE';
+      await active.checkPendingTradingCommand();
+      expect(active.tradingCommandPending, isFalse);
+      expect(active.lastError, contains('改单请求被拒绝'));
+    },
+  );
+  test(
+    'spot amendment retains both returned orders and preserves the 64 bit replacement ID',
+    () async {
+      final api = _SpotApi()
+        ..amendResponse = (Completer<AmendOrderResult>()
+          ..complete(amendmentResult()));
+      final state = _SpotState(api)..session = session;
+      addTearDown(state.dispose);
+      await amendSpot(state);
+      expect(state.tradingCommandPending, isFalse);
+      expect(state.lastNotice, contains('9007199254740993'));
+      expect(
+        state.openOrders.map((o) => o.orderId),
+        contains(9007199254740993),
+      );
+    },
+  );
+  test(
+    'late amendment response cannot mutate another user or notify a disposed state',
+    () async {
+      final api = _SpotApi()..amendResponse = Completer<AmendOrderResult>();
+      final state = _SpotState(api)..session = session;
+      final sent = amendSpot(state);
+      while (api.amendments == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      state.session = const AuthSession(
+        user: AuthUser(userId: 2, username: 'new', email: '', status: 'ACTIVE'),
+        accessToken: 'new',
+        refreshToken: 'new',
+      );
+      api.amendResponse!.complete(amendmentResult());
+      await sent;
+      expect(state.lastNotice, isNull);
+      expect(state.openOrders, isEmpty);
+      state.dispose();
+      final lateApi = _SpotApi()..amendResponse = Completer<AmendOrderResult>();
+      final disposed = _SpotState(lateApi)..session = session;
+      final late = amendSpot(disposed);
+      while (lateApi.amendments == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      disposed.dispose();
+      lateApi.amendResponse!.completeError(const SocketException('lost reply'));
+      await late;
+    },
+  );
+  test(
+    'real HTTP spot amendment sends the required request ID and decodes both order images',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      Map<String, dynamic>? sent;
+      server.listen((request) async {
+        expect(request.uri.path, '/api/v1/gateway/trading/amend');
+        expect(request.headers.value('X-Product-Line'), 'SPOT');
+        sent = asMap(jsonDecode(await utf8.decoder.bind(request).join()));
+        expect(sent!['clientRequestId'], sent!['newClientOrderId']);
+        expect(sent!['timeInForce'], 'GTC');
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'outcome': 'TERMINAL',
+            'code': 'NONE',
+            'result': {
+              'cancelRequested': true,
+              'originalOrder': {
+                'orderId': 91,
+                'instrumentId': '1',
+                'status': 'CANCELED',
+              },
+              'replacementOrder': {
+                'orderId': 9007199254740993,
+                'instrumentId': '1',
+                'status': 'ACCEPTED',
+              },
+            },
+          }),
+        );
+        await request.response.close();
+      });
+      final http = HttpOverrides.runWithHttpOverrides(
+        () => HttpClient(),
+        _RealHttp(),
+      );
+      final api =
+          ApiClient(
+              AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
+              httpClient: http,
+            )
+            ..setSession(session)
+            ..instrumentCatalog = [spot()];
+      final state = _SpotState(api)..session = session;
+      addTearDown(() async {
+        state.dispose();
+        http.close(force: true);
+        await server.close(force: true);
+      });
+      await amendSpot(state);
+      expect(sent, isNotNull);
+      expect(state.tradingCommandPending, isFalse);
+      expect(state.lastNotice, contains('9007199254740993'));
+    },
+  );
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'spot amendment row editor and recovery work at 320px ${brightness.name}',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final api = _SpotApi();
+        final state = _SpotState(api)
+          ..session = session
+          ..openOrders = [cancelTarget()];
+        addTearDown(state.dispose);
+        await tester.pumpWidget(
+          AppScope(
+            notifier: state,
+            child: MaterialApp(
+              theme: ThemeData(brightness: brightness),
+              home: const Scaffold(body: TradePage()),
+            ),
+          ),
+        );
+        final orders = find.text('当前委托 (1)');
+        await tester.ensureVisible(orders);
+        await tester.tap(orders);
+        await tester.pumpAndSettle();
+        final edit = find.widgetWithText(TextButton, '改单');
+        await tester.ensureVisible(edit);
+        await tester.tap(edit);
+        await tester.pumpAndSettle();
+        final price = find
+            .descendant(
+              of: find.byType(SpotAmendOrderSheet),
+              matching: find.byType(TextField),
+            )
+            .first;
+        await tester.enterText(price, '1.10');
+        await tester.tap(find.text('确认改单'));
+        await tester.pumpAndSettle();
+        expect(api.amendments, 1);
+        expect(state.tradingCommandPending, isTrue);
+        final check = find.descendant(
+          of: find.byType(PrivateTradingPanel),
+          matching: find.text('查询改单结果'),
+        );
+        await tester.ensureVisible(check);
+        await tester.tap(check);
+        await tester.pumpAndSettle();
+        expect(state.tradingCommandPending, isTrue);
+        api.terminal = true;
+        await tester.tap(check);
+        await tester.pumpAndSettle();
+        expect(state.tradingCommandPending, isFalse);
+        expect(api.amendments, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   test(
     'loopback HTTP cancellation loses the POST reply then recovers by read only with a 64 bit order ID',
     () async {
@@ -1180,6 +1519,36 @@ class _SpotApi extends ApiClient {
     throw cancelFailure;
   }
 
+  int amendments = 0, amendQueries = 0;
+  Map<String, dynamic>? lastAmend;
+  VoidCallback? beforeAmend;
+  Object amendFailure = const SocketException('lost amendment response');
+  Completer<AmendOrderResult>? amendResponse;
+  @override
+  Future<AmendOrderResult> amendOrder({
+    required int userId,
+    required int orderId,
+    int? priceTicks,
+    int? quantitySteps,
+    String? timeInForce,
+    bool? postOnly,
+    String? newClientOrderId,
+    String? clientRequestId,
+    String? productLine,
+  }) async {
+    expect(productLine, 'SPOT');
+    amendments++;
+    lastAmend = {
+      'clientRequestId': clientRequestId,
+      'newClientOrderId': newClientOrderId,
+      'priceTicks': priceTicks,
+      'quantitySteps': quantitySteps,
+    };
+    beforeAmend?.call();
+    if (amendResponse != null) return amendResponse!.future;
+    throw amendFailure;
+  }
+
   String submissionCode = 'NONE';
   bool terminal = false;
   bool lookupNotAccepted = false, orderFound = false;
@@ -1233,6 +1602,17 @@ class _SpotApi extends ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    if (path == '/api/v1/gateway/trading/amendments') {
+      amendQueries++;
+      expect(productLine, 'SPOT');
+      expect(query?['clientRequestId'], lastAmend!['clientRequestId']);
+      if (queryFailure != null) throw queryFailure!;
+      return {
+        'commandId': 'amend-1',
+        'outcome': terminal ? 'TERMINAL' : 'RESULT_UNKNOWN',
+        'code': terminal ? submissionCode : 'RESULT_UNKNOWN',
+      };
+    }
     if (path.startsWith('/api/v1/gateway/trading/cancellations/')) {
       cancelQueries++;
       expect(productLine, 'SPOT');
@@ -1319,4 +1699,26 @@ class _EmptySessionStore implements SessionStore {
   Future<bool> authenticateBiometric() async => false;
   @override
   Future<void> enableBiometric() async {}
+}
+
+class _AmendPayloadApi extends ApiClient {
+  _AmendPayloadApi() : super(const AppConfig());
+  Map<String, dynamic>? sent;
+  @override
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body, {
+    int? userId,
+    String? productLine,
+    Map<String, String>? headers,
+    bool unwrapResponseResult = false,
+  }) async {
+    expect(path, '/api/v1/gateway/trading/amend');
+    sent = body;
+    return {
+      'originalOrder': {'orderId': 91},
+      'replacementOrder': {'orderId': 92},
+      'cancelRequested': true,
+    };
+  }
 }

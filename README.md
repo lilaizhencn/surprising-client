@@ -177,3 +177,11 @@ NOT_ACCEPTED 不再被当成原订单拒绝。已受理订单可从 realtime 的
 订单列表旁增加“查询撤单结果”，未确认期间隐藏重复撤单操作，确认处理结果后解除锁定，成功时刷新账户；拒绝时提醒检查订单状态。依赖先发布新 gateway，且上一轮 realtime 回执迁移和历史回补已完成。请求未到 Core 的负确认、批量/改单等写入仍待继续验收。
 
 analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已复现。新增真实本机 HTTP 接收撤单后断开连接，以两次 GET 恢复，覆盖 64 位订单号；320px 深浅色实际交互验证列表撤单、锁定和结果查询。本轮没有 iOS/Android 真机或完整 FUSED 服务栈验收，见 [验证记录](docs/validation/spot-cancel-recovery-20261019.json)。
+
+## 现货订单行改单（2026-10-19）
+
+现货活动限价单增加“改单”，`spot_amend_order_sheet.dart` 编辑新价格、新委托数量，默认原单剩余数量；`spotAmendmentTerms` 按真实资产精度、步长及交易规则做整数检查，不经 double 转换。新委托数量独立于原单已成交数量，保留原有效方式及 Post Only。
+
+`AppState.amendSpotOrder` 在发送前持久保存随机 clientRequestId、新客户订单号、原订单和交易对，`ApiClient.amendOrder` 补齐原先遗漏的必填请求身份。存储失败不发送；即时结果必须含匹配的已撤原单和有效新单，异常或丢响应保留锁定。冷启动后从 realtime 的 `GET /api/v1/gateway/trading/amendments` 查询原请求，未知或不可用不解锁，不重发 POST；订单列表旁提供“查询改单结果”。确认的是处理结果，最终状态仍按 realtime 账户视图展示。
+
+166 项测试通过，analyze 无问题，包括 320px 深浅色表单、冷启动、存储失败、迟到响应/账户切换/dispose、64 位新单号，以及真实本机 HTTP 的必填字段/两张订单解码和丢失响应后的 POST+GET+GET。遗漏 clientRequestId 的回归已先复现失败。先更新 gateway，且此前 realtime 回执迁移、导出及历史回补已完成；本轮未安装 iOS/Android 真机、未启动完整 FUSED 栈，批量和其他产品继续验收。见 [记录](docs/validation/spot-amendment-20261019.json)。

@@ -346,6 +346,7 @@ class TriggerApi extends ApiClient {
     required int quantitySteps,
     required String marginMode,
     required String positionSide,
+    String? clientTriggerOrderId,
     int? activationPriceTicks,
     int? callbackRatePpm,
     String? productLine,

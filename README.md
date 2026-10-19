@@ -7,7 +7,7 @@ Flutter mobile client for Surprising Exchange.
 - Native Flutter K-line chart via `kline_chart`.
 - Email/phone registration, login with EMAIL/PHONE/TOTP challenges, email verification and password recovery through `surprising-gateway`.
 - Scrollable product tabs for spot, linear/inverse perpetuals, linear/inverse delivery and options; market list, candlestick, L2 order book and recent trades. Unconfigured products retain their page and show an explicit empty state.
-- Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed. TP/SL placement is fixed to mark-price triggering; versioned private snapshots update open triggers and recover state after private WebSocket reconnect.
+- Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed. TP/SL forms support mark/last/index sources and market/limit execution; versioned private snapshots update open triggers and recover state after private WebSocket reconnect.
 
 ## Local Backend
 
@@ -238,3 +238,15 @@ client 期权“高级委托 → 条件单”补齐 TP/SL 双腿 OCO，支持选
 Web 同步保存 OPTION OCO 原身份并复用结果确认入口。TP/SL 票据不显示普通开仓权利金，费用标记为“触发成交时计算”。后端新增只读 oco-submission 查询，复用现有回执表及 realtime exporter，不访问在线 Core。本轮无新 SQL 或 Core 交易/资金模型变更，发布需配套 gateway 与两端，并确保此前回执迁移和导出已就绪。
 
 实际仅运行 OPTION 单节点 FUSED：Web 双腿一次提交、丢响应刷新恢复后撤销；client 双腿一次提交、暂停 realtime 后未知、恢复并重建读取原结果，止盈腿触发限价平仓且另一腿撤销。当前及前一次隔离账户持仓/冻结归零、资金差额0。320px 深浅色及停牌费用文案验证通过；其他产品、独立条件单恢复、原生设备和生产发布仍需继续。[验证与清理记录](docs/validation/option-protection-20261020.json)。
+
+
+### 期权独立条件单与撤销恢复（2026-10-20 后续）
+
+独立条件单在发送前按账户保存原 clientTriggerOrderId、OPTION 产品和 instrumentId，撤销保存原 triggerOrderId。
+丢包、超时、响应不匹配或确认结果保存失败，均保留待确认；重建 AppState 后仅 GET realtime 原回执，不重新 POST。
+初始存储失败不发送；账户变化不继续发送或显示旧账户结果。多档顺序提交，遇到未知结果停止后续档位；已发档位移出草稿，未发送的保留。
+待确认时交易与条件单撤销均禁用，使用已有“查询委托结果”入口确认后再决定后续操作。
+
+配套 gateway 提供 trading-trigger/submission 和 trading-trigger/cancellations/{triggerOrderId}，沿用既有回执投影与导出，无新 SQL。
+其他产品及批量条件单撤销仍需逐项验收。可选 test/option_single_trigger_fused_live_test.dart 需要 OPTION_SINGLE_LIVE_FIXTURE，
+仅用于隔离 OPTION FUSED 交接；主机 Flutter 验证不等同于原生 iOS/Android 安装。实测与清理见 docs/validation/option-single-trigger-20261020.json。

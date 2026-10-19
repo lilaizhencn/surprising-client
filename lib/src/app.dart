@@ -5974,14 +5974,30 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
     final drafts = _drafts();
     if (drafts.isEmpty || drafts.length != levels.length || submitting) return;
     final submittedIds = levels.map((level) => level.id).toList();
+    final before = widget.state.pendingTradingCommand;
+    final owner = widget.state.userId;
+    final instrument = widget.state.selectedInstrument;
     setState(() => submitting = true);
     final submitted = oco
         ? await widget.state.placeOptionOco(drafts)
         : await widget.state.placeTriggerOrders(drafts);
     if (mounted) {
+      // A sent-but-unconfirmed tier belongs to the durable request, never to a
+      // new draft submission. Unsent tiers remain available after confirmation.
+      final pending = widget.state.pendingTradingCommand;
+      final movedToRecovery =
+          !oco &&
+              pending != before &&
+              pending?.clientTriggerOrderId != null &&
+              pending?.userId == owner &&
+              pending?.instrumentId == instrument.instrumentId &&
+              widget.state.userId == owner
+          ? 1
+          : 0;
       setState(() {
         levels.removeWhere(
-          (level) => submittedIds.take(submitted).contains(level.id),
+          (level) =>
+              submittedIds.take(submitted + movedToRecovery).contains(level.id),
         );
         submitting = false;
       });
@@ -6048,6 +6064,11 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
                 child: Text('双腿一起接受；一腿触发提交减仓委托，另一腿撤销。触发不保证成交。'),
+              ),
+            if (!oco)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: Text('逐档提交；结果待确认时停止后续发送。已发档位移出草稿，请查询原请求。'),
               ),
           ],
           const SizedBox(height: 6),
@@ -10132,7 +10153,13 @@ class TriggerOrderRow extends StatelessWidget {
             ),
           ),
           IconButton.filledTonal(
-            onPressed: onCancel,
+            onPressed:
+                state.submittingOrder ||
+                    state.submittingTriggers ||
+                    state.tradingCommandPending ||
+                    order.status != 'PENDING'
+                ? null
+                : onCancel,
             icon: const Icon(Icons.close),
           ),
         ],

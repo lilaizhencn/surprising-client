@@ -969,6 +969,8 @@ class PendingTradingOrder {
     this.cancelPlan,
     this.ocoTakeProfitClientId,
     this.ocoStopLossClientId,
+    this.clientTriggerOrderId,
+    this.cancelTriggerOrderId,
   });
   final CancellationPlan? cancelPlan;
   final String? amendRequestId;
@@ -978,6 +980,8 @@ class PendingTradingOrder {
   final ProductMode product;
   final String? commandId, clientOrderId, instrumentId;
   final String? ocoTakeProfitClientId, ocoStopLossClientId;
+  final String? clientTriggerOrderId;
+  final int? cancelTriggerOrderId;
 }
 
 class OrderModel {
@@ -1465,6 +1469,7 @@ class TriggerOrderModel {
     this.clientTriggerOrderId = '',
     this.ocoGroupId,
     this.priceSource = 'MARK',
+    this.userId = 0,
   });
 
   final int triggerOrderId;
@@ -1488,10 +1493,12 @@ class TriggerOrderModel {
   final int? placedOrderId;
   final String instrumentId, clientTriggerOrderId, priceSource;
   final String? ocoGroupId;
+  final int userId;
 
   factory TriggerOrderModel.fromJson(Map<String, dynamic> json) {
     final placedOrderId = json['placedOrderId'];
     return TriggerOrderModel(
+      userId: asInt(json['userId']),
       triggerOrderId: asInt(json['triggerOrderId']),
       instrumentId: asString(json['instrumentId']),
       clientTriggerOrderId: asString(json['clientTriggerOrderId']),

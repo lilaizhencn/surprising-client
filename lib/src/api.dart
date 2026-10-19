@@ -1436,6 +1436,7 @@ class ApiClient {
     required int quantitySteps,
     required String marginMode,
     required String positionSide,
+    String? clientTriggerOrderId,
     int? activationPriceTicks,
     int? callbackRatePpm,
     String priceSource = 'MARK',
@@ -1446,6 +1447,7 @@ class ApiClient {
     final payload = <String, Object?>{
       'userId': userId,
       'clientTriggerOrderId':
+          clientTriggerOrderId ??
           'app-trigger-$userId-${DateTime.now().microsecondsSinceEpoch}',
       'instrumentId': instrumentId,
       'side': side,

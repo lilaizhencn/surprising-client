@@ -237,7 +237,35 @@ class AppState extends ChangeNotifier {
         return;
       }
       bool? confirmed;
-      if (pending.ocoTakeProfitClientId != null &&
+      if (pending.clientTriggerOrderId != null ||
+          pending.cancelTriggerOrderId != null) {
+        final receipt = await api.get(
+          pending.cancelTriggerOrderId != null
+              ? '/api/v1/gateway/trading-trigger/cancellations/${pending.cancelTriggerOrderId}'
+              : '/api/v1/gateway/trading-trigger/submission',
+          userId: pending.userId,
+          productLine: pending.product.productLine,
+          query: {
+            'userId': '${pending.userId}',
+            if (pending.clientTriggerOrderId != null)
+              'clientTriggerOrderId': pending.clientTriggerOrderId!,
+          },
+        );
+        if (receipt['commandId'] is! String ||
+            asString(receipt['commandId']).isEmpty ||
+            (pending.commandId != null &&
+                receipt['commandId'] != pending.commandId)) {
+          throw const FormatException('条件单回执身份不匹配');
+        }
+        if (receipt['outcome'] == 'TERMINAL' &&
+            receipt['code'] is String &&
+            asString(receipt['code']).isNotEmpty) {
+          confirmed = receipt['code'] == 'NONE';
+        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
+            receipt['code'] != 'RESULT_UNKNOWN') {
+          throw const FormatException('条件单回执不完整');
+        }
+      } else if (pending.ocoTakeProfitClientId != null &&
           pending.ocoStopLossClientId != null) {
         final receipt = await api.get(
           '/api/v1/gateway/trading-trigger/oco-submission',
@@ -376,6 +404,8 @@ class AppState extends ChangeNotifier {
         }
       }
       if (confirmed == null &&
+          pending.clientTriggerOrderId == null &&
+          pending.cancelTriggerOrderId == null &&
           pending.ocoTakeProfitClientId == null &&
           pending.clientOrderId == null &&
           pending.cancelOrderId == null &&
@@ -398,18 +428,34 @@ class AppState extends ChangeNotifier {
       }
       if (!current() || pendingTradingCommand != pending) return;
       if (confirmed != null) {
-        _pendingTradingOrders.remove(pending.userId);
-        await _writeSettings();
+        if (pending.clientTriggerOrderId != null ||
+            pending.cancelTriggerOrderId != null) {
+          if (!await _clearTriggerIntent(pending)) {
+            if (current()) lastError = '无法保存条件单确认结果，请再次查询原请求';
+            return;
+          }
+        } else {
+          _pendingTradingOrders.remove(pending.userId);
+          await _writeSettings();
+        }
         if (!current()) return;
         if (confirmed) {
-          lastNotice = pending.amendRequestId != null
+          lastNotice =
+              pending.clientTriggerOrderId != null ||
+                  pending.cancelTriggerOrderId != null
+              ? '条件单请求结果已确认，请查看最新条件单状态'
+              : pending.amendRequestId != null
               ? '改单处理结果已确认，请查看原单和新委托状态'
               : pending.cancelOrderId != null
               ? '撤单处理结果已确认，请查看最新订单状态'
               : '委托处理结果已确认，订单状态以最新账户数据为准';
           await refreshPrivateData();
         } else {
-          lastError = pending.amendRequestId != null
+          lastError =
+              pending.clientTriggerOrderId != null ||
+                  pending.cancelTriggerOrderId != null
+              ? '条件单请求被拒绝，请查看最新条件单状态'
+              : pending.amendRequestId != null
               ? '改单请求被拒绝，请查看原单状态'
               : pending.cancelOrderId != null
               ? '撤单请求被拒绝，请查看最新订单状态'
@@ -859,12 +905,20 @@ class AppState extends ChangeNotifier {
         final ocoStopLossClientId = _nonEmpty(
           asString(value['ocoStopLossClientId']),
         );
+        final clientTriggerOrderId = _nonEmpty(
+          asString(value['clientTriggerOrderId']),
+        );
+        final cancelTriggerOrderId = asInt(value['cancelTriggerOrderId']);
         final cancelPlan = value['cancelPlan'] == null
             ? null
             : CancellationPlan.fromJson(asMap(value['cancelPlan']));
         if (id > 0 &&
             product != null &&
             ((product.isSpot && cancelPlan != null) ||
+                (product.isOption &&
+                    instrumentId != null &&
+                    (clientTriggerOrderId != null ||
+                        cancelTriggerOrderId > 0)) ||
                 (product.isOption &&
                     instrumentId != null &&
                     ocoTakeProfitClientId != null &&
@@ -891,6 +945,10 @@ class AppState extends ChangeNotifier {
             amendOrderId: amendOrderId > 0 ? amendOrderId : null,
             ocoTakeProfitClientId: ocoTakeProfitClientId,
             ocoStopLossClientId: ocoStopLossClientId,
+            clientTriggerOrderId: clientTriggerOrderId,
+            cancelTriggerOrderId: cancelTriggerOrderId > 0
+                ? cancelTriggerOrderId
+                : null,
           );
         }
       }
@@ -942,6 +1000,8 @@ class AppState extends ChangeNotifier {
                 'cancelPlan': pending.cancelPlan?.toJson(),
                 'ocoTakeProfitClientId': pending.ocoTakeProfitClientId,
                 'ocoStopLossClientId': pending.ocoStopLossClientId,
+                'clientTriggerOrderId': pending.clientTriggerOrderId,
+                'cancelTriggerOrderId': pending.cancelTriggerOrderId,
               },
             )
             .toList(),
@@ -2749,6 +2809,8 @@ class AppState extends ChangeNotifier {
     final product = mode;
     final id = userId;
     final token = session?.accessToken;
+    final epoch = _walletSessionVersion;
+    bool current() => userId == id && epoch == _walletSessionVersion;
     if (id == null) {
       lastError = '请先登录再提交止盈止损';
       notifyListeners();
@@ -2771,7 +2833,9 @@ class AppState extends ChangeNotifier {
       final position = positions
           .where(
             (p) =>
-                p.symbol == symbol &&
+                (instrument.isOption
+                    ? p.instrumentId == instrument.instrumentId
+                    : p.symbol == symbol) &&
                 p.marginMode == draft.marginMode &&
                 p.positionSide == draft.positionSide &&
                 p.signedQuantitySteps != 0,
@@ -2787,29 +2851,32 @@ class AppState extends ChangeNotifier {
     }
     final created = <TriggerOrderModel>[];
     submittingTriggers = true;
+    if (instrument.isOption) submittingOrder = true;
     notifyListeners();
     try {
       for (final draft in validDrafts) {
-        if (userId != id || session?.accessToken != token) {
+        if (!current()) {
           throw StateError('登录状态已变化，已停止后续提交');
         }
         created.add(
-          await api.placeTriggerOrder(
-            userId: id,
-            instrumentId: instrument.instrumentId,
-            side: draft.side,
-            triggerType: draft.triggerType,
-            triggerPriceTicks: draft.triggerPriceTicks,
-            activationPriceTicks: draft.activationPriceTicks,
-            callbackRatePpm: draft.callbackRatePpm,
-            priceSource: draft.priceSource,
-            orderType: draft.orderType,
-            priceTicks: draft.priceTicks,
-            quantitySteps: draft.quantitySteps,
-            marginMode: draft.marginMode,
-            positionSide: draft.positionSide,
-            productLine: product.productLine,
-          ),
+          instrument.isOption
+              ? await _placeOptionTrigger(id, instrument, draft, current)
+              : await api.placeTriggerOrder(
+                  userId: id,
+                  instrumentId: instrument.instrumentId,
+                  side: draft.side,
+                  triggerType: draft.triggerType,
+                  triggerPriceTicks: draft.triggerPriceTicks,
+                  activationPriceTicks: draft.activationPriceTicks,
+                  callbackRatePpm: draft.callbackRatePpm,
+                  priceSource: draft.priceSource,
+                  orderType: draft.orderType,
+                  priceTicks: draft.priceTicks,
+                  quantitySteps: draft.quantitySteps,
+                  marginMode: draft.marginMode,
+                  positionSide: draft.positionSide,
+                  productLine: product.productLine,
+                ),
         );
         if (userId == id &&
             session?.accessToken == token &&
@@ -2819,17 +2886,108 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       }
-      lastNotice = '止盈止损已提交 ${created.length} 档';
-      await refreshPrivateData();
+      if (current()) {
+        lastNotice = '止盈止损已提交 ${created.length} 档';
+        await refreshPrivateData();
+      }
     } catch (error) {
-      await refreshPrivateData();
-      lastError =
-          '已提交 ${created.length} 档，其余提交失败，请核对当前委托后重试：${clientErrorMessage(error)}';
+      if (current()) {
+        if (instrument.isOption && tradingCommandPending) {
+          lastNotice = '已确认 ${created.length} 档；当前档结果待确认，其余未发送，请查询原请求';
+        } else {
+          lastError =
+              '已提交 ${created.length} 档，其余未发送：${clientErrorMessage(error)}';
+        }
+        await refreshPrivateData();
+      }
     } finally {
-      submittingTriggers = false;
+      if (current()) {
+        submittingTriggers = false;
+        if (instrument.isOption) submittingOrder = false;
+      }
     }
     notifyListeners();
     return created.length;
+  }
+
+  Future<bool> _clearTriggerIntent(PendingTradingOrder intent) async {
+    if (!identical(_pendingTradingOrders[intent.userId], intent)) return false;
+    _pendingTradingOrders.remove(intent.userId);
+    if (await _writeSettings()) return true;
+    _pendingTradingOrders.putIfAbsent(intent.userId, () => intent);
+    return false;
+  }
+
+  Future<TriggerOrderModel> _placeOptionTrigger(
+    int id,
+    Instrument instrument,
+    TriggerOrderDraft draft,
+    bool Function() current,
+  ) async {
+    final random = math.Random.secure();
+    final key = List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    final intent = PendingTradingOrder(
+      userId: id,
+      product: instrument.mode,
+      instrumentId: instrument.instrumentId,
+      clientTriggerOrderId: 'app-trigger-$key',
+    );
+    var issued = false;
+    _pendingTradingOrders[id] = intent;
+    try {
+      if (!await _writeSettings()) throw StateError('无法保存条件单恢复资料，未发送委托');
+      if (!current()) throw StateError('账户已变化，未发送委托');
+      issued = true;
+      final order = await api.placeTriggerOrder(
+        userId: id,
+        instrumentId: instrument.instrumentId,
+        clientTriggerOrderId: intent.clientTriggerOrderId,
+        side: draft.side,
+        triggerType: draft.triggerType,
+        triggerPriceTicks: draft.triggerPriceTicks,
+        quantitySteps: draft.quantitySteps,
+        marginMode: draft.marginMode,
+        positionSide: draft.positionSide,
+        activationPriceTicks: draft.activationPriceTicks,
+        callbackRatePpm: draft.callbackRatePpm,
+        priceSource: draft.priceSource,
+        orderType: draft.orderType,
+        priceTicks: draft.priceTicks,
+        productLine: instrument.mode.productLine,
+      );
+      if (order.userId != id ||
+          order.triggerOrderId <= 0 ||
+          order.instrumentId != intent.instrumentId ||
+          order.clientTriggerOrderId != intent.clientTriggerOrderId ||
+          order.side != draft.side ||
+          order.triggerType != draft.triggerType ||
+          order.quantitySteps != draft.quantitySteps ||
+          ![
+            'PENDING',
+            'TRIGGERING',
+            'TRIGGERED',
+            'TRIGGER_FAILED',
+            'CANCELED',
+            'EXPIRED',
+          ].contains(order.status)) {
+        throw const FormatException('条件单响应身份或状态不匹配');
+      }
+      if (!await _clearTriggerIntent(intent)) throw StateError('无法保存条件单确认结果');
+      return order;
+    } catch (error) {
+      if (!issued) {
+        if (identical(_pendingTradingOrders[id], intent)) {
+          _pendingTradingOrders.remove(id);
+          await _writeSettings();
+        }
+      } else if (isDefinitiveOrderRejection(error)) {
+        await _clearTriggerIntent(intent);
+      }
+      rethrow;
+    }
   }
 
   bool _validTriggerDraft(TriggerOrderDraft draft) {
@@ -2863,6 +3021,10 @@ class AppState extends ChangeNotifier {
     final id = userId;
     if (id == null) return;
     final product = mode;
+    if (product.isOption) {
+      await _cancelOptionTrigger(id, order);
+      return;
+    }
     final token = session?.accessToken;
     try {
       final cancelled = await api.cancelTriggerOrder(
@@ -2882,6 +3044,73 @@ class AppState extends ChangeNotifier {
       lastError = '撤销条件单失败：${clientErrorMessage(error)}';
     }
     notifyListeners();
+  }
+
+  Future<void> _cancelOptionTrigger(int id, TriggerOrderModel order) async {
+    if (submittingOrder ||
+        submittingTriggers ||
+        tradingCommandPending ||
+        order.triggerOrderId <= 0 ||
+        order.instrumentId.isEmpty) {
+      return;
+    }
+    final epoch = _walletSessionVersion;
+    bool current() => userId == id && epoch == _walletSessionVersion;
+    final intent = PendingTradingOrder(
+      userId: id,
+      product: ProductMode.option,
+      instrumentId: order.instrumentId,
+      cancelTriggerOrderId: order.triggerOrderId,
+    );
+    var issued = false;
+    submittingOrder = true;
+    lastError = null;
+    lastNotice = null;
+    _pendingTradingOrders[id] = intent;
+    notifyListeners();
+    try {
+      if (!await _writeSettings()) throw StateError('无法保存撤销恢复资料，未发送请求');
+      if (!current()) throw StateError('账户已变化，未发送请求');
+      issued = true;
+      final cancelled = await api.cancelTriggerOrder(
+        id,
+        order.triggerOrderId,
+        productLine: 'OPTION',
+      );
+      if (cancelled.userId != id ||
+          cancelled.triggerOrderId != order.triggerOrderId ||
+          cancelled.instrumentId != order.instrumentId ||
+          cancelled.status != 'CANCELED') {
+        throw const FormatException('条件单撤销响应不匹配');
+      }
+      if (!await _clearTriggerIntent(intent)) throw StateError('无法保存撤销确认结果');
+      if (current()) {
+        if (mode.isOption) _upsertTriggerOrder(cancelled);
+        lastNotice = '条件单撤销已确认 #${order.triggerOrderId}';
+        await refreshPrivateData();
+      }
+    } catch (error) {
+      if (!issued) {
+        if (identical(_pendingTradingOrders[id], intent)) {
+          _pendingTradingOrders.remove(id);
+          await _writeSettings();
+        }
+      } else if (isDefinitiveOrderRejection(error)) {
+        await _clearTriggerIntent(intent);
+      }
+      if (current()) {
+        if (tradingCommandPending) {
+          lastNotice = '条件单撤销结果待确认，请查询原请求，勿重复撤销';
+        } else {
+          lastError = '撤销条件单未接受：${clientErrorMessage(error)}';
+        }
+      }
+    } finally {
+      if (current()) {
+        submittingOrder = false;
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> changePositionMode(String nextMode) async {

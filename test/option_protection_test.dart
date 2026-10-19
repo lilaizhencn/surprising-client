@@ -236,6 +236,226 @@ void main() {
     },
   );
 
+  test(
+    'single tiers persist each identity before POST; loss stops all unsent tiers and restores by GET',
+    () async {
+      final settings = _Settings(), api = _SingleApi()..loseAt = 2;
+      var state = _State(api, settings)..session = session;
+      api.before = () {
+        final pending = asMap(
+          asList(jsonDecode(settings.values['pendingTradingOrders']!)).single,
+        );
+        expect(
+          pending['clientTriggerOrderId'],
+          api.posts.last['clientTriggerOrderId'],
+        );
+        expect(pending['instrumentId'], '74');
+        expect(state.submittingOrder, true);
+      };
+      expect(
+        await state.placeTriggerOrders([...pair(), leg('TAKE_PROFIT', 30000)]),
+        1,
+      );
+      expect(api.posts.length, 2);
+      final original = state.pendingTradingCommand!.clientTriggerOrderId;
+      expect(original, api.posts.last['clientTriggerOrderId']);
+      expect(api.posts.map((p) => p['clientTriggerOrderId']).toSet().length, 2);
+      expect(state.lastNotice, contains('其余未发送'));
+      expect(await state.placeTriggerOrders(pair()), 0);
+      state.dispose();
+      state = _State(api, settings);
+      addTearDown(state.dispose);
+      await state.bootstrap();
+      state.session = session;
+      expect(state.pendingTradingCommand!.clientTriggerOrderId, original);
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, true);
+      api.terminal = true;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, false);
+      expect(api.posts.length, 2);
+      expect(api.reads.length, 2);
+      expect(api.reads.last['query']['clientTriggerOrderId'], original);
+      expect(
+        api.reads.every(
+          (r) => r['path'] == '/api/v1/gateway/trading-trigger/submission',
+        ),
+        true,
+      );
+    },
+  );
+
+  test(
+    'single cancellation retains exact int64 identity and restores without a second POST',
+    () async {
+      final settings = _Settings(), api = _SingleApi()..loseAt = 1;
+      var state = _State(api, settings)..session = session;
+      final order = TriggerOrderModel.fromJson(
+        api.response({'clientTriggerOrderId': 'old'}),
+      );
+      await state.cancelTriggerOrder(order);
+      expect(
+        state.pendingTradingCommand!.cancelTriggerOrderId,
+        9007199254740993,
+      );
+      await state.cancelTriggerOrder(order);
+      expect(api.posts.length, 1);
+      state.dispose();
+      state = _State(api, settings);
+      addTearDown(state.dispose);
+      await state.bootstrap();
+      state.session = session;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, true);
+      api.terminal = true;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, false);
+      expect(api.posts.length, 1);
+      expect(
+        api.reads.last['path'],
+        '/api/v1/gateway/trading-trigger/cancellations/9007199254740993',
+      );
+    },
+  );
+
+  test(
+    'initial storage failure stops single placement and cancellation without leaving a sent intent',
+    () async {
+      final settings = _Settings()..fail = true;
+      final api = _SingleApi(),
+          state = _State(_SingleApi(), settings)..session = session;
+      addTearDown(state.dispose);
+      expect(await state.placeTriggerOrders([leg('TAKE_PROFIT', 24690)]), 0);
+      expect(state.tradingCommandPending, false);
+      expect(state.lastError, contains('未发送'));
+      await state.cancelTriggerOrder(
+        TriggerOrderModel.fromJson(api.response({})),
+      );
+      expect(state.tradingCommandPending, false);
+      expect((state.api as _SingleApi).posts, isEmpty);
+    },
+  );
+
+  test(
+    'malformed trigger response and unavailable lookup keep the original and stop later tiers',
+    () async {
+      final api = _SingleApi()..badReply = true;
+      final state = _State(api, _Settings())..session = session;
+      addTearDown(state.dispose);
+      expect(await state.placeTriggerOrders(pair()), 0);
+      expect(api.posts.length, 1);
+      expect(state.tradingCommandPending, true);
+      api.badRead = true;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, true);
+      expect(state.lastError, contains('查询委托结果失败'));
+    },
+  );
+
+  test(
+    'failure to persist confirmation retains the original until a subsequent successful read',
+    () async {
+      final api = _SingleApi(), settings = _Settings();
+      final state = _State(api, settings)..session = session;
+      addTearDown(state.dispose);
+      api.before = () => settings.fail = true;
+      await state.placeTriggerOrders(pair());
+      expect(api.posts.length, 1);
+      expect(state.tradingCommandPending, true);
+      api.terminal = true;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, true);
+      settings.fail = false;
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, false);
+      expect(api.posts.length, 1);
+    },
+  );
+
+  test(
+    'an account change during storage prevents sending the old account trigger',
+    () async {
+      final api = _SingleApi(), settings = _Settings();
+      final state = _State(api, settings)..session = session;
+      addTearDown(state.dispose);
+      settings.before = () {
+        state.session = const AuthSession(
+          user: AuthUser(
+            userId: 2,
+            username: 'new',
+            email: '',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'new',
+          refreshToken: 'new',
+        );
+      };
+      await state.placeTriggerOrders(pair());
+      expect(api.posts, isEmpty);
+      expect(state.pendingTradingCommand, isNull);
+      expect(state.lastNotice, isNull);
+    },
+  );
+
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      '320px $brightness independent unknown tier leaves only unsent draft and disables resubmit',
+      (tester) async {
+        final api = _SingleApi()..loseAt = 1;
+        final state = _State(api, _Settings())..session = session;
+        tester.view.physicalSize = const Size(320, 1800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(() {
+          state.dispose();
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+        await tester.pumpWidget(
+          AppScope(
+            notifier: state,
+            child: MaterialApp(
+              theme: ThemeData(brightness: brightness),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: TriggerOrderPanel(state: state, marginMode: 'CROSS'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.byTooltip('新增止盈'));
+        await tester.pump();
+        await tester.tap(find.byTooltip('新增止损'));
+        await tester.pump();
+        final fields = find.byWidgetPredicate(
+          (w) => w is AppTextField && w.label.startsWith('触发价'),
+        );
+        await tester.enterText(
+          find.descendant(of: fields.first, matching: find.byType(TextField)),
+          '123.45',
+        );
+        await tester.enterText(
+          find.descendant(of: fields.last, matching: find.byType(TextField)),
+          '95.5',
+        );
+        await tester.pump();
+        await tester.tap(find.text('提交 2 档'));
+        await tester.pumpAndSettle();
+        expect(api.posts.length, 1);
+        expect(state.tradingCommandPending, true);
+        expect(find.text('提交 1 档'), findsOneWidget);
+        expect(
+          tester
+              .widget<FilledButton>(find.widgetWithText(FilledButton, '提交 1 档'))
+              .onPressed,
+          isNull,
+        );
+        expect(fields, findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
   for (final brightness in Brightness.values) {
     testWidgets(
       '320px $brightness OCO source/limit controls use actual three-decimal scale',
@@ -432,10 +652,12 @@ class _State extends AppState {
 class _Settings implements ClientSettingsStore {
   Map<String, String> values = {};
   bool fail = false;
+  FutureOr<void> Function()? before;
   @override
   Future<Map<String, String>> read() async => {...values};
   @override
   Future<void> write(Map<String, String> values) async {
+    await before?.call();
     if (fail) throw const FileSystemException('full');
     this.values = {...values};
   }
@@ -456,4 +678,75 @@ class _Sessions implements SessionStore {
   Future<bool> authenticateBiometric() async => false;
   @override
   Future<void> enableBiometric() async {}
+}
+
+class _SingleApi extends ApiClient {
+  _SingleApi() : super(const AppConfig());
+  final List<Map<String, dynamic>> posts = [], reads = [];
+  int loseAt = 0;
+  bool terminal = false, badReply = false, badRead = false;
+  FutureOr<void> Function()? before;
+  Map<String, dynamic> response(Map<String, dynamic> body) => {
+    'userId': 1,
+    'instrumentId': '74',
+    'symbol': contract().symbol,
+    'triggerOrderId': 9007199254740993,
+    'side': 'SELL',
+    'triggerType': 'TAKE_PROFIT',
+    'triggerPriceTicks': 24690,
+    'quantitySteps': 1,
+    'marginMode': 'CROSS',
+    'positionSide': 'NET',
+    'status': 'PENDING',
+    ...body,
+    if (badReply) 'instrumentId': '99',
+  };
+  @override
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = true,
+  }) async {
+    expect(productLine, 'OPTION');
+    expect(userId, 1);
+    expect(
+      path,
+      anyOf(
+        '/api/v1/gateway/trading-trigger',
+        '/api/v1/gateway/trading-trigger/cancel',
+      ),
+    );
+    posts.add({...body});
+    await before?.call();
+    if (posts.length == loseAt) {
+      throw const SocketException('reply lost after acceptance');
+    }
+    return response({
+      ...body,
+      if (path.endsWith('/cancel')) 'status': 'CANCELED',
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = false,
+  }) async {
+    expect(productLine, 'OPTION');
+    expect(userId, 1);
+    reads.add({'path': path, 'query': query});
+    if (badRead) throw ApiException(503, 'unavailable');
+    return {
+      'commandId': 'original-command',
+      'outcome': terminal ? 'TERMINAL' : 'RESULT_UNKNOWN',
+      'code': terminal ? 'NONE' : 'RESULT_UNKNOWN',
+    };
+  }
 }

@@ -202,7 +202,7 @@ analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已�
 
 `ApiClient.linearDeliveryInstruments` 与 `AppState.refreshInstruments` 保留结算中交割合约的完整元数据，目录失败不发布半份结果。SETTLING 仅允许直接减仓；提交前核对当前持仓、方向、保证金模式和数量，HEDGE 平仓显式 reduceOnly。320px 深浅色票据显示对应平仓方向，距到期使用 expiryTime。
 
-单笔下单和撤单沿用已有安全设置持久化原请求；保存失败不发送，丢失响应或重启后只 GET realtime 原提交/撤单结果，错误回执不解锁。先发布 gateway 的 SETTLING 合约公开查询修复，并保留此前 realtime 回执迁移与导出。
+单笔下单和撤单沿用已有安全设置持久化原请求；保存失败不发送，丢失响应或重启后只 GET realtime 原提交/撤单结果，错误回执不解锁。先发布 price 的 SETTLING 指数源修复与 gateway 的合约公开查询、realtime 杠杆读取修复，并保留此前 realtime 回执迁移与导出。
 
 可选 `test/linear_delivery_fused_live_test.dart` 需要 `LINEAR_DELIVERY_LIVE_FIXTURE` 和 `LINEAR_DELIVERY_REALTIME_PID_FILE`；未设置时普通回归默认跳过。它在后端四分钟交接中接续 Web，使用真实 AppState、HTTP/WS 和测试设置/SessionStore，平剩余一张持仓并检查断响应、暂停投影、重建状态及只读恢复。该 host Flutter 测试不等于安装原生 iOS/Android，也未验证实际到期交割结算或其他产品全部流程。
 

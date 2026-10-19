@@ -142,6 +142,32 @@ void main() {
           product.accountType,
         );
         expect(requests.last.uri.queryParameters['asset'], 'USDT');
+        if (product == ProductMode.linearDelivery ||
+            product == ProductMode.inverseDelivery) {
+          await api.accountRecords(
+            category: 'delivery-ledger',
+            userId: 1,
+            product: product,
+            referenceType: 'IGNORED',
+          );
+          expect(
+            requests.last.uri.path,
+            '/api/v1/gateway/account/product-ledger',
+          );
+          expect(
+            requests.last.uri.queryParameters['referenceType'],
+            'DELIVERY_SETTLEMENT',
+          );
+          expect(
+            requests.last.uri.queryParameters['accountType'],
+            product.accountType,
+          );
+          expect(
+            requests.last.headers.value('X-Product-Line'),
+            product.productLine,
+          );
+        }
+
         await api.accountRecords(
           category: 'order',
           userId: 1,

@@ -5,8 +5,13 @@ import 'app_state.dart';
 import 'models.dart';
 
 class FundingRecordsPage extends StatefulWidget {
-  const FundingRecordsPage({required this.state, super.key});
+  const FundingRecordsPage({
+    required this.state,
+    this.initialCategory = 'funding-ledger',
+    super.key,
+  });
   final AppState state;
+  final String initialCategory;
   @override
   State<FundingRecordsPage> createState() => _FundingRecordsPageState();
 }
@@ -15,6 +20,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
   static const categories = {
     'funding-ledger': '资金账户流水',
     'product-ledger': '交易账户流水',
+    'delivery-ledger': '交割现金流水',
     'transfer': '账户划转',
     'funding-payment': '资金费',
     'deposit': '充值记录',
@@ -37,6 +43,13 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
   @override
   void initState() {
     super.initState();
+    category = widget.initialCategory;
+    product = widget.state.mode;
+    if (category == 'delivery-ledger' &&
+        product != ProductMode.linearDelivery &&
+        product != ProductMode.inverseDelivery) {
+      product = ProductMode.linearDelivery;
+    }
     widget.state.addListener(_identityChanged);
     _identityChanged();
   }
@@ -219,8 +232,13 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             Text(
-              '${row['status'] ?? row['referenceType'] ?? row['side'] ?? '—'} · $created',
+              '${row['referenceType'] == 'DELIVERY_SETTLEMENT' ? '交割结算' : row['status'] ?? row['referenceType'] ?? row['side'] ?? '—'} · $created',
             ),
+            if (category == 'delivery-ledger' &&
+                row['balanceAfterUnits'] != null)
+              Text(
+                '变动后余额：${formatAccountUnits(row['balanceAfterUnits'], scales[currency.toUpperCase()])} $currency',
+              ),
             if (row['sourceAccountType'] != null)
               Text(
                 '${productAccountLabel(asString(row['sourceAccountType']))} → ${productAccountLabel(asString(row['targetAccountType']))}',
@@ -303,6 +321,11 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                       reference.clear();
                       status.clear();
                       instrument.clear();
+                      if (v == 'delivery-ledger' &&
+                          product != ProductMode.linearDelivery &&
+                          product != ProductMode.inverseDelivery) {
+                        product = ProductMode.linearDelivery;
+                      }
                       if (v == 'funding-payment' && !product.isPerpetual) {
                         product = ProductMode.linear;
                       }
@@ -313,6 +336,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                 const SizedBox(height: 12),
                 if ([
                   'product-ledger',
+                  'delivery-ledger',
                   'transfer',
                   'funding-payment',
                   'trade',
@@ -324,7 +348,10 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     decoration: const InputDecoration(labelText: '产品线'),
                     items: ProductMode.values
                         .where(
-                          (p) => category != 'funding-payment' || p.isPerpetual,
+                          (p) => category == 'delivery-ledger'
+                              ? p == ProductMode.linearDelivery ||
+                                    p == ProductMode.inverseDelivery
+                              : category != 'funding-payment' || p.isPerpetual,
                         )
                         .map(
                           (p) =>

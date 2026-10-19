@@ -89,6 +89,25 @@ void main() {
     },
   );
   test(
+    'closed delivery refresh retains selected identity and rejects all new orders',
+    () async {
+      final api = _Catalog()..ended = true;
+      final state = AppState(
+        apiClient: api,
+        settingsStore: _Settings(),
+        sessionStore: _Sessions(),
+        seedInstruments: [delivery()],
+        config: const AppConfig(websocketUrl: ''),
+      )..mode = ProductMode.linearDelivery;
+      addTearDown(state.dispose);
+      await state.refreshInstruments();
+      expect(state.selectedInstrument.instrumentId, '73');
+      expect(state.selectedInstrument.status, 'CLOSED');
+      expect(state.selectedInstrument.canPlaceOrder(reduceOnly: true), false);
+      expect(api.instrumentCatalog, state.instruments);
+    },
+  );
+  test(
     'settling reductions require matching margin, direction and position capacity',
     () async {
       final api = _Api();
@@ -500,6 +519,14 @@ class _Sessions implements SessionStore {
 class _Catalog extends ApiClient {
   _Catalog() : super(const AppConfig());
   bool wrongProduct = false;
+  bool ended = false;
+  @override
+  Future<Instrument> instrumentLatest(String id, ProductMode product) async {
+    expect(id, '73');
+    expect(product, ProductMode.linearDelivery);
+    return delivery(status: 'CLOSED');
+  }
+
   void Function()? onDeliveryLoad;
   @override
   Future<Map<String, String>> assetScales() async => {
@@ -517,6 +544,7 @@ class _Catalog extends ApiClient {
   }) async {
     if (query?['productLine'] != 'LINEAR_DELIVERY') return {'instruments': []};
     onDeliveryLoad?.call();
+    if (ended) return {'instruments': []};
     return {
       'instruments': [
         {

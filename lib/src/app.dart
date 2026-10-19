@@ -5384,10 +5384,24 @@ class OrderTicket extends StatelessWidget {
                 instrument.mode == ProductMode.linearDelivery &&
                         instrument.status == 'SETTLING'
                     ? '合约结算中，仅允许减仓；撤单与持仓仍可查看'
+                    : instrument.status == 'CLOSED'
+                    ? '合约已结束，可查看历史记录'
                     : instrument.status == 'PRE_TRADING'
                     ? '该交易对尚未开放交易'
                     : '该交易对已暂停交易',
                 style: const TextStyle(fontSize: 11),
+              ),
+            if (instrument.mode == ProductMode.linearDelivery)
+              TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => FundingRecordsPage(
+                      state: AppScope.of(context),
+                      initialCategory: 'delivery-ledger',
+                    ),
+                  ),
+                ),
+                child: const Text('交割现金流水'),
               ),
             const SizedBox(height: 6),
             if (AppScope.of(context).tradingCommandPending) ...[

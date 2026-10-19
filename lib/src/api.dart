@@ -313,6 +313,14 @@ class ApiClient {
       case 'funding-ledger':
         path = '/api/v1/gateway/account/ledger';
         key = 'entries';
+      case 'delivery-ledger':
+        if (product != ProductMode.linearDelivery &&
+            product != ProductMode.inverseDelivery) {
+          throw const FormatException('交割流水产品线不匹配');
+        }
+        query['referenceType'] = 'DELIVERY_SETTLEMENT';
+        continue productLedger;
+      productLedger:
       case 'product-ledger':
         path = '/api/v1/gateway/account/product-ledger';
         key = 'entries';
@@ -729,6 +737,26 @@ class ApiClient {
       throw const FormatException('交割合约目录产品线不匹配');
     }
     return loaded;
+  }
+
+  /// Read historical metadata by identity without adding ended contracts to the default catalog.
+  Future<Instrument> instrumentLatest(String id, ProductMode product) async {
+    final scales = await assetScales();
+    final raw = await get(
+      '/api/v1/gateway/instrument/latest',
+      query: {'instrumentId': id, 'productLine': product.productLine},
+      productLine: product.productLine,
+    );
+    final instrument = Instrument.fromJson({
+      ...raw,
+      'baseScaleUnits': scales[asString(raw['baseAsset']).toUpperCase()],
+      'quoteScaleUnits': scales[asString(raw['quoteAsset']).toUpperCase()],
+      'settleScaleUnits': scales[asString(raw['settleAsset']).toUpperCase()],
+    });
+    if (instrument.instrumentId != id || instrument.mode != product) {
+      throw const FormatException('合约资料产品线不匹配');
+    }
+    return instrument;
   }
 
   Future<List<Instrument>> _loadInstruments(Map<String, String> filters) async {

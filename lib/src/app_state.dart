@@ -1218,6 +1218,7 @@ class AppState extends ChangeNotifier {
   Future<void> refreshInstruments({bool silent = false}) async {
     if (offline) return;
     final request = ++_instrumentRequestVersion;
+    final old = selectedInstrument;
     try {
       final base = await api.instruments();
       final loaded = mode == ProductMode.linearDelivery
@@ -1226,11 +1227,24 @@ class AppState extends ChangeNotifier {
               ...await api.linearDeliveryInstruments(),
             ]
           : base;
+      if (old.mode == ProductMode.linearDelivery &&
+          old.instrumentId.isNotEmpty &&
+          !loaded.any(
+            (i) => i.mode == old.mode && i.instrumentId == old.instrumentId,
+          )) {
+        final historical = await api.instrumentLatest(
+          old.instrumentId,
+          old.mode,
+        );
+        if (historical.status != 'CLOSED') {
+          throw const FormatException('交割合约目录状态不匹配');
+        }
+        loaded.add(historical);
+      }
       if (request != _instrumentRequestVersion) {
         api.instrumentCatalog = instruments;
         return;
       }
-      final old = selectedInstrument;
       instruments = loaded;
       api.instrumentCatalog = loaded;
       final candidates = visibleInstruments;

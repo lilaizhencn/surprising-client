@@ -207,3 +207,5 @@ analyze 无问题，155 项测试通过；旧实现丢失撤单恢复身份已�
 可选 `test/linear_delivery_fused_live_test.dart` 需要 `LINEAR_DELIVERY_LIVE_FIXTURE` 和 `LINEAR_DELIVERY_REALTIME_PID_FILE`；未设置时普通回归默认跳过。它在后端四分钟交接中接续 Web，使用真实 AppState、HTTP/WS 和测试设置/SessionStore，平剩余一张持仓并检查断响应、暂停投影、重建状态及只读恢复。该 host Flutter 测试不等于安装原生 iOS/Android，也未验证实际到期交割结算或其他产品全部流程。
 
 `ApiClient.instruments` 只返回查询结果，合并目录由 AppState 在校验全部请求后统一发布，异步请求中也不短暂替换为不完整目录；已有回归覆盖合并期间的目录一致性。验证记录见 [U 本位交割实测](docs/validation/linear-delivery-trading-20261019.json)。
+
+U 本位交割结束后，客户端目录刷新会按已选合约的明确 ID 读取 CLOSED 元数据并保留历史查询；该状态禁止所有新委托。交易页可进入“交割现金流水”，默认沿当前产品线查询既有产品账本 API，固定 DELIVERY_SETTLEMENT 类型。流水展示实际现金变动、合约身份和变动后余额，金额按币种精度使用整数计算。它不包含零现金变化的交割报告。320 宽度的深浅色测试及可选本地 FUSED 真实读取测试分别位于 test/delivery_ledger_test.dart 和 test/linear_delivery_expiry_live_test.dart；后者要求明确的隔离 QA 用户及合约环境变量，原生 iOS/Android 设备尚未在本轮验证。

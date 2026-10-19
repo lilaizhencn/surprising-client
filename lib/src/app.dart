@@ -5856,6 +5856,8 @@ class TriggerOrderPanel extends StatefulWidget {
 class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   final List<_TriggerLevelInput> levels = [];
   bool submitting = false;
+  bool oco = false;
+  String priceSource = 'MARK';
 
   void addLevel(String triggerType) {
     if (submitting) return;
@@ -5888,6 +5890,8 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   }
 
   List<TriggerOrderDraft> _drafts() {
+    final scale = widget.state.selectedInstrument.quoteScaleUnits;
+    if (scale == null || scale <= 0) return [];
     final hedgeMode = widget.state.positionMode == 'HEDGE';
     return levels
         .where(
@@ -5897,6 +5901,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               decimalIncrement(
                     level.activationPriceTicks,
                     widget.state.selectedInstrument.priceTickUnits,
+                    scaleUnits: scale,
                   ) !=
                   null,
         )
@@ -5905,11 +5910,13 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               decimalIncrement(
                 level.triggerPriceTicks,
                 widget.state.selectedInstrument.priceTickUnits,
+                scaleUnits: scale,
               ) ??
               0;
           final activationPriceTicks = decimalIncrement(
             level.activationPriceTicks,
             widget.state.selectedInstrument.priceTickUnits,
+            scaleUnits: scale,
           );
           final callbackRatePpm = decimalIncrement(
             level.callbackRatePpm,
@@ -5929,6 +5936,16 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
             quantitySteps: quantitySteps,
             marginMode: widget.marginMode,
             positionSide: hedgeMode ? level.closeTarget : 'NET',
+            priceSource: priceSource,
+            orderType: level.orderType,
+            priceTicks: level.orderType == 'MARKET'
+                ? 0
+                : decimalIncrement(
+                        level.limitPrice,
+                        widget.state.selectedInstrument.priceTickUnits,
+                        scaleUnits: scale,
+                      ) ??
+                      0,
           );
         })
         .where(_validDraft)
@@ -5936,8 +5953,12 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
   }
 
   bool _validDraft(TriggerOrderDraft draft) {
-    if (draft.quantitySteps <= 0) return false;
+    if (draft.quantitySteps <= 0 ||
+        (draft.orderType == 'LIMIT' && draft.priceTicks <= 0)) {
+      return false;
+    }
     if (draft.triggerType == 'TRAILING_STOP') {
+      if (draft.orderType != 'MARKET') return false;
       final callbackRate = draft.callbackRatePpm;
       return draft.triggerPriceTicks >= 0 &&
           (draft.activationPriceTicks == null ||
@@ -5954,7 +5975,9 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
     if (drafts.isEmpty || drafts.length != levels.length || submitting) return;
     final submittedIds = levels.map((level) => level.id).toList();
     setState(() => submitting = true);
-    final submitted = await widget.state.placeTriggerOrders(drafts);
+    final submitted = oco
+        ? await widget.state.placeOptionOco(drafts)
+        : await widget.state.placeTriggerOrders(drafts);
     if (mounted) {
       setState(() {
         levels.removeWhere(
@@ -5981,24 +6004,59 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              IconButton.filledTonal(
-                tooltip: '新增止盈',
-                onPressed: () => addLevel('TAKE_PROFIT'),
-                icon: const Icon(Icons.add_chart, size: 18),
-              ),
+              if (!oco)
+                IconButton.filledTonal(
+                  tooltip: '新增止盈',
+                  onPressed: () => addLevel('TAKE_PROFIT'),
+                  icon: const Icon(Icons.add_chart, size: 18),
+                ),
               const SizedBox(width: 6),
-              IconButton.filledTonal(
-                tooltip: '新增止损',
-                onPressed: () => addLevel('STOP_LOSS'),
-                icon: const Icon(Icons.add_alert, size: 18),
-              ),
+              if (!oco)
+                IconButton.filledTonal(
+                  tooltip: '新增止损',
+                  onPressed: () => addLevel('STOP_LOSS'),
+                  icon: const Icon(Icons.add_alert, size: 18),
+                ),
               const SizedBox(width: 6),
-              IconButton.filledTonal(
-                tooltip: '新增追踪止损',
-                onPressed: () => addLevel('TRAILING_STOP'),
-                icon: const Icon(Icons.timeline, size: 18),
-              ),
+              if (!oco)
+                IconButton.filledTonal(
+                  tooltip: '新增追踪止损',
+                  onPressed: () => addLevel('TRAILING_STOP'),
+                  icon: const Icon(Icons.timeline, size: 18),
+                ),
             ],
+          ),
+          if (widget.state.selectedInstrument.isOption) ...[
+            const SizedBox(height: 8),
+            SmallDropdown(
+              value: oco ? 'OCO' : 'SINGLE',
+              values: const ['SINGLE', 'OCO'],
+              labelBuilder: (v) => v == 'OCO' ? 'TP/SL 双腿 OCO' : '独立条件单',
+              enabled: !submitting && !widget.state.tradingCommandPending,
+              onChanged: (v) {
+                setState(() {
+                  oco = v == 'OCO';
+                  levels.clear();
+                });
+                if (oco) {
+                  addLevel('TAKE_PROFIT');
+                  addLevel('STOP_LOSS');
+                }
+              },
+            ),
+            if (oco)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: Text('双腿一起接受；一腿触发提交减仓委托，另一腿撤销。触发不保证成交。'),
+              ),
+          ],
+          const SizedBox(height: 6),
+          SmallDropdown(
+            value: priceSource,
+            values: const ['MARK', 'LAST', 'INDEX'],
+            labelBuilder: (v) => '触发源：${triggerPriceSourceLabel(v)}',
+            enabled: !submitting,
+            onChanged: (v) => setState(() => priceSource = v),
           ),
           if (levels.isEmpty)
             Padding(
@@ -6025,13 +6083,25 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 minimumSize: const Size.fromHeight(38),
               ),
               onPressed:
-                  validCount == 0 || validCount != levels.length || submitting
+                  validCount == 0 ||
+                      validCount != levels.length ||
+                      submitting ||
+                      widget.state.tradingCommandPending ||
+                      !widget.state.selectedInstrument.canPlaceOrder(
+                        reduceOnly: true,
+                      )
                   ? null
                   : submit,
               icon: Icon(
                 submitting ? Icons.hourglass_top : Icons.notifications,
               ),
-              label: Text(submitting ? '提交中' : '提交 $validCount 档'),
+              label: Text(
+                submitting
+                    ? '提交中'
+                    : oco
+                    ? '一起提交 TP/SL'
+                    : '提交 $validCount 档',
+              ),
             ),
           ],
         ],
@@ -6059,9 +6129,11 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                     value: level.triggerType,
                     values: const ['TAKE_PROFIT', 'STOP_LOSS', 'TRAILING_STOP'],
                     labelBuilder: triggerTypeLabel,
+                    enabled: !oco,
                     onChanged: (value) => setState(() {
                       level.triggerType = value;
                       if (value == 'TRAILING_STOP') {
+                        level.orderType = 'MARKET';
                         level.triggerPriceTicks = '0';
                         if (level.activationPriceTicks.isEmpty) {
                           level.activationPriceTicks = _defaultTriggerPrice();
@@ -6085,14 +6157,23 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                     value: level.closeTarget,
                     values: const ['LONG', 'SHORT'],
                     labelBuilder: (value) => value == 'LONG' ? '平多' : '平空',
-                    onChanged: (value) =>
-                        setState(() => level.closeTarget = value),
+                    onChanged: (value) => setState(() {
+                      if (oco) {
+                        for (final item in levels) {
+                          item.closeTarget = value;
+                        }
+                      } else {
+                        level.closeTarget = value;
+                      }
+                    }),
                   ),
                 ),
                 const SizedBox(width: 6),
                 IconButton.filledTonal(
                   tooltip: '删除',
-                  onPressed: () => setState(() => levels.remove(level)),
+                  onPressed: oco
+                      ? null
+                      : () => setState(() => levels.remove(level)),
                   icon: const Icon(Icons.delete_outline, size: 18),
                 ),
               ],
@@ -6101,7 +6182,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
             Text(
               level.triggerType == 'TRAILING_STOP'
                   ? '激活后按回调比例触发平仓'
-                  : '标记价格 ${(level.triggerType == 'TAKE_PROFIT') == (level.closeTarget == 'LONG') ? '≥' : '≤'} 触发价时市价平仓',
+                  : '${triggerPriceSourceLabel(priceSource)} ${(level.triggerType == 'TAKE_PROFIT') == (level.closeTarget == 'LONG') ? '≥' : '≤'} 触发价时提交${level.orderType == 'MARKET' ? '市价' : '限价'}减仓委托',
             ),
             const SizedBox(height: 8),
             Row(
@@ -6118,16 +6199,43 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: AppTextField(
-                    key: ValueKey('${level.id}-quantity'),
-                    initialValue: level.quantitySteps,
-                    label: '平仓数量（张）',
-                    onChanged: (value) =>
-                        setState(() => level.quantitySteps = value),
-                  ),
+                  child: oco && level != levels.first
+                      ? Text('平仓数量（张）\n${level.quantitySteps} · 两腿共用')
+                      : AppTextField(
+                          key: ValueKey('${level.id}-quantity'),
+                          initialValue: level.quantitySteps,
+                          label: '平仓数量（张）',
+                          onChanged: (value) => setState(() {
+                            if (oco) {
+                              for (final item in levels) {
+                                item.quantitySteps = value;
+                              }
+                            } else {
+                              level.quantitySteps = value;
+                            }
+                          }),
+                        ),
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            SmallDropdown(
+              value: level.orderType,
+              values: level.triggerType == 'TRAILING_STOP'
+                  ? const ['MARKET']
+                  : const ['MARKET', 'LIMIT'],
+              labelBuilder: (v) => v == 'MARKET' ? '触发后市价执行' : '触发后限价执行',
+              onChanged: (v) => setState(() => level.orderType = v),
+            ),
+            if (level.orderType == 'LIMIT') ...[
+              const SizedBox(height: 8),
+              AppTextField(
+                key: ValueKey('${level.id}-limit'),
+                initialValue: level.limitPrice,
+                label: '委托限价 (${widget.state.selectedInstrument.quoteAsset})',
+                onChanged: (v) => setState(() => level.limitPrice = v),
+              ),
+            ],
             if (level.triggerType == 'TRAILING_STOP') ...[
               const SizedBox(height: 8),
               Row(
@@ -6176,6 +6284,8 @@ class _TriggerLevelInput {
   String triggerType;
   String closeTarget;
   String triggerPriceTicks;
+  String orderType = 'MARKET';
+  String limitPrice = '';
   String activationPriceTicks;
   String callbackRatePpm;
   String quantitySteps;
@@ -9975,13 +10085,16 @@ class TriggerOrderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final instrument = state.instruments.firstWhere(
-      (item) => item.mode == state.mode && item.symbol == order.symbol,
+      (item) =>
+          item.mode == state.mode &&
+          (item.instrumentId == order.instrumentId ||
+              item.symbol == order.symbol),
       orElse: () => state.selectedInstrument,
     );
     final isTakeProfit = order.triggerType == 'TAKE_PROFIT';
     final triggerText = order.triggerType == 'TRAILING_STOP'
         ? '激活 ${order.activationPriceTicks == null ? '立即' : money(instrument.priceFromTicks(order.activationPriceTicks!), digits: instrument.pricePrecision)} / 回调 ${((order.callbackRatePpm ?? 0) / 10000).toStringAsFixed(2)}%'
-        : '触发 ${money(instrument.priceFromTicks(order.triggerPriceTicks), digits: instrument.pricePrecision)}';
+        : '${triggerPriceSourceLabel(order.priceSource)}触发 ${money(instrument.priceFromTicks(order.triggerPriceTicks), digits: instrument.pricePrecision)}';
     return Panel(
       child: Row(
         children: [
@@ -9990,7 +10103,7 @@ class TriggerOrderRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${triggerTypeLabel(order.triggerType)} ${order.symbol}',
+                  '${order.ocoGroupId == null ? '' : 'OCO · '}${triggerTypeLabel(order.triggerType)} ${instrument.displayName}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: isTakeProfit
@@ -10007,6 +10120,12 @@ class TriggerOrderRow extends StatelessWidget {
                 ),
                 Text(
                   '$triggerText · 量 ${order.quantitySteps}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                Text(
+                  order.orderType == 'LIMIT'
+                      ? '触发后限价 ${scaledAmount(BigInt.from(order.priceTicks) * BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits)} ${instrument.quoteAsset} · ${order.timeInForce}'
+                      : '触发后市价 · ${order.timeInForce}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],

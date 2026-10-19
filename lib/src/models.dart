@@ -967,6 +967,8 @@ class PendingTradingOrder {
     this.amendRequestId,
     this.amendOrderId,
     this.cancelPlan,
+    this.ocoTakeProfitClientId,
+    this.ocoStopLossClientId,
   });
   final CancellationPlan? cancelPlan;
   final String? amendRequestId;
@@ -975,6 +977,7 @@ class PendingTradingOrder {
   final int? cancelOrderId;
   final ProductMode product;
   final String? commandId, clientOrderId, instrumentId;
+  final String? ocoTakeProfitClientId, ocoStopLossClientId;
 }
 
 class OrderModel {
@@ -1458,6 +1461,10 @@ class TriggerOrderModel {
     required this.positionSide,
     required this.status,
     this.placedOrderId,
+    this.instrumentId = '',
+    this.clientTriggerOrderId = '',
+    this.ocoGroupId,
+    this.priceSource = 'MARK',
   });
 
   final int triggerOrderId;
@@ -1479,11 +1486,17 @@ class TriggerOrderModel {
   final String positionSide;
   final String status;
   final int? placedOrderId;
+  final String instrumentId, clientTriggerOrderId, priceSource;
+  final String? ocoGroupId;
 
   factory TriggerOrderModel.fromJson(Map<String, dynamic> json) {
     final placedOrderId = json['placedOrderId'];
     return TriggerOrderModel(
       triggerOrderId: asInt(json['triggerOrderId']),
+      instrumentId: asString(json['instrumentId']),
+      clientTriggerOrderId: asString(json['clientTriggerOrderId']),
+      ocoGroupId: nullableString(json['ocoGroupId']),
+      priceSource: asString(json['priceSource'], fallback: 'MARK'),
       symbol: asString(json['symbol']),
       side: asString(json['side'], fallback: 'SELL'),
       triggerType: asString(json['triggerType'], fallback: 'TAKE_PROFIT'),
@@ -1545,6 +1558,26 @@ class TriggerOrderBatchResult {
   final int failed;
   final List<TriggerOrderBatchItem> results;
 
+  factory TriggerOrderBatchResult.fromAtomicOcoJson(Map<String, dynamic> json) {
+    final rows = json['results'];
+    if (json['requested'] is! int ||
+        json['completed'] is! int ||
+        json['failed'] is! int ||
+        rows is! List ||
+        rows.length != 2) {
+      throw const FormatException('OCO 回执字段不完整');
+    }
+    for (final value in rows) {
+      final row = asMap(value);
+      if (row['index'] is! int ||
+          row['success'] is! bool ||
+          row['order'] is! Map) {
+        throw const FormatException('OCO 回执档位不完整');
+      }
+    }
+    return TriggerOrderBatchResult.fromJson(json);
+  }
+
   factory TriggerOrderBatchResult.fromJson(Map<String, dynamic> json) {
     return TriggerOrderBatchResult(
       requested: asInt(json['requested']),
@@ -1567,6 +1600,9 @@ class TriggerOrderDraft {
     required this.quantitySteps,
     required this.marginMode,
     required this.positionSide,
+    this.priceSource = 'MARK',
+    this.orderType = 'MARKET',
+    this.priceTicks = 0,
   });
 
   final String side;
@@ -1577,6 +1613,8 @@ class TriggerOrderDraft {
   final int quantitySteps;
   final String marginMode;
   final String positionSide;
+  final String priceSource, orderType;
+  final int priceTicks;
 }
 
 class AccountRisk {
@@ -2383,3 +2421,10 @@ List<OrderBookLevel> aggregateBookLevels(
   );
   return result.cash == '--' ? null : result;
 }
+
+String triggerPriceSourceLabel(String source) => switch (source) {
+  'MARK' => '标记价格',
+  'LAST' => '最新成交价',
+  'INDEX' => '指数价格',
+  _ => '--',
+};

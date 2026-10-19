@@ -339,7 +339,7 @@ class TriggerApi extends ApiClient {
   @override
   Future<TriggerOrderModel> placeTriggerOrder({
     required int userId,
-    required String symbol,
+    required String instrumentId,
     required String side,
     required String triggerType,
     required int triggerPriceTicks,
@@ -349,6 +349,9 @@ class TriggerApi extends ApiClient {
     int? activationPriceTicks,
     int? callbackRatePpm,
     String? productLine,
+    String priceSource = 'MARK',
+    String orderType = 'MARKET',
+    int priceTicks = 0,
   }) {
     calls++;
     if (calls == 1) return first.future;

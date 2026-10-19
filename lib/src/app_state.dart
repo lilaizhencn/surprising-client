@@ -237,7 +237,33 @@ class AppState extends ChangeNotifier {
         return;
       }
       bool? confirmed;
-      if (pending.amendRequestId != null) {
+      if (pending.ocoTakeProfitClientId != null &&
+          pending.ocoStopLossClientId != null) {
+        final receipt = await api.get(
+          '/api/v1/gateway/trading-trigger/oco-submission',
+          userId: pending.userId,
+          productLine: pending.product.productLine,
+          query: {
+            'userId': '${pending.userId}',
+            'takeProfitClientId': pending.ocoTakeProfitClientId!,
+            'stopLossClientId': pending.ocoStopLossClientId!,
+          },
+        );
+        if (receipt['commandId'] is! String ||
+            asString(receipt['commandId']).isEmpty ||
+            (pending.commandId != null &&
+                receipt['commandId'] != pending.commandId)) {
+          throw const FormatException('OCO 回执身份不匹配');
+        }
+        if (receipt['outcome'] == 'TERMINAL' &&
+            receipt['code'] is String &&
+            asString(receipt['code']).isNotEmpty) {
+          confirmed = receipt['code'] == 'NONE';
+        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
+            receipt['code'] != 'RESULT_UNKNOWN') {
+          throw const FormatException('OCO 回执不完整');
+        }
+      } else if (pending.amendRequestId != null) {
         final receipt = await api.get(
           '/api/v1/gateway/trading/amendments',
           userId: pending.userId,
@@ -350,6 +376,7 @@ class AppState extends ChangeNotifier {
         }
       }
       if (confirmed == null &&
+          pending.ocoTakeProfitClientId == null &&
           pending.clientOrderId == null &&
           pending.cancelOrderId == null &&
           pending.amendRequestId == null &&
@@ -826,12 +853,22 @@ class AppState extends ChangeNotifier {
         final cancelOrderId = asInt(value['cancelOrderId']);
         final amendRequestId = _nonEmpty(asString(value['amendRequestId']));
         final amendOrderId = asInt(value['amendOrderId']);
+        final ocoTakeProfitClientId = _nonEmpty(
+          asString(value['ocoTakeProfitClientId']),
+        );
+        final ocoStopLossClientId = _nonEmpty(
+          asString(value['ocoStopLossClientId']),
+        );
         final cancelPlan = value['cancelPlan'] == null
             ? null
             : CancellationPlan.fromJson(asMap(value['cancelPlan']));
         if (id > 0 &&
             product != null &&
             ((product.isSpot && cancelPlan != null) ||
+                (product.isOption &&
+                    instrumentId != null &&
+                    ocoTakeProfitClientId != null &&
+                    ocoStopLossClientId != null) ||
                 commandId != null ||
                 (product.isSpot &&
                     amendRequestId != null &&
@@ -852,6 +889,8 @@ class AppState extends ChangeNotifier {
             cancelPlan: cancelPlan,
             amendRequestId: amendRequestId,
             amendOrderId: amendOrderId > 0 ? amendOrderId : null,
+            ocoTakeProfitClientId: ocoTakeProfitClientId,
+            ocoStopLossClientId: ocoStopLossClientId,
           );
         }
       }
@@ -901,6 +940,8 @@ class AppState extends ChangeNotifier {
                 'amendRequestId': pending.amendRequestId,
                 'amendOrderId': pending.amendOrderId,
                 'cancelPlan': pending.cancelPlan?.toJson(),
+                'ocoTakeProfitClientId': pending.ocoTakeProfitClientId,
+                'ocoStopLossClientId': pending.ocoStopLossClientId,
               },
             )
             .toList(),
@@ -1233,6 +1274,7 @@ class AppState extends ChangeNotifier {
   void _clearWalletData() {
     ++_walletSessionVersion;
     submittingOrder = false;
+    submittingTriggers = false;
     ++_walletVersion;
     withdrawalRulesLoading = false;
     ++_walletPricesVersion;
@@ -2535,16 +2577,187 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 一次原子 OCO 意图：先保存两腿身份，再发送一次；未知结果只查 realtime 回执。
+  Future<int> placeOptionOco(List<TriggerOrderDraft> drafts) async {
+    if (submittingTriggers || submittingOrder || tradingCommandPending) {
+      return 0;
+    }
+    lastError = null;
+    lastNotice = null;
+    final instrument = selectedInstrument;
+    final id = userId;
+    final tp = drafts.where((d) => d.triggerType == 'TAKE_PROFIT').firstOrNull;
+    final sl = drafts.where((d) => d.triggerType == 'STOP_LOSS').firstOrNull;
+    if (id == null ||
+        !instrument.isOption ||
+        !instrument.canPlaceOrder(reduceOnly: true) ||
+        drafts.length != 2 ||
+        tp == null ||
+        sl == null ||
+        !_validTriggerDraft(tp) ||
+        !_validTriggerDraft(sl) ||
+        tp.side != sl.side ||
+        tp.marginMode != sl.marginMode ||
+        tp.positionSide != sl.positionSide ||
+        tp.quantitySteps != sl.quantitySteps ||
+        tp.priceSource != sl.priceSource ||
+        (tp.side == 'SELL'
+            ? tp.triggerPriceTicks <= sl.triggerPriceTicks
+            : tp.triggerPriceTicks >= sl.triggerPriceTicks)) {
+      lastError = '请填写当前可交易期权的有效 TP/SL 双腿参数';
+      notifyListeners();
+      return 0;
+    }
+    final position = positions
+        .where(
+          (p) =>
+              p.instrumentId == instrument.instrumentId &&
+              p.marginMode == tp.marginMode &&
+              p.positionSide == tp.positionSide &&
+              p.signedQuantitySteps != 0,
+        )
+        .firstOrNull;
+    if (position == null ||
+        (position.signedQuantitySteps > 0 ? 'SELL' : 'BUY') != tp.side ||
+        tp.quantitySteps > position.signedQuantitySteps.abs()) {
+      lastError = '止盈止损必须对应当前仓位，数量不能超过可平仓数量';
+      notifyListeners();
+      return 0;
+    }
+    final epoch = _walletSessionVersion;
+    bool current() => epoch == _walletSessionVersion && userId == id;
+    final random = math.Random.secure();
+    final key = List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    final intent = PendingTradingOrder(
+      userId: id,
+      product: instrument.mode,
+      instrumentId: instrument.instrumentId,
+      ocoTakeProfitClientId: 'app-tp-$key',
+      ocoStopLossClientId: 'app-sl-$key',
+    );
+    Map<String, dynamic> leg(TriggerOrderDraft draft, String clientId) => {
+      'userId': id,
+      'instrumentId': instrument.instrumentId,
+      'clientTriggerOrderId': clientId,
+      'ocoGroupId': 'app-oco-$key',
+      'side': draft.side,
+      'triggerType': draft.triggerType,
+      'triggerPriceTicks': draft.triggerPriceTicks,
+      'priceSource': draft.priceSource,
+      'orderType': draft.orderType,
+      'timeInForce': draft.orderType == 'MARKET' ? 'IOC' : 'GTC',
+      'priceTicks': draft.orderType == 'MARKET' ? 0 : draft.priceTicks,
+      'quantitySteps': draft.quantitySteps,
+      'marginMode': draft.marginMode,
+      'positionSide': draft.positionSide,
+    };
+    final requested = [
+      leg(tp, intent.ocoTakeProfitClientId!),
+      leg(sl, intent.ocoStopLossClientId!),
+    ];
+    var issued = false;
+    submittingTriggers = true;
+    notifyListeners();
+    try {
+      _pendingTradingOrders[id] = intent;
+      if (!await _writeSettings()) {
+        _pendingTradingOrders.remove(id);
+        if (current()) lastError = '无法保存 OCO 恢复资料，未发送委托';
+        return 0;
+      }
+      if (!current()) {
+        _pendingTradingOrders.remove(id);
+        await _writeSettings();
+        return 0;
+      }
+      issued = true;
+      final result = await api.placeTriggerOrderBatch(
+        id,
+        requested,
+        atomic: true,
+        productLine: instrument.mode.productLine,
+      );
+      if (result.requested != 2 ||
+          result.completed != 2 ||
+          result.failed != 0 ||
+          result.results.length != 2 ||
+          result.results.map((r) => r.index).toSet().length != 2) {
+        throw const FormatException('OCO 响应不完整');
+      }
+      for (final item in result.results) {
+        if (!item.success ||
+            item.index < 0 ||
+            item.index > 1 ||
+            item.order == null ||
+            item.order!.triggerOrderId <= 0 ||
+            item.order!.clientTriggerOrderId !=
+                requested[item.index]['clientTriggerOrderId'] ||
+            ![
+              'PENDING',
+              'TRIGGERING',
+              'TRIGGERED',
+              'TRIGGER_FAILED',
+              'CANCELED',
+              'EXPIRED',
+            ].contains(item.order!.status) ||
+            item.order!.instrumentId != instrument.instrumentId ||
+            item.order!.ocoGroupId != 'app-oco-$key') {
+          throw const FormatException('OCO 响应身份不匹配');
+        }
+      }
+      if (_pendingTradingOrders[id] == intent) {
+        _pendingTradingOrders.remove(id);
+        await _writeSettings();
+      }
+      if (!current()) return 2;
+      if (mode == instrument.mode && selectedSymbol == instrument.symbol) {
+        for (final item in result.results) {
+          _upsertTriggerOrder(item.order!);
+        }
+      }
+      lastNotice = '止盈止损双腿已一起接受，一腿触发后另一腿撤销';
+      await refreshPrivateData();
+      return 2;
+    } catch (error) {
+      if (!issued || isDefinitiveOrderRejection(error)) {
+        if (_pendingTradingOrders[id] == intent) {
+          _pendingTradingOrders.remove(id);
+          await _writeSettings();
+        }
+        if (current()) lastError = 'OCO 未接受：${clientErrorMessage(error)}';
+      } else if (current()) {
+        lastNotice = 'OCO 结果待确认，请查询原请求，勿重复提交';
+      }
+      return 0;
+    } finally {
+      if (current()) {
+        submittingTriggers = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<int> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
     if (submittingTriggers) return 0;
     lastError = null;
     lastNotice = null;
     final symbol = selectedSymbol;
+    final instrument = selectedInstrument;
     final product = mode;
     final id = userId;
     final token = session?.accessToken;
     if (id == null) {
       lastError = '请先登录再提交止盈止损';
+      notifyListeners();
+      return 0;
+    }
+    if (!instrument.canPlaceOrder(reduceOnly: true) ||
+        tradingCommandPending ||
+        submittingOrder) {
+      lastError = '合约不可交易或存在待确认委托';
       notifyListeners();
       return 0;
     }
@@ -2583,12 +2796,15 @@ class AppState extends ChangeNotifier {
         created.add(
           await api.placeTriggerOrder(
             userId: id,
-            symbol: symbol,
+            instrumentId: instrument.instrumentId,
             side: draft.side,
             triggerType: draft.triggerType,
             triggerPriceTicks: draft.triggerPriceTicks,
             activationPriceTicks: draft.activationPriceTicks,
             callbackRatePpm: draft.callbackRatePpm,
+            priceSource: draft.priceSource,
+            orderType: draft.orderType,
+            priceTicks: draft.priceTicks,
             quantitySteps: draft.quantitySteps,
             marginMode: draft.marginMode,
             positionSide: draft.positionSide,
@@ -2617,6 +2833,11 @@ class AppState extends ChangeNotifier {
   }
 
   bool _validTriggerDraft(TriggerOrderDraft draft) {
+    if (!['MARK', 'LAST', 'INDEX'].contains(draft.priceSource) ||
+        !['MARKET', 'LIMIT'].contains(draft.orderType) ||
+        (draft.orderType == 'LIMIT' && draft.priceTicks <= 0)) {
+      return false;
+    }
     if (![
           'TAKE_PROFIT',
           'STOP_LOSS',
@@ -2626,6 +2847,7 @@ class AppState extends ChangeNotifier {
       return false;
     }
     if (draft.triggerType == 'TRAILING_STOP') {
+      if (draft.orderType != 'MARKET') return false;
       final callbackRate = draft.callbackRatePpm;
       return draft.triggerPriceTicks >= 0 &&
           (draft.activationPriceTicks == null ||

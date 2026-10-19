@@ -1429,7 +1429,7 @@ class ApiClient {
 
   Future<TriggerOrderModel> placeTriggerOrder({
     required int userId,
-    required String symbol,
+    required String instrumentId,
     required String side,
     required String triggerType,
     required int triggerPriceTicks,
@@ -1438,21 +1438,25 @@ class ApiClient {
     required String positionSide,
     int? activationPriceTicks,
     int? callbackRatePpm,
+    String priceSource = 'MARK',
+    String orderType = 'MARKET',
+    int priceTicks = 0,
     String? productLine,
   }) async {
     final payload = <String, Object?>{
       'userId': userId,
       'clientTriggerOrderId':
           'app-trigger-$userId-${DateTime.now().microsecondsSinceEpoch}',
-      'symbol': symbol,
+      'instrumentId': instrumentId,
       'side': side,
       'triggerType': triggerType,
       'triggerPriceTicks': triggerPriceTicks,
       'activationPriceTicks': activationPriceTicks,
       'callbackRatePpm': callbackRatePpm,
-      'orderType': 'MARKET',
-      'timeInForce': 'IOC',
-      'priceTicks': 0,
+      'priceSource': priceSource,
+      'orderType': orderType,
+      'timeInForce': orderType == 'MARKET' ? 'IOC' : 'GTC',
+      'priceTicks': orderType == 'MARKET' ? 0 : priceTicks,
       'quantitySteps': quantitySteps,
       'marginMode': marginMode,
       'positionSide': positionSide,
@@ -1478,7 +1482,9 @@ class ApiClient {
       userId: userId,
       productLine: productLine,
     );
-    return TriggerOrderBatchResult.fromJson(json);
+    return atomic && productLine == 'OPTION'
+        ? TriggerOrderBatchResult.fromAtomicOcoJson(json)
+        : TriggerOrderBatchResult.fromJson(json);
   }
 
   Future<TriggerOrderModel> cancelTriggerOrder(

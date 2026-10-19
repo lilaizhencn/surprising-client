@@ -15,8 +15,7 @@ enum ProductMode {
 
   bool get isSpot => this == ProductMode.spot;
   bool get tracksSingleOrderIntent => isSpot || isExpiring;
-  bool get tracksTriggerIntent =>
-      isOption || this == ProductMode.linearDelivery;
+  bool get tracksTriggerIntent => isExpiring;
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>

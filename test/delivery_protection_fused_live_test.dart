@@ -10,20 +10,26 @@ import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
 
 void main() {
-  final fixturePath = Platform.environment['LINEAR_PROTECTION_LIVE_FIXTURE'];
+  final fixturePath = Platform.environment['DELIVERY_PROTECTION_LIVE_FIXTURE'];
+  final line =
+      Platform.environment['DELIVERY_PROTECTION_PRODUCT'] ?? 'LINEAR_DELIVERY';
+  final product = line == 'INVERSE_DELIVERY'
+      ? ProductMode.inverseDelivery
+      : ProductMode.linearDelivery;
+  final prefix = line == 'INVERSE_DELIVERY'
+      ? '/tmp/surprising-inverse-delivery-fused-'
+      : '/tmp/surprising-linear-delivery-fused-';
   testWidgets(
-    'LINEAR_DELIVERY FUSED protection and settling preserve original results',
+    '$line FUSED protection and settling preserve original results',
     (tester) async {
       await tester.runAsync(
         () => HttpOverrides.runWithHttpOverrides(() async {
-          expect(
-            fixturePath,
-            startsWith('/tmp/surprising-linear-delivery-fused-'),
-          );
+          expect(fixturePath, startsWith(prefix));
           final fixture = asMap(
             jsonDecode(await File(fixturePath!).readAsString()),
           );
-          expect(fixture['productLine'], 'LINEAR_DELIVERY');
+          expect(['LINEAR_DELIVERY', 'INVERSE_DELIVERY'], contains(line));
+          expect(fixture['productLine'], line);
           final root = File(fixturePath).parent;
           final session = AuthSession.fromJson(asMap(fixture['session']));
           final pidFile = File(
@@ -72,6 +78,16 @@ void main() {
                 posts.add(body);
                 expect(body['atomic'], true);
                 expect(asList(body['orders']).length, 2);
+                expect(incoming.headers.value('X-Product-Line'), line);
+                final legs = asList(body['orders']).map(asMap).toList();
+                expect(legs.first['triggerPriceTicks'], 490000);
+                expect(legs.last['triggerPriceTicks'], 400000);
+                for (final leg in legs) {
+                  expect(leg['quantitySteps'], 1);
+                  expect(leg['side'], 'SELL');
+                  expect(leg['priceSource'], 'MARK');
+                  expect(leg['orderType'], 'MARKET');
+                }
                 final saved = asMap(
                   asList(
                     jsonDecode(settings.values['pendingTradingOrders']!),
@@ -155,7 +171,13 @@ void main() {
             )..setSession(session);
             final instrument = await direct.instrumentLatest(
               asString(fixture['instrumentId']),
-              ProductMode.linearDelivery,
+              product,
+            );
+            expect(instrument.mode, product);
+            expect(instrument.quoteAsset, 'USDT');
+            expect(
+              instrument.settleAsset,
+              line == 'INVERSE_DELIVERY' ? 'BTC' : 'USDT',
             );
             state = make(instrument);
             await state.refreshPrivateData();
@@ -277,7 +299,7 @@ void main() {
                 '${root.path}/delivery-protection-client-settling-evidence.json',
               ).writeAsString(
                 jsonEncode({
-                  'productLine': 'LINEAR_DELIVERY',
+                  'productLine': line,
                   'phase': 'SETTLING',
                   'triggerPosts': 0,
                   'directClosePosts': 1,
@@ -285,11 +307,13 @@ void main() {
                   'corePausedQueries': 1,
                   'finalPosition': 0,
                   'width': 320,
+                  'settlementAsset': instrument.settleAsset,
+                  'quoteAsset': instrument.quoteAsset,
                 }),
               );
               expect(tester.takeException(), isNull);
               debugPrint(
-                'LINEAR_DELIVERY_PROTECTION_CLIENT_SETTLING_PASS triggerPosts=0 originalOcoRestored=true corePausedRead=true directClosePosts=1 finalPosition=0',
+                '${line}_PROTECTION_CLIENT_SETTLING_PASS triggerPosts=0 originalOcoRestored=true corePausedRead=true directClosePosts=1 finalPosition=0',
               );
               return;
             }
@@ -377,7 +401,7 @@ void main() {
               '${root.path}/delivery-protection-client-evidence.json',
             ).writeAsString(
               jsonEncode({
-                'productLine': 'LINEAR_DELIVERY',
+                'productLine': line,
                 'triggerIds': ids.map((id) => '$id').toList(),
                 'posts': 1,
                 'atomic': true,
@@ -385,11 +409,13 @@ void main() {
                 'restartRestored': true,
                 'finalPosition': 1,
                 'width': 320,
+                'settlementAsset': instrument.settleAsset,
+                'quoteAsset': instrument.quoteAsset,
               }),
             );
             expect(tester.takeException(), isNull);
             debugPrint(
-              'LINEAR_DELIVERY_PROTECTION_CLIENT_PASS atomic=true posts=1 marketCloseOne=true pausedUnknown=true restartRestored=true remainingPosition=1 width320',
+              '${line}_PROTECTION_CLIENT_PASS atomic=true posts=1 marketCloseOne=true pausedUnknown=true restartRestored=true remainingPosition=1 width320',
             );
           } finally {
             if (paused) Process.killPid(pid, ProcessSignal.sigcont);
@@ -421,12 +447,12 @@ class _State extends AppState {
         config: const AppConfig(websocketUrl: ''),
         seedInstruments: [instrument],
       ) {
-    mode = ProductMode.linearDelivery;
+    mode = instrument.mode;
   }
   @override
   Future<void> refreshPrivateData() async {
     if (userId != null) {
-      positions = await api.positions(userId!, productLine: 'LINEAR_DELIVERY');
+      positions = await api.positions(userId!, productLine: mode.productLine);
       notifyListeners();
     }
   }

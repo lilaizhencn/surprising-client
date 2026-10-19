@@ -262,7 +262,24 @@ U 本位交割“高级委托 → 条件单”补齐 TP/SL 双腿 OCO，并与�
 SETTLING 中的直接减仓和原请求查询继续可用，不能用直接平仓的准入判断放行条件单。
 ApiClient 与界面沿用已有产品映射，尚未接入其他产品的持久条件单恢复；没有扩展永续功能。
 
-可选 test/linear_delivery_protection_fused_live_test.dart 使用 LINEAR_PROTECTION_LIVE_FIXTURE，
+可选 test/delivery_protection_fused_live_test.dart 使用 DELIVERY_PROTECTION_LIVE_FIXTURE 和 DELIVERY_PROTECTION_PRODUCT=LINEAR_DELIVERY，
 配合后端 SIX_LINE_LIVE_DELIVERY_PROTECTION=true，在同一隔离 FUSED 仓位上验证交易中触发减仓和结算中最终直接平仓。
 主机 Flutter 的设置/会话适配器不代表原生 secure-storage 或真机安装验收。需配套既有 gateway 回执接口及 realtime 导出，
 无新 SQL；实测及清理见 docs/validation/linear-delivery-protection-20261020.json。
+
+
+### 币本位交割保护委托恢复（2026-10-20）
+
+币本位交割条件单与 OCO 现复用交割/期权的原身份持久恢复：发送前保存账户、产品、永久合约 ID 和双腿身份；
+未知响应或确认结果保存失败时只查询 realtime，不自动重发。两类交割的共同测试为 test/delivery_protection_test.dart，
+分别验证报价币精度与结算币精度、ISOLATED/LONG、原 64 位撤销身份、重建恢复及 320px 深浅色。
+
+共享实栈用例 test/delivery_protection_fused_live_test.dart 需要 DELIVERY_PROTECTION_LIVE_FIXTURE、
+DELIVERY_PROTECTION_PRODUCT=INVERSE_DELIVERY（或 LINEAR_DELIVERY），一次只接入一个隔离 FUSED 产品。
+币本位的可用资产/资金对账使用 BTC，触发价仍按报价币精度换算；SETTLING 禁止新条件单，原结果查询和直接减仓保持可用。
+本轮无 Core 资金模型或 SQL 变化，不包含永续扩展、原生 secure-storage 或真机安装验收。
+实测与清理见 docs/validation/inverse-delivery-protection-20261020.json。
+
+币本位行情由 realtime 修正面值换算与 SETTLING/CLOSED 成交接收；重启后的当前大周期由已关闭分钟聚合恢复。
+旧分钟投影需受控重建；本轮只处理隔离 QA 数据，无线上数据操作。只读实栈 test/inverse_delivery_market_live_test.dart 使用 INVERSE_MARKET_LIVE_ROOT，
+核对三笔原始成交、BTC 基础币量、报价币成交额及 Core 暂停时的 1m/4h 查询。

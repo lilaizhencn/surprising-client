@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'models.dart';
+import 'option_market.dart';
 import 'account_records.dart';
 
 class ApiClient {
@@ -265,7 +266,7 @@ class ApiClient {
     if (results[0]['productLine'] != line ||
         asString(results[0]['instrumentId']) != instrument.instrumentId ||
         asInt(results[0]['userId']) != userId ||
-        asInt(results[0]['instrumentChangeId']) != instrument.changeId ||
+        asInt(results[0]['changeId']) != instrument.changeId ||
         results[1]['productLine'] != line ||
         fee == null ||
         fee.abs() > 1000000 ||
@@ -275,6 +276,21 @@ class ApiClient {
       throw const FormatException('下单资料不匹配，请刷新后重试');
     }
     return (takerFeeRatePpm: fee, marketMaxSlippagePpm: slip);
+  }
+
+  Future<OptionReference> optionReference(Instrument instrument) async {
+    if (!instrument.isOption) throw const FormatException('期权产品线不匹配');
+    final quote = OptionReference.fromJson(
+      await get(
+        '/api/v1/gateway/candlestick/options/quote',
+        query: {'instrumentId': instrument.instrumentId},
+        productLine: 'OPTION',
+      ),
+    );
+    if (!quote.matches(instrument)) {
+      throw const FormatException('期权参考报价已过期或合约不匹配');
+    }
+    return quote;
   }
 
   Future<AccountRecordPage> accountRecords({

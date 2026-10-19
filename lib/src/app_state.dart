@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'models.dart';
+import 'option_market.dart';
 import 'realtime_state.dart';
 import 'account_records.dart';
 import 'session_store.dart';
@@ -459,6 +460,60 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  OptionReference? _optionReference;
+  bool _loadingOptionReference = false;
+  int _optionReferenceRequest = 0;
+  Timer? _optionReferenceTimer;
+  OptionReference? get optionReference =>
+      _optionReference?.matches(selectedInstrument) == true
+      ? _optionReference
+      : null;
+
+  void _scheduleOptionReference() {
+    _optionReferenceTimer?.cancel();
+    _optionReferenceTimer = !offline && mode.isOption
+        ? Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (_optionReference != null && optionReference == null) {
+              _optionReference = null;
+              notifyListeners();
+            }
+            if (timer.tick.isEven) unawaited(refreshOptionReference());
+          })
+        : null;
+  }
+
+  Future<void> refreshOptionReference() async {
+    if (offline || !mode.isOption || _loadingOptionReference) return;
+    final instrument = selectedInstrument;
+    if (!canQueryOptionReference(instrument)) {
+      _optionReference = null;
+      notifyListeners();
+      return;
+    }
+    final request = ++_optionReferenceRequest;
+    final selection = _selectionVersion;
+    _loadingOptionReference = true;
+    try {
+      final quote = await api.optionReference(instrument);
+      if (request == _optionReferenceRequest &&
+          selection == _selectionVersion &&
+          quote.matches(selectedInstrument)) {
+        _optionReference = quote;
+      }
+    } catch (_) {
+      if (request == _optionReferenceRequest &&
+          selection == _selectionVersion) {
+        _optionReference = null;
+      }
+    } finally {
+      _loadingOptionReference = false;
+      if (request == _optionReferenceRequest &&
+          selection == _selectionVersion) {
+        notifyListeners();
+      }
+    }
+  }
+
   List<Position> positions = const [];
   List<OrderModel> openOrders = const [];
   String? openOrdersNextCursor;
@@ -722,6 +777,7 @@ class AppState extends ChangeNotifier {
     await _restoreSession();
     await refreshInstruments(silent: true);
     await refreshValuation(silent: true);
+    _scheduleOptionReference();
     await refreshPublicData(silent: true);
     await refreshAnnouncements();
     await _connectPublicRealtime();
@@ -1294,6 +1350,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshPublicData({bool silent = false}) async {
     if (offline || selectedSymbol.isEmpty) return;
+    unawaited(refreshOptionReference());
     final requestVersion = ++_publicRequestVersion;
     loadingPublic = true;
     notifyListeners();
@@ -1721,6 +1778,8 @@ class AppState extends ChangeNotifier {
     ++_openOrdersRequestVersion;
     mode = nextMode;
     selectedSymbol = symbol;
+    _optionReference = null;
+    _scheduleOptionReference();
     recentTrades = [];
     accountRisk = null;
     openAlgoOrders = [];
@@ -3888,6 +3947,8 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_optionReferenceRequest;
+    _optionReferenceTimer?.cancel();
     ++_orderTermsRequest;
     ++_walletSessionVersion;
     ++_walletVersion;

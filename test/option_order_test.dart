@@ -157,7 +157,7 @@ class _Api extends ApiClient {
             'productLine': 'OPTION',
             'instrumentId': '74',
             'userId': 1,
-            'instrumentChangeId': wrongVersion ? 2 : 3,
+            'changeId': wrongVersion ? 2 : 3,
             'takerFeeRatePpm': 500,
           }
         : {'productLine': 'OPTION', 'marketMaxSlippagePpm': 10000};

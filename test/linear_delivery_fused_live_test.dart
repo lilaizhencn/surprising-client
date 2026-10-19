@@ -169,6 +169,46 @@ void main() {
             for (var i = 0; i < 100 && state.positions.isEmpty; i++) {
               await Future<void>.delayed(const Duration(milliseconds: 100));
             }
+            if (line == 'OPTION' && asInt(fixture['optionCompanionId']) > 0) {
+              for (var i = 0; i < 100 && state.optionReference == null; i++) {
+                await Future<void>.delayed(const Duration(milliseconds: 100));
+              }
+              expect(state.optionReference?.instrumentId, instrumentId);
+              expect(
+                state.optionReference!.greeks!.forwardDelta,
+                greaterThan(0),
+              );
+              expect(state.optionReference!.underlyingIndexPrice, 50000);
+              expect(state.optionReference!.sameExpiryForwardPrice, 50500);
+              final companion = state.instruments.singleWhere(
+                (i) =>
+                    i.instrumentId == '${fixture['optionCompanionId']}' &&
+                    i.isOption,
+              );
+              await state.selectSymbol(companion.symbol);
+              for (var i = 0; i < 100 && state.optionReference == null; i++) {
+                await Future<void>.delayed(const Duration(milliseconds: 100));
+              }
+              expect(
+                state.optionReference?.instrumentId,
+                companion.instrumentId,
+              );
+              expect(state.optionReference!.greeks!.forwardDelta, lessThan(0));
+              await state.selectSymbol(instrument.symbol);
+              for (
+                var i = 0;
+                i < 100 &&
+                    (state.optionReference == null || state.positions.isEmpty);
+                i++
+              ) {
+                await Future<void>.delayed(const Duration(milliseconds: 100));
+              }
+              expect(state.optionReference?.instrumentId, instrumentId);
+              expect(posts, isEmpty);
+              debugPrint(
+                'OPTION_REFERENCE_CLIENT_PASS callPutSwitch=true sourceIdentity=true index=50000 forward=50500',
+              );
+            }
             final initial = state.positions.single;
             expect(initial.signedQuantitySteps, 1);
             expect(state.selectedInstrument.status, instrument.status);
@@ -249,6 +289,8 @@ void main() {
                 'locked': 0,
                 'width': 320,
                 'theme': 'light',
+                'optionReferenceAndChain':
+                    asInt(fixture['optionCompanionId']) > 0,
               }),
             );
             debugPrint(

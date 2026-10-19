@@ -1121,7 +1121,7 @@ void main() {
                     'userId': 1,
                     'productLine': wrongProduct ? 'LINEAR_PERPETUAL' : 'SPOT',
                     'instrumentId': '1',
-                    'instrumentChangeId': 1,
+                    'changeId': 1,
                     'takerFeeRatePpm': 1234,
                   }
                 : {'productLine': 'SPOT', 'marketMaxSlippagePpm': 2345},

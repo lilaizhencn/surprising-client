@@ -18,6 +18,7 @@ import 'kyc_application_page.dart';
 import 'kyc_documents_page.dart';
 import 'deposit_page.dart';
 import 'models.dart';
+import 'option_market.dart';
 import 'spot_order.dart';
 import 'spot_amend_order_sheet.dart';
 
@@ -7874,13 +7875,16 @@ class ProductLifecyclePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOption = instrument.isOption;
-    final underlying = _underlyingInstrument();
-    final underlyingPrice = underlying == null
-        ? null
-        : state.latestPriceFor(underlying);
-    final strike = instrument.strikePrice;
-    final intrinsic = _intrinsicValue(instrument, underlyingPrice, strike);
-    final chain = _optionChainRows(instrument, state.instruments);
+    final reference = state.optionReference;
+    final underlyingPrice = reference?.underlyingIndexPrice;
+    final strike = scaledAmount(
+      instrument.strikePriceUnits == null
+          ? null
+          : BigInt.from(instrument.strikePriceUnits!),
+      instrument.quoteScaleUnits,
+    );
+    final intrinsic = reference?.intrinsicValue;
+    final chain = optionChain(instrument, state.instruments);
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -7939,17 +7943,19 @@ class ProductLifecyclePanel extends StatelessWidget {
               ),
               LifecycleChip(
                 label: instrument.isDelivery ? '距到期' : '剩余',
-                value: timeLeft(
-                  instrument.isDelivery
-                      ? instrument.expiryTime
-                      : instrument.deliveryTime ?? instrument.expiryTime,
-                ),
+                value: timeLeft(instrument.expiryTime),
               ),
               LifecycleChip(
                 label: '结算',
                 value: instrument.settlementMethod ?? '--',
               ),
               LifecycleChip(label: '账户', value: instrument.mode.accountType),
+              if (isOption)
+                LifecycleChip(
+                  label: '标的',
+                  value:
+                      '${instrument.baseAsset} · ${instrument.underlyingInstrumentId ?? '--'}',
+                ),
             ],
           ),
           if (isOption) ...[
@@ -7959,28 +7965,28 @@ class ProductLifecyclePanel extends StatelessWidget {
               runSpacing: 6,
               children: [
                 MetricPill(
-                  label: '底层',
+                  label: '标的指数',
                   value: underlyingPrice == null
-                      ? underlying?.displayName ??
-                            '${instrument.baseAsset} · ${instrument.underlyingInstrumentId ?? '--'}'
+                      ? '--'
                       : money(
                           underlyingPrice,
-                          digits: underlying?.pricePrecision ?? 2,
+                          digits: instrument.pricePrecision,
                         ),
                   color: Theme.of(context).colorScheme.secondary,
                 ),
                 MetricPill(
                   label: '行权价',
-                  value: strike == null
-                      ? '--'
-                      : money(strike, digits: instrument.pricePrecision),
+                  value: '$strike ${instrument.quoteAsset}',
                   color: _amber,
                 ),
                 MetricPill(
                   label: '权利金',
-                  value: latestPrice == null
+                  value: reference == null
                       ? '--'
-                      : money(latestPrice!, digits: instrument.pricePrecision),
+                      : money(
+                          reference.premiumPrice,
+                          digits: instrument.pricePrecision,
+                        ),
                   color: Theme.of(context).colorScheme.tertiary,
                 ),
                 MetricPill(
@@ -7993,34 +7999,93 @@ class ProductLifecyclePanel extends StatelessWidget {
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 MetricPill(
-                  label: 'Greeks',
-                  value: '暂无可信报价',
-                  color: Theme.of(context).colorScheme.secondary,
+                  label: '同到期远期价',
+                  value: reference == null
+                      ? '--'
+                      : money(
+                          reference.sameExpiryForwardPrice,
+                          digits: instrument.pricePrecision,
+                        ),
+                  color: _amber,
                 ),
+                for (final entry in <String, double?>{
+                  '隐含波动率%': reference?.greeks == null
+                      ? null
+                      : reference!.greeks!.impliedVolatility * 100,
+                  '远期 Delta': reference?.greeks?.forwardDelta,
+                  '远期 Gamma': reference?.greeks?.forwardGamma,
+                  'Vega / 波动率1%': reference?.greeks?.vegaPerVolPoint,
+                  'Theta / 天': reference?.greeks?.thetaPerDay,
+                }.entries)
+                  MetricPill(
+                    label: entry.key,
+                    value: entry.value == null
+                        ? '--'
+                        : '${money(entry.value!, digits: entry.key == '远期 Gamma' ? 10 : 6)}${entry.key.startsWith('Vega') || entry.key.startsWith('Theta') ? ' ${instrument.quoteAsset}' : ''}',
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
               ],
             ),
             const SizedBox(height: 8),
+            Text(
+              'Black-76 参考值 · 零贴现 · 每1 ${instrument.baseAsset}',
+              style: const TextStyle(fontSize: 11),
+            ),
+            Text(
+              reference == null
+                  ? '参考报价暂不可用或已过期'
+                  : reference.greeks == null
+                  ? '当前报价无法在参考模型下求得隐含波动率'
+                  : '报价时间 ${shortDateTime(reference.asOf)}',
+              style: const TextStyle(fontSize: 11),
+            ),
+            const SizedBox(height: 8),
             if (chain.isEmpty)
-              Text(
-                '暂无同到期期权链',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              )
+              const Text('暂无同到期期权链')
             else
               Column(
                 children: [
-                  const InfoLine(label: '期权链', value: '到期 / 行权价 / CALL / PUT'),
-                  ...chain
-                      .take(6)
-                      .map(
-                        (row) => InfoLine(
-                          label:
-                              '${row.expiry} ${money(row.strike, digits: instrument.pricePrecision)}',
-                          value: '${row.call ?? '-'} / ${row.put ?? '-'}',
-                        ),
-                      ),
+                  const InfoLine(label: '同到期期权链', value: 'CALL / 行权价 / PUT'),
+                  for (final row in chain)
+                    Row(
+                      children: [
+                        for (final isCall in [true, false]) ...[
+                          if (!isCall)
+                            Expanded(
+                              child: Text(
+                                scaledAmount(
+                                  row.strikeUnits,
+                                  instrument.quoteScaleUnits,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                for (final contract
+                                    in isCall ? row.calls : row.puts)
+                                  TextButton(
+                                    key: ValueKey(
+                                      'option-chain-${contract.instrumentId}',
+                                    ),
+                                    onPressed: () => unawaited(
+                                      state.selectSymbol(contract.symbol),
+                                    ),
+                                    child: Text(
+                                      '${contract.symbol}\n${contract.status}',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  ),
+                                if ((isCall ? row.calls : row.puts).isEmpty)
+                                  const Text('--'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                 ],
               ),
           ] else ...[
@@ -8058,22 +8123,6 @@ class ProductLifecyclePanel extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Instrument? _underlyingInstrument() {
-    final target = instrument.underlyingInstrumentId;
-    if (target == null ||
-        target.isEmpty ||
-        instrument.underlyingProductLine == null) {
-      return null;
-    }
-    for (final item in state.instruments) {
-      if (item.instrumentId == target &&
-          item.mode.productLine == instrument.underlyingProductLine) {
-        return item;
-      }
-    }
-    return null;
   }
 }
 
@@ -10452,85 +10501,6 @@ String timeLeft(DateTime? value) {
   final minutes = (seconds % 3600) ~/ 60;
   if (days > 0) return '$days天$hours小时';
   return '$hours小时$minutes分';
-}
-
-double? _intrinsicValue(
-  Instrument instrument,
-  double? underlyingPrice,
-  double? strike,
-) {
-  if (underlyingPrice == null || strike == null) return null;
-  if (instrument.optionType == 'PUT') {
-    return math.max(0, strike - underlyingPrice);
-  }
-  return math.max(0, underlyingPrice - strike);
-}
-
-List<OptionChainRow> _optionChainRows(
-  Instrument selected,
-  List<Instrument> instruments,
-) {
-  final targetExpiry = selected.expiryTime?.toUtc().millisecondsSinceEpoch;
-  if (targetExpiry == null ||
-      selected.underlyingInstrumentId == null ||
-      selected.underlyingProductLine == null) {
-    return [];
-  }
-  final targetUnderlying =
-      '${selected.underlyingProductLine}:${selected.underlyingInstrumentId}';
-  final rows = <String, OptionChainRow>{};
-  for (final item in instruments) {
-    if (!item.isOption) continue;
-    if ('${item.underlyingProductLine}:${item.underlyingInstrumentId}' !=
-        targetUnderlying) {
-      continue;
-    }
-    final expiry = _dateKey(item.expiryTime ?? item.deliveryTime);
-    if (item.expiryTime?.toUtc().millisecondsSinceEpoch != targetExpiry) {
-      continue;
-    }
-    final strike = item.strikePrice;
-    if (strike == null) continue;
-    final key = '$expiry:$strike';
-    final current = rows[key] ?? OptionChainRow(expiry: expiry, strike: strike);
-    rows[key] = item.optionType == 'PUT'
-        ? current.copyWith(put: item.symbol)
-        : current.copyWith(call: item.symbol);
-  }
-  final sorted = rows.values.toList()
-    ..sort((left, right) => left.strike.compareTo(right.strike));
-  return sorted;
-}
-
-String _dateKey(DateTime? value) {
-  if (value == null) return '';
-  final utc = value.toUtc();
-  final month = utc.month.toString().padLeft(2, '0');
-  final day = utc.day.toString().padLeft(2, '0');
-  return '${utc.year}-$month-$day';
-}
-
-class OptionChainRow {
-  const OptionChainRow({
-    required this.expiry,
-    required this.strike,
-    this.call,
-    this.put,
-  });
-
-  final String expiry;
-  final double strike;
-  final String? call;
-  final String? put;
-
-  OptionChainRow copyWith({String? call, String? put}) {
-    return OptionChainRow(
-      expiry: expiry,
-      strike: strike,
-      call: call ?? this.call,
-      put: put ?? this.put,
-    );
-  }
 }
 
 String networkDisplayName(String chain, String symbol) {

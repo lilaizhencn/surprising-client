@@ -220,3 +220,12 @@ U 本位与币本位交割结束后，客户端目录刷新会按已选合约的
 移除按价内外猜测 Delta，Greeks/IV 后端定价尚未实现，显示暂无可信报价。期权只允许未到期 TRADING，CLOSED 仍按 ID 保留查询；单笔下单/撤单在发送前持久保存，响应不明只查询原 realtime 回执，重建状态不重发。减仓检查当前持仓方向、保证金模式及数量。`option-exercise` 记录只读 OPTION 产品账本的 OPTION_EXERCISE，呈现真实现金、余额和合约。
 
 实际仅运行 OPTION 单节点 FUSED，Web 买一张、Flutter 平仓，丢真实响应、暂停本轮 realtime 后保持未知，再恢复并重建 AppState 查询原结果；每个意图只有一次 POST。真实六组 CALL/PUT 到期与 320px 深浅主题现金记录验证完成。先部署后端单位换算、realtime 行权分类并执行必要旧数据分类迁移。没有声称 iOS/Android 真机安装、完整 Greeks 定价或生产验收。[验证及清理记录](docs/validation/option-trading-20261020.json)。
+
+
+### 期权行情与参考估值、公开手续费版本（2026-10-20 后续）
+
+两端已接入 realtime 的期权参考接口 `/api/v1/gateway/candlestick/options/quote`，展示真实权利金、标的指数、同到期远期价及零贴现 Black-76 参考 IV/远期 Delta/Gamma/Vega/每日 Theta。模型与每1单位标的的口径明确显示，缺失/过期/越界不造数；它不替代账户风险或结算。HALT 中有新鲜源数据的未到期合约仍可查询，下单限制保持独立。
+
+期权链现在可直接切换 CALL/PUT，按标的身份、精确到期时刻及币种分组，使用整数行权价并保留同价多合约。Web 补齐320px已登录页头、语言菜单与主题交互。另修复公开有效手续费的版本名：返回 changeId，与公开合约精度版本一致，client 不再依赖被网关删除的 instrumentChangeId；Web 现货费用版本校验同步使用公开 changeId，缺失或旧字段仍拒绝。未放开脱敏、未添加猜测费率。
+
+发布需配套 realtime、gateway 与两端；本轮没有 SQL 或 Core 资金/撮合/协议变更。参考模型仅为明确的零贴现欧式现金模型，不提供完整利率曲线或组合 Greeks；原生设备安装及其他产品本轮实栈不在验收范围。[验证与清理记录](docs/validation/option-market-reference-20261020.json)。

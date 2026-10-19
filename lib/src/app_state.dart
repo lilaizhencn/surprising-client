@@ -231,37 +231,71 @@ class AppState extends ChangeNotifier {
     try {
       bool? confirmed;
       if (pending.clientOrderId != null && pending.instrumentId != null) {
-        try {
-          final order = await api.get(
-            '/api/v1/gateway/trading/by-client-order-id',
-            userId: pending.userId,
-            productLine: pending.product.productLine,
-            query: {
-              'userId': '${pending.userId}',
-              'clientOrderId': pending.clientOrderId!,
-            },
-          );
-          if (asInt(order['userId']) != pending.userId ||
-              order['clientOrderId'] != pending.clientOrderId ||
-              asString(order['instrumentId']) != pending.instrumentId ||
-              asInt(order['orderId']) <= 0 ||
-              ![
-                'PENDING_RESERVE',
-                'ACCEPTED',
-                'REJECTED',
-                'CANCEL_REQUESTED',
-                'CANCELED',
-                'PARTIALLY_FILLED',
-                'FILLED',
-              ].contains(order['status'])) {
-            throw const FormatException('委托恢复资料不匹配');
+        final receipt = await api.get(
+          '/api/v1/gateway/trading/submission',
+          userId: pending.userId,
+          productLine: pending.product.productLine,
+          query: {
+            'userId': '${pending.userId}',
+            'clientOrderId': pending.clientOrderId!,
+          },
+        );
+        if (asInt(receipt['userId']) != pending.userId ||
+            receipt['productLine'] != pending.product.productLine ||
+            receipt['clientOrderId'] != pending.clientOrderId) {
+          throw const FormatException('委托回执资料不匹配');
+        }
+        if (receipt['outcome'] == 'TERMINAL') {
+          if (receipt['instrumentId'] != pending.instrumentId ||
+              receipt['commandId'] is! String ||
+              asString(receipt['commandId']).isEmpty ||
+              (pending.commandId != null &&
+                  receipt['commandId'] != pending.commandId) ||
+              receipt['code'] is! String ||
+              asString(receipt['code']).isEmpty) {
+            throw const FormatException('委托回执资料不匹配');
           }
-          confirmed = order['status'] != 'REJECTED';
-        } on ApiException catch (error) {
-          if (error.statusCode != 404) rethrow;
+          confirmed = receipt['code'] == 'NONE';
+        }
+        if (confirmed == null) {
+          if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
+              receipt['code'] != 'RESULT_UNKNOWN') {
+            throw const FormatException('委托回执资料不完整');
+          }
+          try {
+            final order = await api.get(
+              '/api/v1/gateway/trading/by-client-order-id',
+              userId: pending.userId,
+              productLine: pending.product.productLine,
+              query: {
+                'userId': '${pending.userId}',
+                'clientOrderId': pending.clientOrderId!,
+              },
+            );
+            if (asInt(order['userId']) != pending.userId ||
+                order['clientOrderId'] != pending.clientOrderId ||
+                asString(order['instrumentId']) != pending.instrumentId ||
+                asInt(order['orderId']) <= 0 ||
+                ![
+                  'PENDING_RESERVE',
+                  'ACCEPTED',
+                  'REJECTED',
+                  'CANCEL_REQUESTED',
+                  'CANCELED',
+                  'PARTIALLY_FILLED',
+                  'FILLED',
+                ].contains(order['status'])) {
+              throw const FormatException('委托恢复资料不匹配');
+            }
+            confirmed = order['status'] != 'REJECTED';
+          } on ApiException catch (error) {
+            if (error.statusCode != 404) rethrow;
+          }
         }
       }
-      if (confirmed == null && pending.commandId != null) {
+      if (confirmed == null &&
+          pending.clientOrderId == null &&
+          pending.commandId != null) {
         final receipt = await api.get(
           '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId!)}',
           userId: pending.userId,

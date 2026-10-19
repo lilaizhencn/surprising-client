@@ -51,6 +51,24 @@ Future<void> submitSpot(AppState state) => state.placeOrder(
 
 void main() {
   test(
+    'a committed rejected submission is recovered without an order entity',
+    () async {
+      final api = _SpotApi();
+      final state = _SpotState(api)..session = session;
+      addTearDown(state.dispose);
+      await submitSpot(state);
+      api.queryFailure = ApiException(503, 'order view not initialized');
+      api.terminal = true;
+      api.submissionCode = 'ORDER_NOT_FOUND';
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isFalse);
+      expect(state.lastError, contains('委托未被接受'));
+      expect(api.calls, 1);
+      expect(api.submissionQueries, 1);
+      expect(api.commandQueries, 0);
+    },
+  );
+  test(
     'malformed spot responses and unavailable or mismatched projections keep the original intent',
     () async {
       final api = _SpotApi()
@@ -305,8 +323,10 @@ void main() {
           request.response.write(
             jsonEncode({
               ...posted!,
-              'orderId': '9007199254740993',
-              'status': 'FILLED',
+              'productLine': 'SPOT',
+              'commandId': '11111111-1111-1111-1111-111111111111',
+              'outcome': 'TERMINAL',
+              'code': 'NONE',
             }),
           );
           await request.response.close();
@@ -332,7 +352,7 @@ void main() {
       expect(state.tradingCommandPending, isFalse);
       expect(methods, [
         'POST /api/v1/gateway/trading',
-        'GET /api/v1/gateway/trading/by-client-order-id',
+        'GET /api/v1/gateway/trading/submission',
       ]);
     },
   );
@@ -687,7 +707,8 @@ void main() {
       expect(state.tradingCommandPending, isFalse);
       expect(jsonDecode(settings.values['pendingTradingOrders']!), isEmpty);
       expect(state.lastNotice, contains('已确认'));
-      expect(api.commandQueries, 3);
+      expect(api.submissionQueries, 3);
+      expect(api.commandQueries, 0);
     },
   );
 
@@ -901,7 +922,8 @@ class _SpotState extends AppState {
 
 class _SpotApi extends ApiClient {
   _SpotApi() : super(const AppConfig());
-  int calls = 0, commandQueries = 0;
+  int calls = 0, commandQueries = 0, submissionQueries = 0;
+  String submissionCode = 'NONE';
   bool terminal = false;
   bool lookupNotAccepted = false, orderFound = false;
   Object? queryFailure;
@@ -954,6 +976,24 @@ class _SpotApi extends ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    if (path == '/api/v1/gateway/trading/submission') {
+      submissionQueries++;
+      expect(productLine, 'SPOT');
+      expect(query?['clientOrderId'], lastClientOrderId);
+      return {
+        'userId': userId,
+        'productLine': 'SPOT',
+        'clientOrderId': lastClientOrderId,
+        'instrumentId': terminal ? '1' : null,
+        'commandId': '123',
+        'outcome': lookupNotAccepted
+            ? 'NOT_ACCEPTED'
+            : terminal
+            ? 'TERMINAL'
+            : 'RESULT_UNKNOWN',
+        'code': terminal ? submissionCode : 'RESULT_UNKNOWN',
+      };
+    }
     if (path == '/api/v1/gateway/trading/by-client-order-id') {
       if (queryFailure != null) throw queryFailure!;
       expect(productLine, 'SPOT');

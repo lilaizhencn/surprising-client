@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-19",
+  "productDebugScope": "SPOT",
+  "dependencyReleaseOrder": [
+    "apply SQL migration",
+    "update realtime and keep REALTIME/TRADE_EXPORT enabled",
+    "bounded historical receipt repair using a fresh *.command-repair checkpoint from retained log prefix",
+    "update gateway then Web/client"
+  ],
+  "notVerified": [
+    "online deployment and production historical backfill",
+    "real full FUSED app stack in this round",
+    "iOS/Android native device install",
+    "other product UIs, algo/admin/lifecycle specialized queries",
+    "negative confirmation for requests never committed to Core"
+  ],
+  "limits": [
+    "Missing committed SQL record is RESULT_UNKNOWN, never proof of original nonacceptance. No automatic POST resend.",
+    "History before available Archive prefix cannot be inferred from a later snapshot; backfill must verify coverage.",
+    "Processing receipt is not current order state; maker internal quote recovery is excluded."
+  ],
+  "cleanup": {
+    "status": "complete",
+    "ownedDatabase": "surprising_receipts_1dbeed79ab",
+    "databaseDroppedAndVerified": true,
+    "ownedVitePid": 61465,
+    "ownedVitePort": 5189,
+    "ownedViteStoppedAndPortClosed": true,
+    "browserClosed": true,
+    "historicalUiRoot": "/var/folders/hx/xjj38_ln7kq9t86kzh9jz_9h0000gn/T/surprising-receipts-ui-fp779nys",
+    "uiRootRemoved": true,
+    "rawLogsRemovedAfterSummaryAndHashArchive": true,
+    "ownedSurefireReportsRemoved": [
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/TEST-com.surprising.aeron.service.orchestration.CommittedTradeReplayTest.xml",
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/com.surprising.aeron.service.orchestration.CommittedTradeReplayTest.txt",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.ExportBatchTest.xml",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.ExportBatchTest.txt",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.CommittedOrderProjectionPostgresTest.xml",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.CommittedOrderProjectionPostgresTest.txt",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.CommittedTradeExportIntegrationTest.xml",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.CommittedTradeExportIntegrationTest.txt",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.CommittedFundingRepairIntegrationTest.xml",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.CommittedFundingRepairIntegrationTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.repository.CommittedCommandResultQueryPostgresTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.trading.order.repository.CommittedCommandResultQueryPostgresTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.controller.OrderControllerTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.trading.order.controller.OrderControllerTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.trading.order.service.OrderServiceTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.trading.order.service.OrderServiceTest.txt",
+      "surprising-gateway/target/surefire-reports/TEST-com.surprising.gateway.provider.local.LocalBusinessApiTest.xml",
+      "surprising-gateway/target/surefire-reports/com.surprising.gateway.provider.local.LocalBusinessApiTest.txt",
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/TEST-com.surprising.aeron.service.orchestration.CoreSpotAssetUnitsTest.xml",
+      "surprising-aeron-core/surprising-aeron-service/target/surefire-reports/com.surprising.aeron.service.orchestration.CoreSpotAssetUnitsTest.txt",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/TEST-com.surprising.realtime.provider.export.TradeExportCheckpointTest.xml",
+      "surprising-realtime/surprising-realtime-provider/target/surefire-reports/com.surprising.realtime.provider.export.TradeExportCheckpointTest.txt"
+    ],
+    "historicalUiArtifacts": {
+      "390-dark.png": {
+        "sha256": "929e35ba58543ebe73ba98904b65958c15c88d4e6d28597b220aa23a8ab95de0",
+        "bytes": 94282
+      },
+      "browser.log": {
+        "sha256": "6db24ea6dfbf2dde4fcf1b233af07b96c5c2c69119b09ac43ae1396d761c1ef0",
+        "bytes": 2266
+      },
+      "390-light.png": {
+        "sha256": "3a81d30a4d0d9f893f10cbb330e4b7e67ab724104a36db0ce6f33cd0ae780e2b",
+        "bytes": 93595
+      },
+      "result.json": {
+        "sha256": "ceed70e7d642c648168e1a40ed21447036213dc3f37ffcfd2c03ff370af31890",
+        "bytes": 3038
+      },
+      "1440-light.png": {
+        "sha256": "f12062ea1410ee4407f36860475ae9fa93d8261032e41931a294c1fd55fe8915",
+        "bytes": 117165
+      },
+      "1440-dark.png": {
+        "sha256": "29f537c65f20fe338f920231e056577162b23b447d2fdf3436ee6b397921bcb9",
+        "bytes": 116839
+      },
+      "check.mjs": {
+        "sha256": "ecfab5cac22af0565f6bff6a8b8fe32840caca221c833cbed65bd7ed6454f476",
+        "bytes": 6953
+      },
+      "vite.log": {
+        "sha256": "5c70125af142a6ae2bf3a51a625e219481a73e05070528b6ed57b0e1e1985af0",
+        "bytes": 603
+      }
+    },
+    "preserved": "Existing PostgreSQL system process and unrelated databases/data; compiled dependencies and build outputs; no wallet or persistent trading stack started.",
+    "note": "Historical paths identify deleted evidence; retained class counts, results and checksums are in this record."
+  },
+  "baseCommit": "db5e4371f1208d41e0086945f7ce6ba1d772c35c",
+  "change": "Query realtime committed submission receipt first; on explicit RESULT_UNKNOWN query realtime order view; never resend POST or unlock on absent/unavailable results.",
+  "checks": [
+    "flutter analyze",
+    "flutter test --reporter expanded"
+  ],
+  "testsPassed": 148,
+  "errors": 0,
+  "backendUniqueTests": 174,
+  "backendEvidence": "surprising-ex/docs/validation/committed-command-results-20261019.json",
+  "browserSource": "controlled API/WS fixture, not a real FUSED stack",
+  "browser": [],
+  "clientScope": [
+    "320px light/dark widget interactions",
+    "real loopback HTTP server closes after receiving POST; recovery only GET",
+    "committed rejection bypasses uninitialized order view"
+  ],
+  "artifacts": {
+    "surprising-receipts-client-analyze.log": {
+      "sha256": "6aeebe1aed7a918ebfc0025756b644d50ac304306b8f9331bac6f99b285011ac",
+      "bytes": 96,
+      "historicalPath": "/tmp/surprising-receipts-client-analyze.log",
+      "status": "passed"
+    },
+    "surprising-receipts-client-tests.log": {
+      "sha256": "36384cc1346e48647447770a84a79a061661c30990264c4dc756cbf05e29e21f",
+      "bytes": 24698,
+      "historicalPath": "/tmp/surprising-receipts-client-tests.log",
+      "status": "passed"
+    }
+  },
+  "backendCommit": "ae61e530db4e984815ec1c5eddcdd80a6d605329"
+}

@@ -148,7 +148,7 @@ BBO/市价保护、资料缺失、切换用户和 dispose 后的迟到响应，�
 由 AppState 按用户保存，串行写入设置，避免切换账户或并发设置保存覆盖另一用户的未决请求。
 已有命令回执记录在加载时迁入同一集合，没有建立第二份订单状态。
 
-传输中断、超时或无效响应保留锁定；冷启动后“查询委托结果”按原产品和 clientOrderId 读取
+传输中断、超时或无效响应保留锁定；本节最初按原产品和 clientOrderId 读取
 `GET /api/v1/gateway/trading/by-client-order-id`。响应必须匹配原用户、请求号、交易对和有效订单号；
 404、视图不可用或身份不匹配都保留待确认。有 commandId 时可继续查询原回执，但查询请求自身的
 NOT_ACCEPTED 不再被当成原订单拒绝。已受理订单可从 realtime 的活动视图或终态投影恢复，不重发 POST。
@@ -161,5 +161,11 @@ NOT_ACCEPTED 不再被当成原订单拒绝。已受理订单可从 realtime 的
 旧刷新和 dispose 的用例。320px 深浅主题实际操作验证下单锁定、404 保留和查到订单后解锁，仍只有
 一条 POST。详见 [验证记录](docs/validation/spot-order-response-loss-20261019.json)。
 
-尚未补齐请求从未到达服务端、或回执过保留期且没有订单投影时的负确认机制；此时保留待确认。
+尚未补齐请求从未到达服务端时的负确认机制；此时保留待确认。无订单实体的已提交拒单恢复见下节。
 本轮只扩展普通现货下单，没有启动 FUSED 实栈、做市或 wallet，也未进行 iOS/Android 真机安装。
+
+## 无订单实体的已提交拒单恢复（2026-10-19）
+
+`AppState.checkPendingTradingCommand` 先读原产品的 `GET /api/v1/gateway/trading/submission`，验证原用户、clientOrderId、instrumentId 与已知 commandId，TERMINAL 才按命令成功/拒绝解除锁定。即使拒单未生成订单、订单视图还未就绪，也直接使用已提交回执。只有明确 RESULT_UNKNOWN 才继续查询 realtime by-client-order-id；未知、404、503 或资料不匹配仍待确认，不重发 POST。仅有 commandId 的历史记录继续查询 commands，后端也已改读 realtime SQL 投影。
+
+依赖后端先完成数据库迁移、realtime 更新与历史回补，再更新 gateway 和客户端；缺失回执仍不能作原请求的负确认。analyze 无问题，148 项测试通过，包括订单视图 503 时从回执恢复拒单、本机 HTTP 收到 POST 后断开连接，以及 320px 深浅色交互。本轮未安装 iOS/Android 真机、未启动完整 FUSED 栈。详见 [验证记录](docs/validation/committed-command-results-20261019.json)。

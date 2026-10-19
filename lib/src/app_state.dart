@@ -429,7 +429,8 @@ class AppState extends ChangeNotifier {
       if (!current() || pendingTradingCommand != pending) return;
       if (confirmed != null) {
         if (pending.clientTriggerOrderId != null ||
-            pending.cancelTriggerOrderId != null) {
+            pending.cancelTriggerOrderId != null ||
+            pending.ocoTakeProfitClientId != null) {
           if (!await _clearTriggerIntent(pending)) {
             if (current()) lastError = '无法保存条件单确认结果，请再次查询原请求';
             return;
@@ -915,11 +916,11 @@ class AppState extends ChangeNotifier {
         if (id > 0 &&
             product != null &&
             ((product.isSpot && cancelPlan != null) ||
-                (product.isOption &&
+                (product.tracksTriggerIntent &&
                     instrumentId != null &&
                     (clientTriggerOrderId != null ||
                         cancelTriggerOrderId > 0)) ||
-                (product.isOption &&
+                (product.tracksTriggerIntent &&
                     instrumentId != null &&
                     ocoTakeProfitClientId != null &&
                     ocoStopLossClientId != null) ||
@@ -2638,7 +2639,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 一次原子 OCO 意图：先保存两腿身份，再发送一次；未知结果只查 realtime 回执。
-  Future<int> placeOptionOco(List<TriggerOrderDraft> drafts) async {
+  Future<int> placeOco(List<TriggerOrderDraft> drafts) async {
     if (submittingTriggers || submittingOrder || tradingCommandPending) {
       return 0;
     }
@@ -2649,8 +2650,8 @@ class AppState extends ChangeNotifier {
     final tp = drafts.where((d) => d.triggerType == 'TAKE_PROFIT').firstOrNull;
     final sl = drafts.where((d) => d.triggerType == 'STOP_LOSS').firstOrNull;
     if (id == null ||
-        !instrument.isOption ||
-        !instrument.canPlaceOrder(reduceOnly: true) ||
+        !instrument.mode.tracksTriggerIntent ||
+        !instrument.canPlaceTrigger() ||
         drafts.length != 2 ||
         tp == null ||
         sl == null ||
@@ -2664,7 +2665,7 @@ class AppState extends ChangeNotifier {
         (tp.side == 'SELL'
             ? tp.triggerPriceTicks <= sl.triggerPriceTicks
             : tp.triggerPriceTicks >= sl.triggerPriceTicks)) {
-      lastError = '请填写当前可交易期权的有效 TP/SL 双腿参数';
+      lastError = '请填写当前可交易合约的有效 TP/SL 双腿参数';
       notifyListeners();
       return 0;
     }
@@ -2720,6 +2721,7 @@ class AppState extends ChangeNotifier {
     ];
     var issued = false;
     submittingTriggers = true;
+    submittingOrder = true;
     notifyListeners();
     try {
       _pendingTradingOrders[id] = intent;
@@ -2752,6 +2754,7 @@ class AppState extends ChangeNotifier {
             item.index < 0 ||
             item.index > 1 ||
             item.order == null ||
+            item.order!.userId != id ||
             item.order!.triggerOrderId <= 0 ||
             item.order!.clientTriggerOrderId !=
                 requested[item.index]['clientTriggerOrderId'] ||
@@ -2768,10 +2771,7 @@ class AppState extends ChangeNotifier {
           throw const FormatException('OCO 响应身份不匹配');
         }
       }
-      if (_pendingTradingOrders[id] == intent) {
-        _pendingTradingOrders.remove(id);
-        await _writeSettings();
-      }
+      if (!await _clearTriggerIntent(intent)) throw StateError('无法保存 OCO 确认结果');
       if (!current()) return 2;
       if (mode == instrument.mode && selectedSymbol == instrument.symbol) {
         for (final item in result.results) {
@@ -2782,11 +2782,14 @@ class AppState extends ChangeNotifier {
       await refreshPrivateData();
       return 2;
     } catch (error) {
-      if (!issued || isDefinitiveOrderRejection(error)) {
+      if (!issued) {
         if (_pendingTradingOrders[id] == intent) {
           _pendingTradingOrders.remove(id);
           await _writeSettings();
         }
+        if (current()) lastError = 'OCO 未发送：${clientErrorMessage(error)}';
+      } else if (isDefinitiveOrderRejection(error)) {
+        await _clearTriggerIntent(intent);
         if (current()) lastError = 'OCO 未接受：${clientErrorMessage(error)}';
       } else if (current()) {
         lastNotice = 'OCO 结果待确认，请查询原请求，勿重复提交';
@@ -2795,6 +2798,7 @@ class AppState extends ChangeNotifier {
     } finally {
       if (current()) {
         submittingTriggers = false;
+        submittingOrder = false;
         notifyListeners();
       }
     }
@@ -2816,7 +2820,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return 0;
     }
-    if (!instrument.canPlaceOrder(reduceOnly: true) ||
+    if (!instrument.canPlaceTrigger() ||
         tradingCommandPending ||
         submittingOrder) {
       lastError = '合约不可交易或存在待确认委托';
@@ -2833,7 +2837,7 @@ class AppState extends ChangeNotifier {
       final position = positions
           .where(
             (p) =>
-                (instrument.isOption
+                (instrument.mode.tracksTriggerIntent
                     ? p.instrumentId == instrument.instrumentId
                     : p.symbol == symbol) &&
                 p.marginMode == draft.marginMode &&
@@ -2851,7 +2855,7 @@ class AppState extends ChangeNotifier {
     }
     final created = <TriggerOrderModel>[];
     submittingTriggers = true;
-    if (instrument.isOption) submittingOrder = true;
+    if (instrument.mode.tracksTriggerIntent) submittingOrder = true;
     notifyListeners();
     try {
       for (final draft in validDrafts) {
@@ -2859,8 +2863,8 @@ class AppState extends ChangeNotifier {
           throw StateError('登录状态已变化，已停止后续提交');
         }
         created.add(
-          instrument.isOption
-              ? await _placeOptionTrigger(id, instrument, draft, current)
+          instrument.mode.tracksTriggerIntent
+              ? await _placeTrackedTrigger(id, instrument, draft, current)
               : await api.placeTriggerOrder(
                   userId: id,
                   instrumentId: instrument.instrumentId,
@@ -2892,7 +2896,7 @@ class AppState extends ChangeNotifier {
       }
     } catch (error) {
       if (current()) {
-        if (instrument.isOption && tradingCommandPending) {
+        if (instrument.mode.tracksTriggerIntent && tradingCommandPending) {
           lastNotice = '已确认 ${created.length} 档；当前档结果待确认，其余未发送，请查询原请求';
         } else {
           lastError =
@@ -2903,7 +2907,7 @@ class AppState extends ChangeNotifier {
     } finally {
       if (current()) {
         submittingTriggers = false;
-        if (instrument.isOption) submittingOrder = false;
+        if (instrument.mode.tracksTriggerIntent) submittingOrder = false;
       }
     }
     notifyListeners();
@@ -2918,7 +2922,7 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  Future<TriggerOrderModel> _placeOptionTrigger(
+  Future<TriggerOrderModel> _placeTrackedTrigger(
     int id,
     Instrument instrument,
     TriggerOrderDraft draft,
@@ -3021,8 +3025,8 @@ class AppState extends ChangeNotifier {
     final id = userId;
     if (id == null) return;
     final product = mode;
-    if (product.isOption) {
-      await _cancelOptionTrigger(id, order);
+    if (product.tracksTriggerIntent) {
+      await _cancelTrackedTrigger(id, order);
       return;
     }
     final token = session?.accessToken;
@@ -3046,7 +3050,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _cancelOptionTrigger(int id, TriggerOrderModel order) async {
+  Future<void> _cancelTrackedTrigger(int id, TriggerOrderModel order) async {
     if (submittingOrder ||
         submittingTriggers ||
         tradingCommandPending ||
@@ -3054,11 +3058,12 @@ class AppState extends ChangeNotifier {
         order.instrumentId.isEmpty) {
       return;
     }
+    final product = mode;
     final epoch = _walletSessionVersion;
     bool current() => userId == id && epoch == _walletSessionVersion;
     final intent = PendingTradingOrder(
       userId: id,
-      product: ProductMode.option,
+      product: product,
       instrumentId: order.instrumentId,
       cancelTriggerOrderId: order.triggerOrderId,
     );
@@ -3075,7 +3080,7 @@ class AppState extends ChangeNotifier {
       final cancelled = await api.cancelTriggerOrder(
         id,
         order.triggerOrderId,
-        productLine: 'OPTION',
+        productLine: product.productLine,
       );
       if (cancelled.userId != id ||
           cancelled.triggerOrderId != order.triggerOrderId ||
@@ -3085,7 +3090,7 @@ class AppState extends ChangeNotifier {
       }
       if (!await _clearTriggerIntent(intent)) throw StateError('无法保存撤销确认结果');
       if (current()) {
-        if (mode.isOption) _upsertTriggerOrder(cancelled);
+        if (mode == product) _upsertTriggerOrder(cancelled);
         lastNotice = '条件单撤销已确认 #${order.triggerOrderId}';
         await refreshPrivateData();
       }

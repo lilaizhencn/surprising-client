@@ -1484,7 +1484,11 @@ class ApiClient {
       userId: userId,
       productLine: productLine,
     );
-    return atomic && productLine == 'OPTION'
+    return atomic &&
+            ProductMode.values.any(
+              (mode) =>
+                  mode.productLine == productLine && mode.tracksTriggerIntent,
+            )
         ? TriggerOrderBatchResult.fromAtomicOcoJson(json)
         : TriggerOrderBatchResult.fromJson(json);
   }

@@ -250,3 +250,19 @@ Web 同步保存 OPTION OCO 原身份并复用结果确认入口。TP/SL 票据�
 配套 gateway 提供 trading-trigger/submission 和 trading-trigger/cancellations/{triggerOrderId}，沿用既有回执投影与导出，无新 SQL。
 其他产品及批量条件单撤销仍需逐项验收。可选 test/option_single_trigger_fused_live_test.dart 需要 OPTION_SINGLE_LIVE_FIXTURE，
 仅用于隔离 OPTION FUSED 交接；主机 Flutter 验证不等同于原生 iOS/Android 安装。实测与清理见 docs/validation/option-single-trigger-20261020.json。
+
+
+### U 本位交割条件单与 OCO（2026-10-20）
+
+U 本位交割“高级委托 → 条件单”补齐 TP/SL 双腿 OCO，并与独立条件单、单笔撤销共用现有持久身份和 realtime 结果确认。
+双腿仅一次原子 POST；丢回包、重建或确认结果保存失败保留原请求，只 GET，不重发。已发送的双腿移出新草稿，
+方向、数量、ISOLATED/CROSS 与 LONG/SHORT/NET 必须匹配当前永久合约 ID 的仓位。支持实际资产精度和 MARK/LAST/INDEX。
+
+条件单需要未到期 TRADING，缺少到期元数据或进入 SETTLING/HALT/CLOSED 时禁止创建。
+SETTLING 中的直接减仓和原请求查询继续可用，不能用直接平仓的准入判断放行条件单。
+ApiClient 与界面沿用已有产品映射，尚未接入其他产品的持久条件单恢复；没有扩展永续功能。
+
+可选 test/linear_delivery_protection_fused_live_test.dart 使用 LINEAR_PROTECTION_LIVE_FIXTURE，
+配合后端 SIX_LINE_LIVE_DELIVERY_PROTECTION=true，在同一隔离 FUSED 仓位上验证交易中触发减仓和结算中最终直接平仓。
+主机 Flutter 的设置/会话适配器不代表原生 secure-storage 或真机安装验收。需配套既有 gateway 回执接口及 realtime 导出，
+无新 SQL；实测及清理见 docs/validation/linear-delivery-protection-20261020.json。

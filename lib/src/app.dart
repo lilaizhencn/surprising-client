@@ -5979,20 +5979,23 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
     final instrument = widget.state.selectedInstrument;
     setState(() => submitting = true);
     final submitted = oco
-        ? await widget.state.placeOptionOco(drafts)
+        ? await widget.state.placeOco(drafts)
         : await widget.state.placeTriggerOrders(drafts);
     if (mounted) {
       // A sent-but-unconfirmed tier belongs to the durable request, never to a
       // new draft submission. Unsent tiers remain available after confirmation.
       final pending = widget.state.pendingTradingCommand;
       final movedToRecovery =
-          !oco &&
+          pending != null &&
               pending != before &&
-              pending?.clientTriggerOrderId != null &&
-              pending?.userId == owner &&
-              pending?.instrumentId == instrument.instrumentId &&
+              pending.userId == owner &&
+              pending.instrumentId == instrument.instrumentId &&
               widget.state.userId == owner
-          ? 1
+          ? (pending.clientTriggerOrderId != null
+                ? 1
+                : oco && pending.ocoTakeProfitClientId != null
+                ? submittedIds.length
+                : 0)
           : 0;
       setState(() {
         levels.removeWhere(
@@ -6042,7 +6045,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 ),
             ],
           ),
-          if (widget.state.selectedInstrument.isOption) ...[
+          if (widget.state.selectedInstrument.mode.tracksTriggerIntent) ...[
             const SizedBox(height: 8),
             SmallDropdown(
               value: oco ? 'OCO' : 'SINGLE',
@@ -6108,9 +6111,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                       validCount != levels.length ||
                       submitting ||
                       widget.state.tradingCommandPending ||
-                      !widget.state.selectedInstrument.canPlaceOrder(
-                        reduceOnly: true,
-                      )
+                      !widget.state.selectedInstrument.canPlaceTrigger()
                   ? null
                   : submit,
               icon: Icon(

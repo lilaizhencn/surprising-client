@@ -15,6 +15,8 @@ enum ProductMode {
 
   bool get isSpot => this == ProductMode.spot;
   bool get tracksSingleOrderIntent => isSpot || isExpiring;
+  bool get tracksTriggerIntent =>
+      isOption || this == ProductMode.linearDelivery;
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>
@@ -496,6 +498,14 @@ class Instrument {
             expiryTime!.isAfter(DateTime.now().toUtc())
       : status == 'TRADING' ||
             (isDelivery && status == 'SETTLING' && reduceOnly);
+
+  /// Conditional protection cannot be introduced during settlement or after expiry.
+  bool canPlaceTrigger({DateTime? now}) =>
+      isDerivative &&
+      status == 'TRADING' &&
+      (!isExpiring ||
+          (expiryTime != null &&
+              expiryTime!.isAfter(now ?? DateTime.now().toUtc())));
 
   bool effectiveReduceOnly({
     required bool reduceOnly,

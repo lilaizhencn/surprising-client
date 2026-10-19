@@ -102,7 +102,7 @@ void main() {
         expect(stored['instrumentId'], '74');
         expect(state.tradingCommandPending, true);
       };
-      expect(await state.placeOptionOco(pair()), 2);
+      expect(await state.placeOco(pair()), 2);
       expect(api.posts, 1);
       expect(api.atomic, true);
       expect(api.product, 'OPTION');
@@ -128,9 +128,9 @@ void main() {
     () async {
       final settings = _Settings(), api = _Api()..lose = true;
       var state = _State(api, settings)..session = session;
-      expect(await state.placeOptionOco(pair()), 0);
+      expect(await state.placeOco(pair()), 0);
       final original = state.pendingTradingCommand!.ocoTakeProfitClientId;
-      expect(await state.placeOptionOco(pair()), 0);
+      expect(await state.placeOco(pair()), 0);
       state.dispose();
       state = _State(api, settings);
       addTearDown(state.dispose);
@@ -158,7 +158,7 @@ void main() {
       final api = _Api()..badReply = true;
       final state = _State(api, _Settings())..session = session;
       addTearDown(state.dispose);
-      await state.placeOptionOco(pair());
+      await state.placeOco(pair());
       api.badRead = true;
       await state.checkPendingTradingCommand();
       expect(state.tradingCommandPending, true);
@@ -171,7 +171,7 @@ void main() {
     final settings = _Settings()..fail = true;
     final state = _State(api, settings)..session = session;
     addTearDown(state.dispose);
-    await state.placeOptionOco(pair());
+    await state.placeOco(pair());
     expect(api.posts, 0);
     expect(state.lastError, contains('未发送'));
   });
@@ -186,7 +186,7 @@ void main() {
           _Settings(),
           instrument: contract(status: status),
         )..session = session;
-        await state.placeOptionOco(pair());
+        await state.placeOco(pair());
         expect(api.posts, 0);
         state.dispose();
       }
@@ -204,7 +204,7 @@ void main() {
           leg('STOP_LOSS', 200, side: 'BUY'),
         ],
       ]) {
-        await state.placeOptionOco(invalid);
+        await state.placeOco(invalid);
       }
       expect(api.posts, 0);
     },

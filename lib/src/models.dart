@@ -400,6 +400,12 @@ class Instrument {
     this.changeId,
     this.notionalMultiplierUnits,
     this.settleScaleUnits,
+    this.baseScaleUnits,
+    this.quoteScaleUnits,
+    this.minQuantitySteps,
+    this.maxQuantitySteps,
+    this.minNotionalUnits,
+    this.maxNotionalUnits,
   });
 
   final String instrumentId;
@@ -428,6 +434,12 @@ class Instrument {
   final int? changeId;
   final int? notionalMultiplierUnits;
   final int? settleScaleUnits;
+  final int? baseScaleUnits;
+  final int? quoteScaleUnits;
+  final int? minQuantitySteps;
+  final int? maxQuantitySteps;
+  final int? minNotionalUnits;
+  final int? maxNotionalUnits;
 
   factory Instrument.empty(ProductMode mode) {
     return Instrument(
@@ -479,9 +491,25 @@ class Instrument {
     return units / 100000000.0;
   }
 
-  double priceFromTicks(int ticks) => ticks * priceTickUnits / 100000000.0;
+  double priceFromTicks(int ticks) {
+    final scale = isSpot ? quoteScaleUnits : 100000000;
+    return scale == null || scale <= 0
+        ? double.nan
+        : ticks * priceTickUnits / scale;
+  }
 
   int ticksFromPrice(double price) {
+    if (isSpot) {
+      final ticks = decimalIncrement(
+        '$price',
+        priceTickUnits,
+        scaleUnits: quoteScaleUnits ?? 0,
+      );
+      if (ticks == null || ticks <= 0) {
+        throw const FormatException('价格精度未就绪或价格不符合步长');
+      }
+      return ticks;
+    }
     if (priceTickUnits <= 0) return price.round();
     return (price * 100000000.0 / priceTickUnits).round();
   }
@@ -506,8 +534,14 @@ class Instrument {
       baseAsset: asString(json['baseAsset'], fallback: 'BTC'),
       quoteAsset: asString(json['quoteAsset'], fallback: 'USDT'),
       settleAsset: asString(json['settleAsset'], fallback: 'USDT'),
-      priceTickUnits: asInt(json['priceTickUnits'], fallback: 10000000),
-      quantityStepUnits: asInt(json['quantityStepUnits'], fallback: 1),
+      priceTickUnits: asInt(
+        json['priceTickUnits'],
+        fallback: json['contractType'] == 'SPOT' ? 0 : 10000000,
+      ),
+      quantityStepUnits: asInt(
+        json['quantityStepUnits'],
+        fallback: json['contractType'] == 'SPOT' ? 0 : 1,
+      ),
       pricePrecision: asInt(json['pricePrecision'], fallback: 2),
       quantityPrecision: asInt(json['quantityPrecision'], fallback: 0),
       maxLeveragePpm: asInt(json['maxLeveragePpm'], fallback: 1000000),
@@ -522,6 +556,12 @@ class Instrument {
       changeId: asNullableInt(json['changeId']),
       notionalMultiplierUnits: asNullableInt(json['notionalMultiplierUnits']),
       settleScaleUnits: asNullableInt(json['settleScaleUnits']),
+      baseScaleUnits: asNullableInt(json['baseScaleUnits']),
+      quoteScaleUnits: asNullableInt(json['quoteScaleUnits']),
+      minQuantitySteps: asNullableInt(json['minQuantitySteps']),
+      maxQuantitySteps: asNullableInt(json['maxQuantitySteps']),
+      minNotionalUnits: asNullableInt(json['minNotionalUnits']),
+      maxNotionalUnits: asNullableInt(json['maxNotionalUnits']),
     );
   }
 }
@@ -1835,6 +1875,8 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'BTC-USDT-SPOT',
       instrumentType: 'SPOT',
+      baseScaleUnits: 100000000,
+      quoteScaleUnits: 100000000,
       contractType: 'SPOT',
       baseAsset: 'BTC',
       quoteAsset: 'USDT',
@@ -1849,6 +1891,8 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'ETH-USDT-SPOT',
       instrumentType: 'SPOT',
+      baseScaleUnits: 100000000,
+      quoteScaleUnits: 100000000,
       contractType: 'SPOT',
       baseAsset: 'ETH',
       quoteAsset: 'USDT',
@@ -1863,6 +1907,8 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'SOL-USDT-SPOT',
       instrumentType: 'SPOT',
+      baseScaleUnits: 100000000,
+      quoteScaleUnits: 100000000,
       contractType: 'SPOT',
       baseAsset: 'SOL',
       quoteAsset: 'USDT',
@@ -1986,18 +2032,26 @@ List<Map<String, dynamic>> mergeRecentTrades(
 }
 
 /// Convert a user decimal to integer increments without rounding an invalid tick.
-int? decimalIncrement(String text, int incrementUnits) {
+int? decimalIncrement(
+  String text,
+  int incrementUnits, {
+  int scaleUnits = 100000000,
+}) {
   if (incrementUnits <= 0 ||
-      !RegExp(r'^\d+(?:\.\d{1,8})?$').hasMatch(text.trim())) {
+      scaleUnits <= 0 ||
+      !RegExp(r'^10*$').hasMatch('$scaleUnits') ||
+      !RegExp(r'^(?:\d+(?:\.\d*)?|\.\d+)$').hasMatch(text.trim())) {
     return null;
   }
   final parts = text.trim().split('.');
-  final units =
-      BigInt.parse(parts.first) * BigInt.from(100000000) +
-      BigInt.parse(parts.length == 1 ? '0' : parts.last.padRight(8, '0'));
-  final step = BigInt.from(incrementUnits);
-  if (units % step != BigInt.zero) return null;
-  final value = units ~/ step;
+  final fraction = parts.length == 1 ? '' : parts.last;
+  final numerator =
+      BigInt.parse('${parts.first.isEmpty ? '0' : parts.first}$fraction') *
+      BigInt.from(scaleUnits);
+  final divisor =
+      BigInt.from(10).pow(fraction.length) * BigInt.from(incrementUnits);
+  if (numerator % divisor != BigInt.zero) return null;
+  final value = numerator ~/ divisor;
   if (value > BigInt.from(9223372036854775807)) return null;
   return value.toInt();
 }

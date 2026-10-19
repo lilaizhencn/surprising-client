@@ -21,6 +21,8 @@ Instrument instrument({String contract = 'LINEAR_PERPETUAL'}) =>
       'quantityStepUnits': 100000,
       'quantityPrecision': 3,
       'settleScaleUnits': 100000000,
+      'baseScaleUnits': 100000000,
+      'quoteScaleUnits': 100000000,
     });
 Map<String, dynamic> frame(
   String channel,

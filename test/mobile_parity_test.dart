@@ -29,6 +29,14 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final cursors = <String?>[];
       server.listen((request) async {
+        if (request.uri.path.endsWith('/asset-scales')) {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({'BTC': '100000000', 'USD': '1000000'}),
+          );
+          await request.response.close();
+          return;
+        }
         final cursor = request.uri.queryParameters['cursor'];
         cursors.add(cursor);
         request.response.headers.contentType = ContentType.json;
@@ -38,6 +46,8 @@ void main() {
               {
                 'instrumentId': cursor == null ? '1' : '2',
                 'symbol': 'BTC-USD',
+                'baseAsset': 'BTC',
+                'quoteAsset': 'USD',
                 'contractType': cursor == null
                     ? 'LINEAR_PERPETUAL'
                     : 'INVERSE_PERPETUAL',
@@ -63,6 +73,8 @@ void main() {
       );
       final catalog = await api.instruments();
       expect(catalog, hasLength(2));
+      expect(catalog.first.baseScaleUnits, 100000000);
+      expect(catalog.first.quoteScaleUnits, 1000000);
       expect(catalog.map((i) => i.mode), [
         ProductMode.linear,
         ProductMode.inverse,

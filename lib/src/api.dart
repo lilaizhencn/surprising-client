@@ -220,6 +220,43 @@ class ApiClient {
     return result.map((key, value) => MapEntry(key.toUpperCase(), '$value'));
   }
 
+  Future<({int takerFeeRatePpm, int marketMaxSlippagePpm})> spotOrderTerms(
+    int userId,
+    Instrument instrument,
+  ) async {
+    if (!instrument.isSpot || instrument.changeId == null) {
+      throw const FormatException('下单资料未就绪');
+    }
+    final results = await Future.wait([
+      get(
+        '/api/v1/gateway/trading-fees/effective',
+        userId: userId,
+        productLine: 'SPOT',
+        query: {'instrumentId': instrument.instrumentId, 'productLine': 'SPOT'},
+      ),
+      get(
+        '/api/v1/gateway/trading/price-protection',
+        userId: userId,
+        productLine: 'SPOT',
+      ),
+    ]);
+    final fee = int.tryParse('${results[0]['takerFeeRatePpm']}');
+    final slip = int.tryParse('${results[1]['marketMaxSlippagePpm']}');
+    if (results[0]['productLine'] != 'SPOT' ||
+        asString(results[0]['instrumentId']) != instrument.instrumentId ||
+        asInt(results[0]['userId']) != userId ||
+        asInt(results[0]['instrumentChangeId']) != instrument.changeId ||
+        results[1]['productLine'] != 'SPOT' ||
+        fee == null ||
+        fee.abs() > 1000000 ||
+        slip == null ||
+        slip < 0 ||
+        slip >= 1000000) {
+      throw const FormatException('下单资料不匹配，请刷新后重试');
+    }
+    return (takerFeeRatePpm: fee, marketMaxSlippagePpm: slip);
+  }
+
   Future<AccountRecordPage> accountRecords({
     required String category,
     required int userId,
@@ -680,6 +717,7 @@ class ApiClient {
       post('/api/v1/compliance/kyc/session/refresh', const {});
 
   Future<List<Instrument>> instruments() async {
+    final scales = await assetScales();
     final loaded = <String, Instrument>{};
     final cursors = <String>{};
     String? cursor;
@@ -693,7 +731,14 @@ class ApiClient {
         },
       );
       for (final row in asList(json['instruments'] ?? json['items'])) {
-        final instrument = Instrument.fromJson(asMap(row));
+        final raw = asMap(row);
+        final instrument = Instrument.fromJson({
+          ...raw,
+          'baseScaleUnits': scales[asString(raw['baseAsset']).toUpperCase()],
+          'quoteScaleUnits': scales[asString(raw['quoteAsset']).toUpperCase()],
+          'settleScaleUnits':
+              scales[asString(raw['settleAsset']).toUpperCase()],
+        });
         loaded['${instrument.mode.productLine}:${instrument.instrumentId.isEmpty ? instrument.symbol : instrument.instrumentId}'] =
             instrument;
       }

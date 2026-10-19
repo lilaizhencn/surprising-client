@@ -18,6 +18,7 @@ import 'kyc_application_page.dart';
 import 'kyc_documents_page.dart';
 import 'deposit_page.dart';
 import 'models.dart';
+import 'spot_order.dart';
 
 const _ink = Color(0xFFF2F0F3);
 const _muted = Color(0xFFC6CAD6);
@@ -1361,10 +1362,16 @@ class _TradePageState extends State<TradePage> {
     final latestPrice = state.latestPriceFor(instrument);
     if (state.orderBook.bids.isNotEmpty && !priceInitialized) {
       priceInitialized = true;
-      priceController.text = money(
-        instrument.priceFromTicks(state.orderBook.bids.first.priceTicks),
-        digits: instrument.pricePrecision,
-      );
+      priceController.text = instrument.isSpot
+          ? scaledAmount(
+              BigInt.from(state.orderBook.bids.first.priceTicks) *
+                  BigInt.from(instrument.priceTickUnits),
+              instrument.quoteScaleUnits,
+            )
+          : money(
+              instrument.priceFromTicks(state.orderBook.bids.first.priceTicks),
+              digits: instrument.pricePrecision,
+            );
     }
     return Column(
       children: [
@@ -1496,6 +1503,9 @@ class _TradePageState extends State<TradePage> {
                                 decimalIncrement(
                                       priceController.text,
                                       instrument.priceTickUnits,
+                                      scaleUnits: instrument.isSpot
+                                          ? instrument.quoteScaleUnits ?? 0
+                                          : 100000000,
                                     ) ==
                                     null) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -1510,10 +1520,13 @@ class _TradePageState extends State<TradePage> {
                                 timeInForce: timeInForce,
                                 price:
                                     double.tryParse(priceController.text) ?? 0,
+                                priceText: priceController.text,
                                 quantitySteps: instrument.isSpot
                                     ? decimalIncrement(
                                             quantityController.text,
                                             instrument.quantityStepUnits,
+                                            scaleUnits:
+                                                instrument.baseScaleUnits ?? 0,
                                           ) ??
                                           0
                                     : int.tryParse(quantityController.text) ??
@@ -5095,6 +5108,23 @@ class OrderTicket extends StatelessWidget {
     final hedgeMode = instrument.isDerivative && positionMode == 'HEDGE';
     void stepPrice(int direction) {
       if (orderType == 'MARKET') return;
+      if (instrument.isSpot) {
+        final scale = instrument.quoteScaleUnits;
+        if (scale == null || instrument.priceTickUnits <= 0) return;
+        final current =
+            decimalIncrement(
+              priceController.text,
+              instrument.priceTickUnits,
+              scaleUnits: scale,
+            ) ??
+            0;
+        priceController.text = scaledAmount(
+          BigInt.from(math.max(0, current + direction)) *
+              BigInt.from(instrument.priceTickUnits),
+          scale,
+        );
+        return;
+      }
       final current = double.tryParse(priceController.text) ?? 0;
       final tick = instrument.priceFromTicks(1).abs();
       final next = math.max(0.0, current + tick * direction);
@@ -5106,13 +5136,15 @@ class OrderTicket extends StatelessWidget {
           ? decimalIncrement(
                   quantityController.text,
                   instrument.quantityStepUnits,
+                  scaleUnits: instrument.baseScaleUnits ?? 0,
                 ) ??
                 0
           : int.tryParse(quantityController.text) ?? 0;
       final next = math.max(0, current + direction);
       quantityController.text = instrument.isSpot
-          ? (next * instrument.quantityStepUnits / 100000000).toStringAsFixed(
-              instrument.quantityPrecision,
+          ? scaledAmount(
+              BigInt.from(next) * BigInt.from(instrument.quantityStepUnits),
+              instrument.baseScaleUnits,
             )
           : next.toString();
     }
@@ -5217,10 +5249,18 @@ class OrderTicket extends StatelessWidget {
                       final book = AppScope.of(context).orderBook;
                       final levels = buy ? book.asks : book.bids;
                       if (levels.isEmpty) return;
-                      priceController.text = money(
-                        instrument.priceFromTicks(levels.first.priceTicks),
-                        digits: instrument.pricePrecision,
-                      );
+                      priceController.text = instrument.isSpot
+                          ? scaledAmount(
+                              BigInt.from(levels.first.priceTicks) *
+                                  BigInt.from(instrument.priceTickUnits),
+                              instrument.quoteScaleUnits,
+                            )
+                          : money(
+                              instrument.priceFromTicks(
+                                levels.first.priceTicks,
+                              ),
+                              digits: instrument.pricePrecision,
+                            );
                     },
                   ),
                 ],
@@ -5233,9 +5273,21 @@ class OrderTicket extends StatelessWidget {
               onMinus: () => stepQuantity(-1),
               onPlus: () => stepQuantity(1),
             ),
+            if (instrument.isSpot)
+              SpotOrderSizing(
+                instrument: instrument,
+                side: side,
+                orderType: orderType,
+                bboMode: bboEnabled && orderType == 'LIMIT'
+                    ? bboPriceMode
+                    : null,
+                price: priceController,
+                quantity: quantityController,
+                loggedIn: loggedIn,
+              ),
             const SizedBox(height: 6),
             Text(
-              '最小价格变动 ${instrument.priceFromTicks(1)} ${instrument.quoteAsset}',
+              '最小价格变动 ${instrument.isSpot ? scaledAmount(BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits) : instrument.priceFromTicks(1)} ${instrument.quoteAsset}',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 10,
@@ -5318,6 +5370,97 @@ class OrderTicket extends StatelessWidget {
       ),
     );
   }
+}
+
+class SpotOrderSizing extends StatelessWidget {
+  const SpotOrderSizing({
+    required this.instrument,
+    required this.side,
+    required this.orderType,
+    required this.bboMode,
+    required this.price,
+    required this.quantity,
+    required this.loggedIn,
+    super.key,
+  });
+  final Instrument instrument;
+  final String side, orderType;
+  final String? bboMode;
+  final TextEditingController price, quantity;
+  final bool loggedIn;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: price,
+    builder: (context, _) {
+      final state = AppScope.of(context);
+      final asset = side == 'BUY'
+          ? instrument.quoteAsset
+          : instrument.baseAsset;
+      final balance = state.balances
+          .where(
+            (row) =>
+                row.accountType == 'SPOT' &&
+                row.asset.toUpperCase() == asset.toUpperCase(),
+          )
+          .firstOrNull;
+      final terms = state.spotOrderTerms;
+      String? size(int percent) => spotOrderQuantity(
+        instrument: instrument,
+        balance: balance,
+        book: state.orderBook,
+        side: side,
+        orderType: orderType,
+        price: price.text,
+        bboMode: bboMode,
+        takerFeeRatePpm: terms?.takerFeeRatePpm,
+        marketMaxSlippagePpm: terms?.marketMaxSlippagePpm,
+        percentage: percent,
+      );
+      final ready = loggedIn && size(100) != null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 4),
+          Text(
+            '可用 ${scaledAmount(balance == null ? null : BigInt.from(balance.availableUnits), side == 'BUY' ? instrument.quoteScaleUnits : instrument.baseScaleUnits)} $asset',
+            style: const TextStyle(fontSize: 10),
+          ),
+          Row(
+            children: [
+              for (final percent in [25, 50, 75, 100])
+                Expanded(
+                  child: TextButton(
+                    key: ValueKey('spot-percent-$percent'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 32),
+                    ),
+                    onPressed: ready
+                        ? () {
+                            final value = size(percent);
+                            if (value != null) {
+                              quantity.text = value == '0' ? '' : value;
+                            }
+                          }
+                        : null,
+                    child: Text('$percent%'),
+                  ),
+                ),
+            ],
+          ),
+          if (loggedIn && !ready)
+            TextButton(
+              onPressed: () => unawaited(() async {
+                await state.refreshInstruments(silent: true);
+                await state.refreshSpotOrderTerms();
+              }()),
+              child: const Text('刷新下单资料'),
+            ),
+        ],
+      );
+    },
+  );
 }
 
 class AlgoOrderPanel extends StatefulWidget {
@@ -8737,15 +8880,21 @@ class BookLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price = money(
-      instrument.priceFromTicks(level.priceTicks),
-      digits: instrument.pricePrecision,
-    );
+    final price = instrument.isSpot
+        ? scaledAmount(
+            BigInt.from(level.priceTicks) *
+                BigInt.from(instrument.priceTickUnits),
+            instrument.quoteScaleUnits,
+          )
+        : money(
+            instrument.priceFromTicks(level.priceTicks),
+            digits: instrument.pricePrecision,
+          );
     final depth = maxQuantity <= 0
         ? 0.0
         : (level.quantitySteps / maxQuantity).clamp(0.0, 1.0);
     return InkWell(
-      onTap: () => onTap(price),
+      onTap: price == '--' ? null : () => onTap(price),
       child: SizedBox(
         height: 20,
         child: Stack(
@@ -8771,11 +8920,10 @@ class BookLine extends StatelessWidget {
                 ),
                 Text(
                   instrument.isSpot
-                      ? money(
-                          level.quantitySteps *
-                              instrument.quantityStepUnits /
-                              100000000,
-                          digits: instrument.quantityPrecision,
+                      ? scaledAmount(
+                          BigInt.from(level.quantitySteps) *
+                              BigInt.from(instrument.quantityStepUnits),
+                          instrument.baseScaleUnits,
                         )
                       : compactInt(level.quantitySteps),
                   style: TextStyle(
@@ -9219,12 +9367,17 @@ class WalletOrderRecordRow extends StatelessWidget {
 }
 
 String tradingQuantity(Instrument instrument, int steps) => instrument.isSpot
-    ? '${scaledAmount(BigInt.from(steps) * BigInt.from(instrument.quantityStepUnits), 100000000)} ${instrument.baseAsset}'
+    ? '${scaledAmount(BigInt.from(steps) * BigInt.from(instrument.quantityStepUnits), instrument.baseScaleUnits)} ${instrument.baseAsset}'
     : '$steps 张';
 
 String tradingAmount(Object? units, Instrument instrument, [String? asset]) {
   final amount = units == null ? null : BigInt.tryParse('$units');
-  final text = scaledAmount(amount, instrument.settleScaleUnits ?? 100000000);
+  final text = scaledAmount(
+    amount,
+    instrument.isSpot
+        ? instrument.quoteScaleUnits
+        : instrument.settleScaleUnits ?? 100000000,
+  );
   return text == '--'
       ? text
       : '$text ${asset == null || asset.isEmpty ? instrument.settleAsset : asset}';
@@ -9301,6 +9454,9 @@ class OrderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final average = double.tryParse(order.averagePriceTicks ?? '');
+    final priceScale = instrument.isSpot
+        ? instrument.quoteScaleUnits
+        : 100000000;
     final multiplier = instrument.notionalMultiplierUnits;
     final linear =
         instrument.mode == ProductMode.linear ||
@@ -9346,10 +9502,14 @@ class OrderRow extends StatelessWidget {
                       instrument.priceFromTicks(order.priceTicks),
                       digits: instrument.pricePrecision,
                     ),
-              '成交均价': average == null || !average.isFinite
+              '成交均价':
+                  average == null ||
+                      !average.isFinite ||
+                      priceScale == null ||
+                      priceScale <= 0
                   ? '--'
                   : money(
-                      average * instrument.priceTickUnits / 100000000,
+                      average * instrument.priceTickUnits / priceScale,
                       digits: instrument.pricePrecision,
                     ),
               '委托数量': tradingQuantity(instrument, order.quantitySteps),

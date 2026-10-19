@@ -266,6 +266,42 @@ class AppState extends ChangeNotifier {
   String? _depthRecoveryKey;
   late List<Candle> candles;
   List<ProductBalance> balances = const [];
+  ({int takerFeeRatePpm, int marketMaxSlippagePpm})? _spotOrderTerms;
+  String? _spotOrderTermsIdentity;
+  int _spotOrderTermsRequest = 0;
+  String get _currentSpotTermsIdentity =>
+      '$_walletSessionVersion:$userId:${mode.productLine}:${selectedInstrument.instrumentId}:${selectedInstrument.changeId}';
+  ({int takerFeeRatePpm, int marketMaxSlippagePpm})? get spotOrderTerms =>
+      mode.isSpot && _spotOrderTermsIdentity == _currentSpotTermsIdentity
+      ? _spotOrderTerms
+      : null;
+
+  Future<void> refreshSpotOrderTerms() async {
+    final request = ++_spotOrderTermsRequest;
+    final identity = _currentSpotTermsIdentity;
+    final id = userId;
+    _spotOrderTerms = null;
+    _spotOrderTermsIdentity = null;
+    if (offline ||
+        id == null ||
+        !mode.isSpot ||
+        selectedInstrument.instrumentId.isEmpty) {
+      return;
+    }
+    try {
+      final terms = await api.spotOrderTerms(id, selectedInstrument);
+      if (request == _spotOrderTermsRequest &&
+          identity == _currentSpotTermsIdentity) {
+        _spotOrderTerms = terms;
+        _spotOrderTermsIdentity = identity;
+      }
+    } catch (_) {
+      // Missing sizing metadata disables percentage controls; no default fees are invented.
+    } finally {
+      if (request == _spotOrderTermsRequest) notifyListeners();
+    }
+  }
+
   List<Position> positions = const [];
   List<OrderModel> openOrders = const [];
   String? openOrdersNextCursor;
@@ -1095,6 +1131,7 @@ class AppState extends ChangeNotifier {
     loadingPrivate = true;
     notifyListeners();
     final walletRefresh = refreshWallet();
+    final spotTermsRefresh = refreshSpotOrderTerms();
     try {
       final results = await Future.wait([
         selectedMode.isDerivative
@@ -1122,6 +1159,7 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       await walletRefresh;
+      await spotTermsRefresh;
       if (generation == _openOrdersRequestVersion) {
         loadingPrivate = false;
         notifyListeners();
@@ -1486,11 +1524,20 @@ class AppState extends ChangeNotifier {
     required bool postOnly,
     String? bboPriceMode,
     Instrument? targetInstrument,
+    String? priceText,
   }) async {
     if (submittingOrder || tradingCommandPending) return;
     lastError = null;
     lastNotice = null;
     final instrument = targetInstrument ?? selectedInstrument;
+    final exactSpotPrice =
+        instrument.isSpot && orderType != 'MARKET' && bboPriceMode == null
+        ? decimalIncrement(
+            priceText ?? '$price',
+            instrument.priceTickUnits,
+            scaleUnits: instrument.quoteScaleUnits ?? 0,
+          )
+        : null;
     try {
       validateOrderPolicy(orderType, timeInForce, postOnly, bboPriceMode);
     } on FormatException catch (error) {
@@ -1511,10 +1558,12 @@ class AppState extends ChangeNotifier {
             bboPriceMode == null &&
             (!price.isFinite ||
                 price <= 0 ||
-                decimalIncrement(
-                      price.toStringAsFixed(8),
-                      instrument.priceTickUnits,
-                    ) ==
+                (instrument.isSpot
+                        ? exactSpotPrice
+                        : decimalIncrement(
+                            price.toStringAsFixed(8),
+                            instrument.priceTickUnits,
+                          )) ==
                     null))) {
       lastError = '请输入有效的价格和数量';
       notifyListeners();
@@ -1544,6 +1593,8 @@ class AppState extends ChangeNotifier {
         timeInForce: timeInForce,
         priceTicks: orderType == 'MARKET' || bboPriceMode != null
             ? 0
+            : instrument.isSpot
+            ? exactSpotPrice!
             : instrument.ticksFromPrice(price),
         quantitySteps: quantitySteps,
         marginMode: instrument.isSpot ? 'CROSS' : marginMode,
@@ -3094,6 +3145,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_spotOrderTermsRequest;
     ++_walletSessionVersion;
     ++_walletVersion;
     ++_walletPricesVersion;

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,14 @@ Instrument spot({String status = 'TRADING'}) => Instrument.fromJson({
   'pricePrecision': 2,
   'quantityPrecision': 4,
   'status': status,
+  'baseScaleUnits': 100000000,
+  'quoteScaleUnits': 100000000,
+  'minQuantitySteps': 1,
+  'maxQuantitySteps': 10000000,
+  'minNotionalUnits': 1,
+  'maxNotionalUnits': '9223372036854775807',
+  'notionalMultiplierUnits': 100,
+  'changeId': 1,
 });
 const session = AuthSession(
   user: AuthUser(userId: 1, username: 'spot', email: '', status: 'ACTIVE'),
@@ -28,6 +37,197 @@ const session = AuthSession(
 );
 
 void main() {
+  testWidgets(
+    'spot book selection and order quantities use authoritative asset scales',
+    (tester) async {
+      final spec = Instrument.fromJson({
+        'symbol': 'BTC-USDT',
+        'contractType': 'SPOT',
+        'baseAsset': 'BTC',
+        'quoteAsset': 'USDT',
+        'baseScaleUnits': 1000000,
+        'quoteScaleUnits': '1000000000000000000',
+        'priceTickUnits': 1,
+        'quantityStepUnits': 10,
+        'pricePrecision': 2,
+      });
+      String? selected;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BookLine(
+              level: const OrderBookLevel(
+                priceTicks: 9007199254740993,
+                quantitySteps: 12,
+                orderCount: 1,
+              ),
+              maxQuantity: 12,
+              instrument: spec,
+              color: Colors.green,
+              onTap: (price) => selected = price,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('0.009007199254740993'), findsOneWidget);
+      expect(find.text('0.00012'), findsOneWidget);
+      await tester.tap(find.byType(BookLine));
+      expect(selected, '0.009007199254740993');
+      expect(tradingQuantity(spec, 12), '0.00012 BTC');
+      final orderSpec = Instrument.fromJson({
+        'symbol': 'BTC-USDT',
+        'contractType': 'SPOT',
+        'baseAsset': 'BTC',
+        'quoteAsset': 'USDT',
+        'settleAsset': 'USDT',
+        'baseScaleUnits': 1000000,
+        'quoteScaleUnits': 1000,
+        'priceTickUnits': 100,
+        'quantityStepUnits': 10,
+        'pricePrecision': 2,
+      });
+      expect(tradingAmount(1000, orderSpec), '1 USDT');
+      expect(tradingAmount(1000, Instrument.empty(ProductMode.spot)), '--');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OrderRow(
+              order: OrderModel.fromJson({
+                'orderId': 1,
+                'symbol': 'BTC-USDT',
+                'status': 'FILLED',
+                'priceTicks': 1000,
+                'quantitySteps': 12,
+                'executedQuantitySteps': 12,
+                'remainingQuantitySteps': 0,
+                'averagePriceTicks': '1000.5',
+              }),
+              instrument: orderSpec,
+              onCancel: null,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('100.05'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'spot manual prices reach the API as exact ticks without a double round trip',
+    () async {
+      final api = _SpotApi();
+      final state = _SpotState(api)..session = session;
+      addTearDown(state.dispose);
+      await state.placeOrder(
+        side: 'BUY',
+        orderType: 'LIMIT',
+        timeInForce: 'GTC',
+        price: 0.009007199254740993,
+        priceText: '0.009007199254740993',
+        quantitySteps: 2,
+        marginMode: 'CROSS',
+        positionSide: 'NET',
+        reduceOnly: false,
+        postOnly: false,
+        targetInstrument: Instrument.fromJson({
+          'symbol': 'BTC-USDT',
+          'contractType': 'SPOT',
+          'priceTickUnits': 1,
+          'quoteScaleUnits': '1000000000000000000',
+          'status': 'TRADING',
+        }),
+      );
+      expect(api.last?['ticks'], 9007199254740993);
+    },
+  );
+  test(
+    'late spot terms cannot cross user identity or notify a disposed state',
+    () async {
+      final api = _TermsApi();
+      final state =
+          AppState(
+              apiClient: api,
+              seedInstruments: [spot()],
+              config: const AppConfig(websocketUrl: ''),
+            )
+            ..mode = ProductMode.spot
+            ..session = session;
+      final request = state.refreshSpotOrderTerms();
+      state.session = const AuthSession(
+        user: AuthUser(
+          userId: 2,
+          username: 'other',
+          email: '',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'other',
+        refreshToken: 'other',
+      );
+      api.result.complete((takerFeeRatePpm: 1000, marketMaxSlippagePpm: 10000));
+      await request;
+      expect(state.spotOrderTerms, isNull);
+      state.dispose();
+      final lateApi = _TermsApi();
+      final disposed =
+          AppState(
+              apiClient: lateApi,
+              seedInstruments: [spot()],
+              config: const AppConfig(websocketUrl: ''),
+            )
+            ..mode = ProductMode.spot
+            ..session = session;
+      final late = disposed.refreshSpotOrderTerms();
+      disposed.dispose();
+      lateApi.result.complete((
+        takerFeeRatePpm: 1000,
+        marketMaxSlippagePpm: 10000,
+      ));
+      await late;
+    },
+  );
+  test(
+    'spot terms decoder rejects mismatched fee identity instead of guessing a fee',
+    () async {
+      var wrongProduct = false;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode(
+            request.uri.path.contains('trading-fees')
+                ? {
+                    'userId': 1,
+                    'productLine': wrongProduct ? 'LINEAR_PERPETUAL' : 'SPOT',
+                    'instrumentId': '1',
+                    'instrumentChangeId': 1,
+                    'takerFeeRatePpm': 1234,
+                  }
+                : {'productLine': 'SPOT', 'marketMaxSlippagePpm': 2345},
+          ),
+        );
+        await request.response.close();
+      });
+      final http = HttpOverrides.runWithHttpOverrides(
+        () => HttpClient(),
+        _RealHttp(),
+      );
+      addTearDown(() async {
+        http.close(force: true);
+        await server.close(force: true);
+      });
+      final api = ApiClient(
+        AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
+        httpClient: http,
+      );
+      expect(await api.spotOrderTerms(1, spot()), (
+        takerFeeRatePpm: 1234,
+        marketMaxSlippagePpm: 2345,
+      ));
+      wrongProduct = true;
+      await expectLater(api.spotOrderTerms(1, spot()), throwsFormatException);
+    },
+  );
   test(
     'spot BBO payload keeps product identity and decodes terminal order receipts',
     () async {
@@ -222,6 +422,22 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('bbo-price-mode')), findsOneWidget);
         expect(find.text('对手价 1'), findsOneWidget);
+        final percentage = find.byKey(const ValueKey('spot-percent-100'));
+        await tester.ensureVisible(percentage);
+        state.termsReady = false;
+        state.notifyListeners();
+        await tester.pump();
+        expect(tester.widget<TextButton>(percentage).onPressed, isNull);
+        expect(find.text('刷新下单资料'), findsOneWidget);
+        state.termsReady = true;
+        state.notifyListeners();
+        await tester.pump();
+        await tester.tap(percentage);
+        await tester.pumpAndSettle();
+        final sizedTicket = tester.widget<OrderTicket>(
+          find.byType(OrderTicket),
+        );
+        expect(sizedTicket.quantityController.text, '0.0098');
         expect(tester.takeException(), isNull);
         final orderType = find.byWidgetPredicate(
           (w) => w is SmallDropdown && w.value == 'LIMIT',
@@ -254,7 +470,18 @@ void main() {
 
 class _RealHttp extends HttpOverrides {}
 
+class _TermsApi extends ApiClient {
+  _TermsApi() : super(const AppConfig());
+  final result = Completer<({int takerFeeRatePpm, int marketMaxSlippagePpm})>();
+  @override
+  Future<({int takerFeeRatePpm, int marketMaxSlippagePpm})> spotOrderTerms(
+    int userId,
+    Instrument instrument,
+  ) => result.future;
+}
+
 class _SpotState extends AppState {
+  bool termsReady = true;
   _SpotState(ApiClient api, {ClientSettingsStore? settings})
     : super(
         apiClient: api,
@@ -263,7 +490,41 @@ class _SpotState extends AppState {
         config: const AppConfig(websocketUrl: ''),
       ) {
     mode = ProductMode.spot;
+    balances = const [
+      ProductBalance(
+        accountType: 'SPOT',
+        asset: 'USDT',
+        availableUnits: 100000000,
+        lockedUnits: 0,
+        equityUnits: 100000000,
+      ),
+    ];
+    orderBook = OrderBook(
+      symbol: 'BTC-USDT',
+      sequence: 1,
+      bids: [10000, 9900, 9800, 9700, 9600]
+          .map(
+            (p) => OrderBookLevel(
+              priceTicks: p,
+              quantitySteps: 100,
+              orderCount: 1,
+            ),
+          )
+          .toList(),
+      asks: [10100, 10200, 10300, 10400, 10500]
+          .map(
+            (p) => OrderBookLevel(
+              priceTicks: p,
+              quantitySteps: 100,
+              orderCount: 1,
+            ),
+          )
+          .toList(),
+    );
   }
+  @override
+  ({int takerFeeRatePpm, int marketMaxSlippagePpm})? get spotOrderTerms =>
+      termsReady ? (takerFeeRatePpm: 1000, marketMaxSlippagePpm: 10000) : null;
   @override
   Future<void> refreshPrivateData() async {}
 }

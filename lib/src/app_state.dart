@@ -428,16 +428,9 @@ class AppState extends ChangeNotifier {
       }
       if (!current() || pendingTradingCommand != pending) return;
       if (confirmed != null) {
-        if (pending.clientTriggerOrderId != null ||
-            pending.cancelTriggerOrderId != null ||
-            pending.ocoTakeProfitClientId != null) {
-          if (!await _clearTriggerIntent(pending)) {
-            if (current()) lastError = '无法保存条件单确认结果，请再次查询原请求';
-            return;
-          }
-        } else {
-          _pendingTradingOrders.remove(pending.userId);
-          await _writeSettings();
+        if (!await _clearTradingIntent(pending)) {
+          if (current()) lastError = '无法保存委托确认结果，请再次查询原请求';
+          return;
         }
         if (!current()) return;
         if (confirmed) {
@@ -965,12 +958,21 @@ class AppState extends ChangeNotifier {
     unawaited(_writeSettings());
   }
 
-  Future<bool> _writeSettings() async {
+  Future<bool> _writeSettings({
+    PendingTradingOrder? completedTradingIntent,
+  }) async {
     final previous = _settingsWriteTail;
     final completed = Completer<void>();
     _settingsWriteTail = completed.future;
     await previous;
     try {
+      if (completedTradingIntent != null &&
+          !identical(
+            _pendingTradingOrders[completedTradingIntent.userId],
+            completedTradingIntent,
+          )) {
+        return false;
+      }
       final values = <String, String>{
         'theme': clientTheme.code,
         'language': language.code,
@@ -988,6 +990,7 @@ class AppState extends ChangeNotifier {
       }
       values['pendingTradingOrders'] = jsonEncode(
         _pendingTradingOrders.values
+            .where((pending) => !identical(pending, completedTradingIntent))
             .map(
               (pending) => {
                 'userId': pending.userId,
@@ -1010,6 +1013,17 @@ class AppState extends ChangeNotifier {
       if (withdrawalOutcomeLocked) values['withdrawalLocked'] = 'true';
       if (withdrawalOutcomeUnknown) values['withdrawalUnknown'] = 'true';
       await settingsStore.write(values);
+      // Keep the original request locked until durable removal succeeds, before
+      // allowing the next queued settings save to observe the confirmed state.
+      if (completedTradingIntent != null) {
+        if (!identical(
+          _pendingTradingOrders[completedTradingIntent.userId],
+          completedTradingIntent,
+        )) {
+          return false;
+        }
+        _pendingTradingOrders.remove(completedTradingIntent.userId);
+      }
       return true;
     } catch (_) {
       return false;
@@ -2085,9 +2099,9 @@ class AppState extends ChangeNotifier {
         throw const FormatException('委托响应不完整，请查询原委托结果');
       }
       outcomeConfirmed = true;
-      if (intent != null) {
-        _pendingTradingOrders.remove(id);
-        await _writeSettings();
+      if (intent != null && !await _clearTradingIntent(intent)) {
+        if (current()) lastError = '无法保存委托确认结果，请查询原委托结果';
+        return;
       }
       if (!current()) return;
       if (order.status == 'REJECTED') {
@@ -2118,9 +2132,11 @@ class AppState extends ChangeNotifier {
           !isDefinitiveOrderRejection(error)) {
         if (current()) lastNotice = '委托结果待确认，请勿重复提交';
       } else {
-        if (pendingIntent != null) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
+        if (pendingIntent != null &&
+            identical(_pendingTradingOrders[id], pendingIntent) &&
+            !await _clearTradingIntent(pendingIntent)) {
+          if (current()) lastError = '无法保存委托确认结果，请查询原委托结果';
+          return;
         }
         if (current()) lastError = '下单失败：${clientErrorMessage(error)}';
       }
@@ -2330,8 +2346,9 @@ class AppState extends ChangeNotifier {
       }
       if (!owns()) return;
       final plan = pending.cancelPlan!;
-      _pendingTradingOrders.remove(pending.userId);
-      await _writeSettings();
+      if (!await _clearTradingIntent(pending)) {
+        throw const FormatException('无法保存批量撤单确认结果，请确认后继续');
+      }
       if (!current()) return;
       lastCancellationResult = CancellationSummary(
         pending.userId,
@@ -2427,9 +2444,9 @@ class AppState extends ChangeNotifier {
         throw const FormatException('改单响应不完整，请查询原改单结果');
       }
       confirmed = true;
-      if (_pendingTradingOrders[id] == intent) {
-        _pendingTradingOrders.remove(id);
-        await _writeSettings();
+      if (!await _clearTradingIntent(intent)) {
+        if (current()) lastError = '无法保存改单确认结果，请查询原改单结果';
+        return;
       }
       if (!current()) return;
       if (mode == ProductMode.spot && selectedSymbol == instrument.symbol) {
@@ -2460,9 +2477,10 @@ class AppState extends ChangeNotifier {
       if (issued && !confirmed && !isDefinitiveOrderRejection(error)) {
         if (current()) lastNotice = '改单结果待确认，请勿重复提交';
       } else {
-        if (_pendingTradingOrders[id] == intent) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
+        if (identical(_pendingTradingOrders[id], intent) &&
+            !await _clearTradingIntent(intent)) {
+          if (current()) lastError = '无法保存改单确认结果，请查询原改单结果';
+          return;
         }
         if (current()) lastError = '改单失败：${clientErrorMessage(error)}';
       }
@@ -2530,9 +2548,9 @@ class AppState extends ChangeNotifier {
         throw const FormatException('撤单响应不完整，请查询原撤单结果');
       }
       confirmed = true;
-      if (intent != null && _pendingTradingOrders[id] == intent) {
-        _pendingTradingOrders.remove(id);
-        await _writeSettings();
+      if (intent != null && !await _clearTradingIntent(intent)) {
+        if (current()) lastError = '无法保存撤单确认结果，请查询原撤单结果';
+        return;
       }
       if (!current()) return;
       if (mode == product && selectedSymbol == order.symbol) {
@@ -2558,9 +2576,11 @@ class AppState extends ChangeNotifier {
           !isDefinitiveOrderRejection(error)) {
         if (current()) lastNotice = '撤单结果待确认，请勿重复提交';
       } else {
-        if (intent != null && _pendingTradingOrders[id] == intent) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
+        if (intent != null &&
+            identical(_pendingTradingOrders[id], intent) &&
+            !await _clearTradingIntent(intent)) {
+          if (current()) lastError = '无法保存撤单确认结果，请查询原撤单结果';
+          return;
         }
         if (current()) lastError = '撤单失败：${clientErrorMessage(error)}';
       }
@@ -2771,7 +2791,7 @@ class AppState extends ChangeNotifier {
           throw const FormatException('OCO 响应身份不匹配');
         }
       }
-      if (!await _clearTriggerIntent(intent)) throw StateError('无法保存 OCO 确认结果');
+      if (!await _clearTradingIntent(intent)) throw StateError('无法保存 OCO 确认结果');
       if (!current()) return 2;
       if (mode == instrument.mode && selectedSymbol == instrument.symbol) {
         for (final item in result.results) {
@@ -2789,7 +2809,7 @@ class AppState extends ChangeNotifier {
         }
         if (current()) lastError = 'OCO 未发送：${clientErrorMessage(error)}';
       } else if (isDefinitiveOrderRejection(error)) {
-        await _clearTriggerIntent(intent);
+        await _clearTradingIntent(intent);
         if (current()) lastError = 'OCO 未接受：${clientErrorMessage(error)}';
       } else if (current()) {
         lastNotice = 'OCO 结果待确认，请查询原请求，勿重复提交';
@@ -2914,13 +2934,8 @@ class AppState extends ChangeNotifier {
     return created.length;
   }
 
-  Future<bool> _clearTriggerIntent(PendingTradingOrder intent) async {
-    if (!identical(_pendingTradingOrders[intent.userId], intent)) return false;
-    _pendingTradingOrders.remove(intent.userId);
-    if (await _writeSettings()) return true;
-    _pendingTradingOrders.putIfAbsent(intent.userId, () => intent);
-    return false;
-  }
+  Future<bool> _clearTradingIntent(PendingTradingOrder intent) =>
+      _writeSettings(completedTradingIntent: intent);
 
   Future<TriggerOrderModel> _placeTrackedTrigger(
     int id,
@@ -2979,7 +2994,7 @@ class AppState extends ChangeNotifier {
           ].contains(order.status)) {
         throw const FormatException('条件单响应身份或状态不匹配');
       }
-      if (!await _clearTriggerIntent(intent)) throw StateError('无法保存条件单确认结果');
+      if (!await _clearTradingIntent(intent)) throw StateError('无法保存条件单确认结果');
       return order;
     } catch (error) {
       if (!issued) {
@@ -2988,7 +3003,7 @@ class AppState extends ChangeNotifier {
           await _writeSettings();
         }
       } else if (isDefinitiveOrderRejection(error)) {
-        await _clearTriggerIntent(intent);
+        await _clearTradingIntent(intent);
       }
       rethrow;
     }
@@ -3088,7 +3103,7 @@ class AppState extends ChangeNotifier {
           cancelled.status != 'CANCELED') {
         throw const FormatException('条件单撤销响应不匹配');
       }
-      if (!await _clearTriggerIntent(intent)) throw StateError('无法保存撤销确认结果');
+      if (!await _clearTradingIntent(intent)) throw StateError('无法保存撤销确认结果');
       if (current()) {
         if (mode == product) _upsertTriggerOrder(cancelled);
         lastNotice = '条件单撤销已确认 #${order.triggerOrderId}';
@@ -3101,7 +3116,7 @@ class AppState extends ChangeNotifier {
           await _writeSettings();
         }
       } else if (isDefinitiveOrderRejection(error)) {
-        await _clearTriggerIntent(intent);
+        await _clearTradingIntent(intent);
       }
       if (current()) {
         if (tradingCommandPending) {

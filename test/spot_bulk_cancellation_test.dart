@@ -55,6 +55,36 @@ OrderBatchResult _result(List<int> ids, {int failed = 0}) =>
     OrderBatchResult.fromJson(asMap(_receipt(ids, failed: failed)['result']));
 void main() {
   test(
+    'a completed cancellation plan stays locked until its removal is persisted',
+    () async {
+      final settings = _Settings()..failRemoval = true;
+      final api = _Api()..targets = [_ids.first];
+      final state = _State(api, settings: settings)..session = _session;
+      await state.cancelOpenSpotOrders(onlyCurrentPair: false);
+      expect(api.posts, hasLength(1));
+      expect(state.pendingTradingCommand?.cancelPlan?.index, 1);
+      expect(state.lastCancellationResult, isNull);
+      await state.checkPendingTradingCommand();
+      expect(state.tradingCommandPending, isTrue);
+      expect(api.posts, hasLength(1));
+      state.dispose();
+
+      settings.failRemoval = false;
+      final restored = _State(api, settings: settings);
+      addTearDown(restored.dispose);
+      await restored.bootstrap();
+      restored.session = _session;
+      expect(restored.tradingCommandPending, isTrue);
+      await restored.checkPendingTradingCommand();
+      expect(restored.tradingCommandPending, isFalse);
+      expect(restored.lastCancellationResult?.completed, 1);
+      expect(api.posts, hasLength(1));
+      expect(api.queries, 0);
+      expect(jsonDecode(settings.values['pendingTradingOrders']!), isEmpty);
+    },
+  );
+
+  test(
     'direct batch API generates or preserves the mandatory batch key',
     () async {
       final api = _PayloadApi();
@@ -470,11 +500,16 @@ class _State extends AppState {
 class _Settings implements ClientSettingsStore {
   Map<String, String> values = {};
   int writes = 0, failAt = -1;
+  bool failRemoval = false;
   @override
   Future<Map<String, String>> read() async => {...values};
   @override
   Future<void> write(Map<String, String> values) async {
     if (++writes == failAt) throw const FileSystemException('full');
+    if (failRemoval &&
+        asList(jsonDecode(values['pendingTradingOrders']!)).isEmpty) {
+      throw const FileSystemException('cannot remove confirmed plan');
+    }
     this.values = {...values};
   }
 }

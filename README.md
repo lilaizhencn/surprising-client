@@ -283,3 +283,10 @@ DELIVERY_PROTECTION_PRODUCT=INVERSE_DELIVERY（或 LINEAR_DELIVERY），一次�
 币本位行情由 realtime 修正面值换算与 SETTLING/CLOSED 成交接收；重启后的当前大周期由已关闭分钟聚合恢复。
 旧分钟投影需受控重建；本轮只处理隔离 QA 数据，无线上数据操作。只读实栈 test/inverse_delivery_market_live_test.dart 使用 INVERSE_MARKET_LIVE_ROOT，
 核对三笔原始成交、BTC 基础币量、报价币成交额及 Core 暂停时的 1m/4h 查询。
+
+
+### 现货委托确认资料保存失败（2026-10-20）
+
+`AppState._writeSettings` 沿用现有串行设置写入，将已确认的原请求排除出本次持久记录，写入成功后才解除内存锁定。下单、撤单、改单、原结果查询与已完成的批量撤单统一遵循此顺序；成功或明确拒绝后若保存失败，保留原身份并提示查询，不再 POST。保存期间的主题写入不会重新写回已清除的请求；其他用户的记录保留。已完成批量计划在重建后只完成资料清除，不重复撤销任何一批。
+
+本轮只调试现货恢复与交互，共享设置路径另由全量 Flutter 测试覆盖。320px 深浅主题通过实际滚动和点击验证，离屏点击会使测试失败。未启动后端、wallet 或原生设备，未重新进行 FUSED 成交/资金守恒验收；此前实栈记录不能替代本轮新增边界。命令、复现和清理见 [验证记录](docs/validation/spot-confirmation-storage-20261020.json)。

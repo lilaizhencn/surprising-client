@@ -74,6 +74,114 @@ AmendOrderResult amendmentResult() => AmendOrderResult(
 );
 
 void main() {
+  for (final action in ['place', 'cancel', 'amend']) {
+    for (final rejected in [false, true]) {
+      test(
+        '$action keeps its original intent when confirmation storage fails ($rejected)',
+        () async {
+          final settings = _MemorySettings();
+          final api = _SpotApi();
+          final state = _SpotState(api, settings: settings)..session = session;
+          void failConfirmation() => settings.failWrites = true;
+          api.beforePlace = failConfirmation;
+          api.beforeCancel = failConfirmation;
+          api.beforeAmend = failConfirmation;
+          if (rejected) {
+            final refusal = ApiException(400, 'invalid request');
+            api.failure = refusal;
+            api.cancelFailure = refusal;
+            api.amendFailure = refusal;
+          } else {
+            api.response = Completer<OrderModel>()..complete(cancelTarget());
+            api.cancelResponse = Completer<OrderModel>()
+              ..complete(cancelTarget(status: 'CANCELED'));
+            api.amendResponse = Completer<AmendOrderResult>()
+              ..complete(amendmentResult());
+          }
+          Future<void> send(AppState app) => switch (action) {
+            'place' => submitSpot(app),
+            'cancel' => app.cancelOrder(cancelTarget()),
+            _ => amendSpot(app),
+          };
+          int posts() => api.calls + api.cancellations + api.amendments;
+          await send(state);
+          final original = state.pendingTradingCommand;
+          expect(original, isNotNull);
+          expect(
+            asList(jsonDecode(settings.values['pendingTradingOrders']!)),
+            hasLength(1),
+          );
+          expect(state.lastError, contains('无法保存'));
+          await send(state);
+          expect(posts(), 1);
+
+          api.terminal = true;
+          api.submissionCode = rejected ? 'ORDER_NOT_FOUND' : 'NONE';
+          await state.checkPendingTradingCommand();
+          expect(state.pendingTradingCommand, same(original));
+          expect(state.lastError, contains('无法保存'));
+          state.dispose();
+
+          settings.failWrites = false;
+          final restored = _SpotState(api, settings: settings);
+          addTearDown(restored.dispose);
+          await restored.bootstrap();
+          restored.session = session;
+          expect(restored.tradingCommandPending, isTrue);
+          await restored.checkPendingTradingCommand();
+          expect(restored.tradingCommandPending, isFalse);
+          expect(jsonDecode(settings.values['pendingTradingOrders']!), isEmpty);
+          expect(posts(), 1);
+          expect(
+            api.submissionQueries + api.cancelQueries + api.amendQueries,
+            2,
+          );
+          if (rejected) {
+            expect(restored.lastError, isNotNull);
+          } else {
+            expect(restored.lastNotice, contains('已确认'));
+          }
+        },
+      );
+    }
+  }
+
+  test(
+    'spot confirmation remains locked during storage and queued theme saves cannot resurrect it',
+    () async {
+      final settings = _MemorySettings();
+      final api = _SpotApi()..failure = const SocketException('lost response');
+      final state = _SpotState(api, settings: settings)..session = session;
+      addTearDown(state.dispose);
+      await submitSpot(state);
+      final original = state.pendingTradingCommand;
+      settings.confirmationWrite = Completer<void>();
+      addTearDown(() {
+        if (!settings.confirmationWrite!.isCompleted) {
+          settings.confirmationWrite!.complete();
+        }
+      });
+      api.terminal = true;
+      final checking = state.checkPendingTradingCommand();
+      for (var i = 0; !settings.confirmationStarted && i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(settings.confirmationStarted, isTrue);
+      expect(state.pendingTradingCommand, same(original));
+      state.selectTheme(ClientTheme.light);
+      await submitSpot(state);
+      expect(api.calls, 1);
+      settings.confirmationWrite!.complete();
+      await checking;
+      for (var i = 0; settings.values['theme'] != 'light' && i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(settings.values['theme'], 'light');
+      expect(state.tradingCommandPending, isFalse);
+      expect(jsonDecode(settings.values['pendingTradingOrders']!), isEmpty);
+    },
+  );
+
   test(
     'amendment success cannot be inferred when the original order is still open',
     () async {
@@ -389,6 +497,7 @@ void main() {
           matching: find.text('查询改单结果'),
         );
         await tester.ensureVisible(check);
+        await tester.pumpAndSettle();
         await tester.tap(check);
         await tester.pumpAndSettle();
         expect(state.tradingCommandPending, isTrue);
@@ -469,12 +578,20 @@ void main() {
     testWidgets(
       'spot cancellation stays locked until confirmed on a 320px ${brightness.name} screen',
       (tester) async {
+        final previousHitTestPolicy =
+            WidgetController.hitTestWarningShouldBeFatal;
+        WidgetController.hitTestWarningShouldBeFatal = true;
+        addTearDown(
+          () => WidgetController.hitTestWarningShouldBeFatal =
+              previousHitTestPolicy,
+        );
         tester.view.physicalSize = const Size(320, 740);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = _SpotApi();
-        final state = _SpotState(api)..session = session;
+        final settings = _MemorySettings();
+        final state = _SpotState(api, settings: settings)..session = session;
         state.openOrders = [cancelTarget()];
         addTearDown(state.dispose);
         await tester.pumpWidget(
@@ -502,15 +619,40 @@ void main() {
           of: find.byType(PrivateTradingPanel),
           matching: find.text('查询撤单结果'),
         );
-        await tester.ensureVisible(check);
-        await tester.tap(check);
-        await tester.pumpAndSettle();
+        Future<void> queryOriginal() async {
+          final scroll = find
+              .ancestor(
+                of: find.byType(PrivateTradingPanel),
+                matching: find.byType(Scrollable),
+              )
+              .last;
+          for (
+            var i = 0;
+            check.hitTestable().evaluate().isEmpty && i < 8;
+            i++
+          ) {
+            final y = tester.getCenter(check).dy;
+            await tester.drag(scroll, Offset(0, y < 80 ? 160 : -160));
+            await tester.pumpAndSettle();
+          }
+          expect(check.hitTestable(), findsOneWidget);
+          await tester.tap(check);
+          await tester.pumpAndSettle();
+        }
+
+        await queryOriginal();
         expect(state.tradingCommandPending, isTrue);
         api.terminal = true;
-        await tester.tap(check);
-        await tester.pumpAndSettle();
+        settings.failWrites = true;
+        await queryOriginal();
+        expect(state.tradingCommandPending, isTrue);
+        expect(state.lastError, contains('无法保存'));
+        expect(find.widgetWithText(TextButton, '撤单'), findsNothing);
+        settings.failWrites = false;
+        await queryOriginal();
         expect(state.tradingCommandPending, isFalse);
         expect(api.cancellations, 1);
+        expect(api.cancelQueries, 3);
         expect(tester.takeException(), isNull);
       },
     );
@@ -1674,12 +1816,19 @@ class _SpotApi extends ApiClient {
 
 class _MemorySettings implements ClientSettingsStore {
   bool failWrites = false;
+  bool confirmationStarted = false;
+  Completer<void>? confirmationWrite;
   Map<String, String> values = {};
   @override
   Future<Map<String, String>> read() async => {...values};
   @override
   Future<void> write(Map<String, String> values) async {
     if (failWrites) throw const FileSystemException('storage unavailable');
+    if (confirmationWrite != null &&
+        asList(jsonDecode(values['pendingTradingOrders']!)).isEmpty) {
+      confirmationStarted = true;
+      await confirmationWrite!.future;
+    }
     this.values = {...values};
   }
 }

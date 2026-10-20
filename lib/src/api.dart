@@ -6,6 +6,9 @@ import 'dart:typed_data';
 import 'models.dart';
 import 'option_market.dart';
 import 'account_records.dart';
+import 'c2c_models.dart';
+
+part 'c2c_api.dart';
 
 class ApiClient {
   ApiClient(this.config, {HttpClient? httpClient})
@@ -2384,6 +2387,97 @@ class RealtimeClient {
   bool _authenticated = false;
   bool _authenticationRequested = false;
   int? _expectedUserId;
+  final _c2cEvents = StreamController<Map<String, dynamic>>.broadcast(
+    sync: true,
+  );
+  int? _c2cOwner;
+  String? _c2cConversation;
+  String _c2cAfter = '0', _c2cAfterEvent = '0';
+  bool _c2cInstalled = false;
+  String? _c2cInstalledConversation;
+
+  /// Chat is another subscription on this socket, scoped to the trading user.
+  Stream<Map<String, dynamic>> c2cEvents(int owner) => _c2cEvents.stream.where(
+    (_) => _authenticated && _expectedUserId == owner && _c2cOwner == owner,
+  );
+
+  void watchC2c({
+    required int owner,
+    String? conversationId,
+    String after = '0',
+    String afterEvent = '0',
+  }) {
+    if (owner <= 0 || (_expectedUserId != null && owner != _expectedUserId)) {
+      throw StateError('聊天账户与当前交易登录不匹配');
+    }
+    if (conversationId != null &&
+        !RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        ).hasMatch(conversationId)) {
+      throw const FormatException('聊天会话标识无效');
+    }
+    for (final cursor in [after, afterEvent]) {
+      if (!RegExp(r'^(0|[1-9][0-9]{0,18})$').hasMatch(cursor) ||
+          BigInt.parse(cursor) > BigInt.parse('9223372036854775807')) {
+        throw const FormatException('聊天游标无效');
+      }
+    }
+    final canonicalConversation = conversationId?.toLowerCase();
+    final same =
+        _c2cOwner == owner && _c2cConversation == canonicalConversation;
+    _c2cOwner = owner;
+    _c2cConversation = canonicalConversation;
+    if (!same || BigInt.parse(after) > BigInt.parse(_c2cAfter)) {
+      _c2cAfter = after;
+    }
+    if (!same || BigInt.parse(afterEvent) > BigInt.parse(_c2cAfterEvent)) {
+      _c2cAfterEvent = afterEvent;
+    }
+    _reconcileC2c();
+  }
+
+  void stopC2c(int owner) {
+    if (_c2cOwner != owner) return;
+    if (_c2cInstalled && _authenticated && _expectedUserId == owner) {
+      _socket?.add(jsonEncode({'op': 'c2c.stop'}));
+    }
+    _c2cOwner = null;
+    _c2cConversation = null;
+    _c2cAfter = _c2cAfterEvent = '0';
+    _c2cInstalled = false;
+    _c2cInstalledConversation = null;
+  }
+
+  void _reconcileC2c() {
+    final socket = _socket;
+    if (socket == null ||
+        socket.readyState != WebSocket.open ||
+        !_authenticated ||
+        _c2cOwner != _expectedUserId ||
+        _c2cOwner == null) {
+      return;
+    }
+    if (!_c2cInstalled) {
+      socket.add(jsonEncode({'op': 'c2c.inbox'}));
+      _c2cInstalled = true;
+    }
+    if (_c2cInstalledConversation == _c2cConversation) return;
+    if (_c2cInstalledConversation != null) {
+      socket.add(jsonEncode({'op': 'c2c.unwatch'}));
+    }
+    if (_c2cConversation != null) {
+      socket.add(
+        jsonEncode({
+          'op': 'c2c.watch',
+          'conversationId': _c2cConversation,
+          'after': _c2cAfter,
+          'afterEvent': _c2cAfterEvent,
+        }),
+      );
+    }
+    _c2cInstalledConversation = _c2cConversation;
+  }
+
   static const _privateChannels = {
     'accountState',
     'orders',
@@ -2456,6 +2550,11 @@ class RealtimeClient {
     void Function()? onDone,
   }) async {
     final generation = ++_connectionGeneration;
+    if (_c2cOwner != userId) {
+      _c2cOwner = null;
+      _c2cConversation = null;
+      _c2cAfter = _c2cAfterEvent = '0';
+    }
     await _closeCurrent();
     if (generation != _connectionGeneration) return;
     _closing = false;
@@ -2508,8 +2607,27 @@ class RealtimeClient {
                   asInt(decoded['userId']) == _expectedUserId)) {
             _authenticated = true;
             _reconcileSubscriptions();
+            _reconcileC2c();
           }
           if (decoded['op'] == 'authenticated' && !_authenticated) return;
+          if (asString(decoded['channel']).startsWith('c2c.')) {
+            if (_authenticated &&
+                _c2cOwner == _expectedUserId &&
+                _c2cOwner != null &&
+                (decoded['userId'] == null ||
+                    asInt(decoded['userId']) == _expectedUserId) &&
+                (decoded['channel'] == 'c2c.inbox' ||
+                    decoded['op'] == 'c2c.error' ||
+                    asMap(decoded['data'])['conversationId'] ==
+                        _c2cConversation)) {
+              if (decoded['op'] == 'c2c.error') {
+                _c2cInstalled = false;
+                _c2cInstalledConversation = null;
+              }
+              _c2cEvents.add(decoded);
+            }
+            return;
+          }
           if (_isPrivate(decoded) &&
               (!_authenticated ||
                   (_expectedUserId != null &&
@@ -2530,6 +2648,8 @@ class RealtimeClient {
         _subscription = null;
         _authenticated = false;
         _installed.clear();
+        _c2cInstalled = false;
+        _c2cInstalledConversation = null;
         if (!_closing) onDone?.call();
       },
       cancelOnError: false,
@@ -2595,6 +2715,8 @@ class RealtimeClient {
     _authenticationRequested = false;
     _expectedUserId = null;
     _installed.clear();
+    _c2cInstalled = false;
+    _c2cInstalledConversation = null;
     await subscription?.cancel();
     await socket?.close();
     _closing = false;

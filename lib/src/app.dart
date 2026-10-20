@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_state.dart';
+import 'account_records.dart' show formatExecutionPrice;
 import 'asset_overview.dart';
 import 'api.dart';
 import 'device_access_panel.dart';
@@ -9870,7 +9871,7 @@ String tradingAmount(Object? units, Instrument instrument, [String? asset]) {
   );
   return text == '--'
       ? text
-      : '$text ${asset == null || asset.isEmpty ? instrument.settleAsset : asset}';
+      : '$text ${asset == null || asset.isEmpty ? (instrument.isSpot ? instrument.quoteAsset : instrument.settleAsset) : asset}';
 }
 
 String tradingTime(DateTime? time) => time == null
@@ -9945,7 +9946,9 @@ class OrderRow extends StatelessWidget {
   final VoidCallback? onAmend;
   @override
   Widget build(BuildContext context) {
-    final average = double.tryParse(order.averagePriceTicks ?? '');
+    final average = instrument.isSpot
+        ? null
+        : double.tryParse(order.averagePriceTicks ?? '');
     final priceScale = instrument.isSpot
         ? instrument.quoteScaleUnits
         : 100000000;
@@ -9954,6 +9957,8 @@ class OrderRow extends StatelessWidget {
         instrument.mode == ProductMode.linear ||
         instrument.mode == ProductMode.linearDelivery;
     final executed = BigInt.tryParse(order.executedValueTicks ?? '');
+    final hasNotional =
+        (instrument.isSpot || linear) && multiplier != null && multiplier > 0;
     final canCancel = [
       'OPEN',
       'NEW',
@@ -9988,22 +9993,37 @@ class OrderRow extends StatelessWidget {
             ],
           ),
           Text(
-            '${order.orderType} · ${order.marginMode == 'ISOLATED' ? '逐仓' : '全仓'} · ${positionSideLabel(order.positionSide)} · ${tradingStatus(order)}',
+            instrument.isSpot
+                ? '${order.orderType == 'MARKET' ? '市价' : '限价'} · ${tradingStatus(order)}'
+                : '${order.orderType} · ${order.marginMode == 'ISOLATED' ? '逐仓' : '全仓'} · ${positionSideLabel(order.positionSide)} · ${tradingStatus(order)}',
           ),
           const SizedBox(height: 10),
           TradingDetails(
             values: {
               '委托价格': order.orderType == 'MARKET'
                   ? '市价'
+                  : instrument.isSpot
+                  ? formatExecutionPrice(
+                      order.priceTicks,
+                      instrument.priceTickUnits,
+                      instrument.quoteScaleUnits?.toString(),
+                    )
                   : money(
                       instrument.priceFromTicks(order.priceTicks),
                       digits: instrument.pricePrecision,
                     ),
-              '成交均价':
-                  average == null ||
-                      !average.isFinite ||
-                      priceScale == null ||
-                      priceScale <= 0
+              '成交均价': instrument.isSpot
+                  ? (order.executedQuantitySteps == 0
+                        ? '—'
+                        : formatExecutionPrice(
+                            order.averagePriceTicks,
+                            instrument.priceTickUnits,
+                            instrument.quoteScaleUnits?.toString(),
+                          ))
+                  : average == null ||
+                        !average.isFinite ||
+                        priceScale == null ||
+                        priceScale <= 0
                   ? '--'
                   : money(
                       average * instrument.priceTickUnits / priceScale,
@@ -10013,8 +10033,7 @@ class OrderRow extends StatelessWidget {
               '已成交数量': tradingQuantity(instrument, order.executedQuantitySteps),
               '剩余数量': tradingQuantity(instrument, order.remainingQuantitySteps),
               '成交进度': order.fillProgress,
-              '委托价值':
-                  !linear || multiplier == null || order.orderType == 'MARKET'
+              '委托价值': !hasNotional || order.orderType == 'MARKET'
                   ? '--'
                   : tradingAmount(
                       BigInt.from(order.priceTicks) *
@@ -10022,16 +10041,22 @@ class OrderRow extends StatelessWidget {
                           BigInt.from(multiplier),
                       instrument,
                     ),
-              '成交价值': !linear || multiplier == null || executed == null
+              '成交价值': !hasNotional || executed == null
                   ? '--'
                   : tradingAmount(
                       executed * BigInt.from(multiplier),
                       instrument,
                     ),
               '累计手续费': tradingAmount(order.cumulativeFeeUnits, instrument),
-              '结算币种': instrument.settleAsset,
-              '只减仓 / 只做 Maker':
-                  '${order.reduceOnly ? '是' : '否'} / ${order.postOnly ? '是' : '否'}',
+              if (instrument.isSpot)
+                '计价币种': instrument.quoteAsset
+              else
+                '结算币种': instrument.settleAsset,
+              if (instrument.isSpot)
+                '只做 Maker': order.postOnly ? '是' : '否'
+              else
+                '只减仓 / 只做 Maker':
+                    '${order.reduceOnly ? '是' : '否'} / ${order.postOnly ? '是' : '否'}',
               '有效方式': order.timeInForce,
               '委托时间': tradingTime(order.createdAt),
               '更新时间': tradingTime(order.updatedAt),

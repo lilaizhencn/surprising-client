@@ -51,6 +51,8 @@
     "install": "install -r Success；保留登录与应用数据",
     "launch": "am start -W Status: ok，WaitTime 3142ms",
     "observed": "检查时 mWakefulness=Asleep，系统 Keyguard showing=true，未捕获账户页面或其他应用截图",
-    "biometricPromptOnDevice": "等待用户先解锁手机后确认；未声称已观测系统验证框或成功完成人体生物验证"
+    "biometricPromptOnDevice": "用户解锁手机并进入 App 后明确确认：已自动弹出。此为用户实机反馈，非自动截图判定。",
+    "nativePromptConfirmedByUser": true,
+    "sourceCommit": "efdbaadfaa429674ea23d746d8a62773e8e91db5"
   }
 }

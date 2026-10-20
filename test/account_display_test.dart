@@ -60,6 +60,60 @@ void main() {
     expect(s.productBalancesUsdt(product: ProductMode.linear), isNull);
   });
 
+  testWidgets('overview counts shared funding and spot money once', (
+    tester,
+  ) async {
+    final s = AppState(offline: true)
+      ..session = session
+      ..walletReady = true
+      ..walletPortfolio = portfolio(12)
+      ..assetsReady = true;
+    addTearDown(s.dispose);
+    for (final p in ProductMode.values) {
+      s.valuedProducts.add(p);
+      s.privateViews[p] = PrivateView()
+        ..status = 'READY'
+        ..receivedAt = DateTime.now();
+      s.productBalances[p] = [
+        ProductBalance(
+          accountType: p.accountType,
+          asset: 'USDT',
+          availableUnits: p.isSpot
+              ? 1200000000
+              : p == ProductMode.linear
+              ? 500000000
+              : 0,
+          lockedUnits: 0,
+          equityUnits: p.isSpot
+              ? 1200000000
+              : p == ProductMode.linear
+              ? 500000000
+              : 0,
+        ),
+      ];
+    }
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AssetOverview(
+              state: s,
+              onDeposit: () {},
+              onWithdraw: () {},
+              onTools: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
+      '17.00',
+    );
+    expect(find.text('资金账户（含现货）'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, '现货'), findsNothing);
+  });
+
   test('funding balance survives a failed history endpoint', () async {
     final api = AccountApi()..failOrders = true;
     final s = AppState(apiClient: api)..session = session;
@@ -150,7 +204,7 @@ void main() {
           '35.00',
         );
         expect(find.text('资金账户 · USDT'), findsNothing);
-        expect(find.text('权益 5.0000'), findsOneWidget);
+        expect(find.text('5.0000'), findsOneWidget);
         expect(s.mode, ProductMode.linear);
         expect(tester.takeException(), isNull);
       },

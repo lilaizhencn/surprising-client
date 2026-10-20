@@ -317,15 +317,10 @@ class _ClientShellState extends State<ClientShell> {
   final Set<String> shownAnnouncementModals = {};
 
   void openInstrument(Instrument instrument) {
-    setState(() => index = instrument.isSpot ? 2 : 3);
+    setState(() => index = 2);
   }
 
   void setTab(int next) {
-    final state = AppScope.of(context);
-    if (next == 2) unawaited(state.selectMode(ProductMode.spot));
-    if (next == 3 && state.mode.isSpot) {
-      unawaited(state.selectMode(ProductMode.linear));
-    }
     setState(() {
       index = next;
       announcementsOpen = false;
@@ -349,11 +344,7 @@ class _ClientShellState extends State<ClientShell> {
             2 => TradePage(
               key: ValueKey('trade-${state.mode.name}-${state.selectedSymbol}'),
             ),
-            3 => TradePage(
-              key: ValueKey(
-                'contract-${state.mode.name}-${state.selectedSymbol}',
-              ),
-            ),
+            3 => const C2cPage(),
             _ => const WalletPage(),
           };
     return Scaffold(
@@ -361,11 +352,6 @@ class _ClientShellState extends State<ClientShell> {
       bottomNavigationBar: ExchangeBottomNav(
         selectedIndex: index,
         onSelected: (next) {
-          if (next == 2) {
-            unawaited(state.selectMode(ProductMode.spot));
-          } else if (next == 3 && state.mode.isSpot) {
-            unawaited(state.selectMode(ProductMode.linear));
-          }
           setState(() {
             index = next;
             announcementsOpen = false;
@@ -709,11 +695,7 @@ class ExchangeBottomNav extends StatelessWidget {
         Icons.sync_alt,
         clientText(language, '交易', 'Trade'),
       ),
-      _ExchangeNavItem(
-        Icons.receipt_long_outlined,
-        Icons.receipt_long,
-        clientText(language, '合约', 'Contracts'),
-      ),
+      _ExchangeNavItem(Icons.handshake_outlined, Icons.handshake, 'C2C'),
       _ExchangeNavItem(
         Icons.account_balance_wallet_outlined,
         Icons.account_balance_wallet,
@@ -1088,12 +1070,17 @@ class HomePage extends StatelessWidget {
                 ],
               ),
               IconButton(
-                tooltip: '账户',
+                tooltip: '个人设置',
                 onPressed: () {
                   if (state.isLoggedIn) {
-                    context
-                        .findAncestorStateOfType<_ClientShellState>()
-                        ?.setTab(4);
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => Scaffold(
+                          appBar: AppBar(title: const Text('个人设置')),
+                          body: const SafeArea(child: ProfilePage()),
+                        ),
+                      ),
+                    );
                   } else {
                     showAuthSheet(context);
                   }
@@ -1132,7 +1119,7 @@ class HomePage extends StatelessWidget {
           const SizedBox(height: 24),
           FilledButton(
             onPressed: () =>
-                context.findAncestorStateOfType<_ClientShellState>()?.setTab(3),
+                context.findAncestorStateOfType<_ClientShellState>()?.setTab(2),
             child: const Padding(
               padding: EdgeInsets.all(12),
               child: Text('开始永续交易'),
@@ -1438,6 +1425,11 @@ class _TradePageState extends State<TradePage> {
                 TradeSymbolHeader(
                   instrument: instrument,
                   latestPrice: latestPrice,
+                  onChart: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MarketChartPage(),
+                    ),
+                  ),
                   onRefresh: state.refreshPublicData,
                 ),
                 if (instrument.isDelivery || instrument.isOption) ...[
@@ -1689,51 +1681,14 @@ class _TradePageState extends State<TradePage> {
   }
 }
 
-class WalletPage extends StatefulWidget {
+class WalletPage extends StatelessWidget {
   const WalletPage({super.key});
-
-  @override
-  State<WalletPage> createState() => _WalletPageState();
-}
-
-class _WalletPageState extends State<WalletPage> {
-  final toolsController = ExpansibleController();
-  final toolsKey = GlobalKey();
-
-  void _openTools(AppState state) {
-    if (!state.isLoggedIn) {
-      showAuthSheet(context);
-      return;
-    }
-    toolsController.expand();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final target = toolsKey.currentContext;
-      if (mounted && target != null) Scrollable.ensureVisible(target);
-    });
-  }
-
-  final amountController = TextEditingController(text: '10');
-  final transferEmailCodeController = TextEditingController();
-  final transferTotpCodeController = TextEditingController();
-  String source = 'FUNDING';
-  String target = 'SPOT';
-  String asset = 'USDT';
-  String walletSymbol = 'USDT';
-
-  @override
-  void dispose() {
-    toolsController.dispose();
-    amountController.dispose();
-    transferEmailCodeController.dispose();
-    transferTotpCodeController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: Colors.transparent,
       child: RefreshIndicator(
         onRefresh: () async {
           await Future.wait([
@@ -1742,242 +1697,38 @@ class _WalletPageState extends State<WalletPage> {
           ]);
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
             AssetOverview(
               state: state,
               onDeposit: () => _openRechargeFlow(context, state),
               onWithdraw: () => _openWithdrawalFlow(context, state),
-              onTools: () => _openTools(state),
+              onTools: () {
+                if (!state.isLoggedIn) {
+                  showAuthSheet(context);
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const TransferPage()),
+                );
+              },
+              onRecords: state.isLoggedIn
+                  ? () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => FundingRecordsPage(state: state),
+                      ),
+                    )
+                  : null,
             ),
-            if (!state.isLoggedIn)
+            if (!state.isLoggedIn) ...[
+              const SizedBox(height: 24),
               PrimaryAction(
                 label: '登录 / 注册',
                 icon: Icons.login,
                 onPressed: () => showAuthSheet(context),
-              )
-            else
-              Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.transparent,
-                  splashColor: Colors.transparent,
-                  highlightColor: Colors.transparent,
-                ),
-                child: ExpansionTile(
-                  key: toolsKey,
-                  controller: toolsController,
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  collapsedIconColor: Theme.of(context).colorScheme.onSurface,
-                  iconColor: Theme.of(context).colorScheme.onSurface,
-                  title: const Text(
-                    '钱包工具',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                  children: [
-                    Panel(
-                      child: PrimaryAction(
-                        label: '充值地址与网络',
-                        icon: Icons.qr_code,
-                        onPressed: () => _openRechargeFlow(context, state),
-                      ),
-                    ),
-                    Panel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SectionTitle(title: '提币'),
-                          Text(
-                            '通过独立安全表单核对网络、地址、数量和验证信息。',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          PrimaryAction(
-                            label: '打开提币表单',
-                            icon: Icons.call_made,
-                            onPressed: () =>
-                                _openWithdrawalFlow(context, state),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Panel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SectionTitle(title: '账户划转'),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SmallDropdown(
-                                  value: source,
-                                  values: productAccountTypes,
-                                  labelBuilder: productAccountLabel,
-                                  enabled: !state.transferOutcomeLocked,
-                                  onChanged: (value) =>
-                                      setState(() => source = value),
-                                ),
-                              ),
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 6),
-                                child: Icon(Icons.arrow_forward, size: 18),
-                              ),
-                              Expanded(
-                                child: SmallDropdown(
-                                  value: target,
-                                  values: productAccountTypes,
-                                  labelBuilder: productAccountLabel,
-                                  enabled: !state.transferOutcomeLocked,
-                                  onChanged: (value) =>
-                                      setState(() => target = value),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: AppTextField(
-                                  controller: amountController,
-                                  label: '数量',
-                                  enabled: !state.transferOutcomeLocked,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: 86,
-                                child: AppTextField(
-                                  initialValue: asset,
-                                  label: '资产',
-                                  enabled: !state.transferOutcomeLocked,
-                                  onChanged: (value) =>
-                                      asset = value.toUpperCase(),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '小额划转无需额外验证；大额划转按 USDT 估值验证，绑定 2FA 后还需动态验证码。',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                              fontSize: 11,
-                            ),
-                          ),
-                          if (state.transferVerificationRequired) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: AppTextField(
-                                    controller: transferEmailCodeController,
-                                    label: '邮箱验证码',
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: AppTextField(
-                                    controller: transferTotpCodeController,
-                                    label: '2FA 验证码（未绑定可留空）',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          PrimaryAction(
-                            label: state.transferSubmitting
-                                ? '提交中…'
-                                : state.transferOutcomeLocked
-                                ? '等待结果确认'
-                                : '确认划转',
-                            icon: Icons.swap_horiz,
-                            onPressed:
-                                state.transferSubmitting ||
-                                    state.transferOutcomeLocked
-                                ? null
-                                : () => unawaited(
-                                    state.transfer(
-                                      sourceAccountType: source,
-                                      targetAccountType: target,
-                                      asset: asset,
-                                      amount:
-                                          double.tryParse(
-                                            amountController.text,
-                                          ) ??
-                                          0,
-                                      amountText: amountController.text,
-                                      emailCode:
-                                          transferEmailCodeController.text,
-                                      totpCode: transferTotpCodeController.text,
-                                    ),
-                                  ),
-                          ),
-                          if (state.transferOutcomeLocked)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                state.transferOutcomeTerminalFailure
-                                    ? '本次划转已失败，可以重新填写后再试。'
-                                    : '划转结果待确认，请勿重复提交。',
-                                style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                          if (state.transferOutcomeTerminalFailure)
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: state.resetTransferIntent,
-                                child: const Text('重新填写'),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    SectionTitle(
-                      title: '链上资产',
-                      action: IconButton.filledTonal(
-                        onPressed: () => unawaited(state.refreshWallet()),
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ),
-
-                    OutlinedButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => FundingRecordsPage(state: state),
-                        ),
-                      ),
-                      icon: const Icon(Icons.receipt_long),
-                      label: const Text('查看分类资金与交易记录'),
-                    ),
-                    const SectionTitle(title: '资金记录'),
-                    if (state.walletError != null ||
-                        state.walletOrdersError != null)
-                      Text(state.walletError ?? state.walletOrdersError!),
-                    ...state.walletOrders.map(
-                      (record) => WalletOrderRecordRow(record: record),
-                    ),
-                    if (state.walletReady &&
-                        state.walletOrdersError == null &&
-                        state.walletOrders.isEmpty)
-                      const EmptyState(text: '暂无资金记录'),
-                  ],
-                ),
               ),
+            ],
           ],
         ),
       ),
@@ -2006,6 +1757,168 @@ class _WalletPageState extends State<WalletPage> {
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => const WithdrawalPage()));
     }());
+  }
+}
+
+class TransferPage extends StatefulWidget {
+  const TransferPage({super.key});
+  @override
+  State<TransferPage> createState() => _TransferPageState();
+}
+
+class _TransferPageState extends State<TransferPage> {
+  final amountController = TextEditingController();
+  final transferEmailCodeController = TextEditingController();
+  final transferTotpCodeController = TextEditingController();
+  String source = 'FUNDING', target = 'SPOT', asset = 'USDT';
+
+  @override
+  void dispose() {
+    amountController.dispose();
+    transferEmailCodeController.dispose();
+    transferTotpCodeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('划转')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SectionTitle(title: '账户划转'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SmallDropdown(
+                        value: source,
+                        values: productAccountTypes,
+                        labelBuilder: productAccountLabel,
+                        enabled: !state.transferOutcomeLocked,
+                        onChanged: (value) => setState(() => source = value),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(Icons.arrow_forward, size: 18),
+                    ),
+                    Expanded(
+                      child: SmallDropdown(
+                        value: target,
+                        values: productAccountTypes,
+                        labelBuilder: productAccountLabel,
+                        enabled: !state.transferOutcomeLocked,
+                        onChanged: (value) => setState(() => target = value),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        controller: amountController,
+                        label: '数量',
+                        enabled: !state.transferOutcomeLocked,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 86,
+                      child: AppTextField(
+                        initialValue: asset,
+                        label: '资产',
+                        enabled: !state.transferOutcomeLocked,
+                        onChanged: (value) => asset = value.toUpperCase(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '小额划转无需额外验证；大额划转按 USDT 估值验证，绑定 2FA 后还需动态验证码。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+                if (state.transferVerificationRequired) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppTextField(
+                          controller: transferEmailCodeController,
+                          label: '邮箱验证码',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: AppTextField(
+                          controller: transferTotpCodeController,
+                          label: '2FA 验证码（未绑定可留空）',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 10),
+                PrimaryAction(
+                  label: state.transferSubmitting
+                      ? '提交中…'
+                      : state.transferOutcomeLocked
+                      ? '等待结果确认'
+                      : '确认划转',
+                  icon: Icons.swap_horiz,
+                  onPressed:
+                      state.transferSubmitting || state.transferOutcomeLocked
+                      ? null
+                      : () => unawaited(
+                          state.transfer(
+                            sourceAccountType: source,
+                            targetAccountType: target,
+                            asset: asset,
+                            amount: double.tryParse(amountController.text) ?? 0,
+                            amountText: amountController.text,
+                            emailCode: transferEmailCodeController.text,
+                            totpCode: transferTotpCodeController.text,
+                          ),
+                        ),
+                ),
+                if (state.transferOutcomeLocked)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      state.transferOutcomeTerminalFailure
+                          ? '本次划转已失败，可以重新填写后再试。'
+                          : '划转结果待确认，请勿重复提交。',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                if (state.transferOutcomeTerminalFailure)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: state.resetTransferIntent,
+                      child: const Text('重新填写'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -3258,6 +3171,43 @@ String chainSymbol(String chain) {
   return upper.isEmpty ? '?' : upper.substring(0, 1);
 }
 
+/// C2C has a separate destination; offers and payment actions require a C2C service.
+class C2cPage extends StatelessWidget {
+  const C2cPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final language = AppScope.of(context).language;
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const PageHeader(title: 'C2C', subtitle: '买卖数字资产'),
+        const SizedBox(height: 64),
+        Icon(
+          Icons.handshake_outlined,
+          size: 56,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(height: 20),
+        Text(
+          clientText(language, 'C2C 暂未开放', 'C2C is not available yet'),
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          clientText(
+            language,
+            '开放后可在这里查看买卖报价。',
+            'Buy and sell offers will appear here when C2C opens.',
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
@@ -3268,7 +3218,7 @@ class ProfilePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         PageHeader(
-          title: '我的',
+          title: '账户',
           subtitle: state.isLoggedIn ? state.session!.user.email : '未登录',
         ),
         Panel(
@@ -3309,26 +3259,6 @@ class ProfilePage extends StatelessWidget {
                   child: const Text('登录'),
                 ),
             ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Panel(
-          child: Material(
-            color: Colors.transparent,
-            child: ListTile(
-              leading: const Icon(Icons.account_balance_wallet_outlined),
-              title: const Text('资产概览'),
-              subtitle: const Text('资金账户与各交易账户'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('资产')),
-                    body: const WalletPage(),
-                  ),
-                ),
-              ),
-            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -3390,7 +3320,7 @@ class ProfilePage extends StatelessWidget {
                   color: Theme.of(context).colorScheme.tertiary,
                 ),
                 title: const Text('安全中心'),
-                subtitle: const Text('2FA、敏感场景和 API Key'),
+                subtitle: const Text('邮箱与手机绑定、密码、2FA、设备和 API 密钥'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showSecuritySheet(context),
               ),
@@ -4977,6 +4907,47 @@ void showSecuritySheet(BuildContext context, {bool kycOnly = false}) {
   );
 }
 
+class MarketChartPage extends StatelessWidget {
+  const MarketChartPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final instrument = state.selectedInstrument;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${instrument.displayName} · ${state.mode.label}'),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: state.refreshPublicData,
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              Text(
+                state.latestPriceFor(instrument) == null
+                    ? '—'
+                    : money(
+                        state.latestPriceFor(instrument)!,
+                        digits: instrument.pricePrecision,
+                      ),
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 16),
+              KlinePanel(
+                candles: state.candles,
+                period: state.period,
+                onPeriod: (period) => unawaited(state.selectPeriod(period)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class KlinePanel extends StatefulWidget {
   const KlinePanel({
     required this.candles,
@@ -5079,7 +5050,12 @@ class _KlinePanelState extends State<KlinePanel> {
             ),
           ),
           const SizedBox(height: 6),
-          SizedBox(height: 252, child: KLineView(controller: controller)),
+          SizedBox(
+            height: 252,
+            child: widget.candles.isEmpty
+                ? const Center(child: Text('暂无 K 线数据'))
+                : KLineView(controller: controller),
+          ),
         ],
       ),
     );
@@ -7757,12 +7733,14 @@ class TradeSymbolHeader extends StatelessWidget {
     required this.instrument,
     required this.latestPrice,
     required this.onRefresh,
+    required this.onChart,
     super.key,
   });
 
   final Instrument instrument;
   final double? latestPrice;
   final VoidCallback onRefresh;
+  final VoidCallback onChart;
 
   @override
   Widget build(BuildContext context) {
@@ -7835,7 +7813,7 @@ class TradeSymbolHeader extends StatelessWidget {
         ),
         IconButton(
           tooltip: 'K线',
-          onPressed: onRefresh,
+          onPressed: onChart,
           style: IconButton.styleFrom(
             backgroundColor: Colors.transparent,
             side: BorderSide.none,

@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-20",
+  "version": "1.0.2-preview.20261020",
+  "buildNumber": 20261022,
+  "device": "Android 12 / 392dp",
+  "flutterAnalyze": "No issues found",
+  "flutterTests": {
+    "passed": 353,
+    "liveOptInSkipped": 10
+  },
+  "apk": {
+    "badging": "package: name='com.surprising.surprising_client' versionCode='20261022' versionName='1.0.2-preview.20261020' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'",
+    "sha256": "abaf3bbeb9fbcccc82f7bcac471891537a4035658f86672a8c2cdcc86e11f69d",
+    "bytes": 21062556
+  },
+  "scope": [
+    "头像进入个人设置，沿用邮箱/手机/验证器/密码/会话设备/API密钥/认证的现有真实功能",
+    "交易保留选择的产品，导航合约改为 C2C，C2C 完整功能开发中",
+    "K线按钮打开独立页面，时间周期沿用同产品同合约 realtime，空数据明确显示",
+    "资产账户切换上移、默认总览、三操作同一行、去掉钱包工具，划转独立页保留原安全与结果锁定",
+    "资金与现货同一 Core 余额在总览只统计一次",
+    "未开启产品仅依据后端显式 disabledProductLines 计零；配置未知和已开启服务故障不计零"
+  ],
+  "deviceObserved": [
+    "install -r 成功，冷启动成功，保留登录数据",
+    "真机资产布局观察：顶部账户切换、金额菜单、余额旁眼睛、充值/提币/划转同行、精简账户列表",
+    "设备随后切换到其他 App，停止导航和截图；头像和K线跳转已由 320/392dp 深浅色 widget 场景验证"
+  ],
+  "notClaimed": [
+    "测试服务器尚无新产品开启契约，真实资产加载失败未发布前仍存在",
+    "C2C 当前仅独立入口，后续完整实现不在本次修复中声称完成"
+  ],
+  "evidenceSha256": {
+    "ui-only-analyze-final.log": "ac936d45b9bc704b4eb509abc698ba9590b1cb119339f2b7ed8dc080eea17c74",
+    "ui-only-tests-final.log": "2f2b6220cc5e2715838a2cc0d1912126aac9ba092e33b9dda40cd956054e4f55",
+    "android-build.log": "a0887c71f0af0f2500fa42d59237ec975f29c6b05e6305758b0d3f9940f11019",
+    "home-after.png": "2ebd8e649d73dd3f682df3012c5dc04eb7844bdac7b8f7df1705011524d64219"
+  }
+}

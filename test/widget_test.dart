@@ -240,11 +240,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(WalletPage), findsOneWidget);
-    for (var i = 0; i < 8 && find.text('钱包工具').evaluate().isEmpty; i++) {
-      await tester.drag(find.byType(ListView).first, const Offset(0, -420));
-      await tester.pump();
-    }
-    await tester.tap(find.text('钱包工具'));
+    await tester.tap(find.text('划转'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 8 && find.text('账户划转').evaluate().isEmpty; i++) {
       await tester.drag(find.byType(ListView).first, const Offset(0, -420));
@@ -347,8 +343,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('首页'), findsWidgets);
     expect(find.text('行情'), findsWidgets);
-    expect(find.text('合约'), findsWidgets);
-    await tester.tap(find.text('充币').first);
+    expect(find.text('C2C'), findsWidgets);
+    await tester.tap(find.text('充值').first);
     await tester.pumpAndSettle();
 
     expect(find.text('充值'), findsOneWidget);
@@ -383,7 +379,7 @@ void main() {
 
     await tester.tap(find.text('资产').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('充币').first);
+    await tester.tap(find.text('充值').first);
     await tester.pumpAndSettle();
     expect(find.text('USDT'), findsNothing);
     expect(find.text('暂无可充值币种'), findsOneWidget);
@@ -452,7 +448,7 @@ void main() {
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
     );
-    await tester.tap(find.text('合约').last);
+    await tester.tap(find.text('交易').last);
     await tester.pumpAndSettle();
     expect(find.text('交易产品页'), findsNothing);
     expect(find.text('打开产品页'), findsNothing);

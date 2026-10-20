@@ -856,6 +856,23 @@ class ApiClient {
       post('/api/v1/compliance/kyc/session/refresh', const {});
 
   // AppState publishes a complete, validated catalog after all required requests finish.
+  /// Explicitly disabled products are different from enabled services that are offline.
+  Future<Set<ProductMode>> disabledProducts() async {
+    final runtime = await get('/api/v1/runtime');
+    final disabled = runtime['disabledProductLines'];
+    if (disabled is! List) throw const FormatException('产品线状态尚未同步');
+    final result = <ProductMode>{};
+    for (final value in disabled) {
+      final mode = ProductMode.values
+          .where((p) => p.productLine == value)
+          .firstOrNull;
+      if (mode == null || !result.add(mode)) {
+        throw const FormatException('产品线状态无效');
+      }
+    }
+    return result;
+  }
+
   Future<List<Instrument>> instruments() =>
       _loadInstruments({'status': 'TRADING'});
 

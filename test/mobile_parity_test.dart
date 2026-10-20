@@ -311,7 +311,7 @@ void main() {
         );
         await tester.pump();
         expect(find.byType(PublicMarketRow), findsWidgets);
-        await tester.tap(find.text('合约').last);
+        await tester.tap(find.text('交易').last);
         await tester.pumpAndSettle();
         expect(state.mode, ProductMode.linear);
       },

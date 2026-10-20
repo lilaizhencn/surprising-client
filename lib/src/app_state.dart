@@ -808,13 +808,44 @@ class AppState extends ChangeNotifier {
     return total;
   }
 
+  Set<ProductMode> disabledProducts = {};
+  int _productAvailabilityVersion = 0;
+  bool productAssetsReady(ProductMode product) =>
+      isLoggedIn &&
+      (disabledProducts.contains(product) ||
+          (valuedProducts.contains(product) &&
+              privateViews[product]?.ready == true));
+
+  Future<void> refreshProductAvailability() async {
+    if (offline) return;
+    final epoch = _walletSessionVersion;
+    final request = ++_productAvailabilityVersion;
+    bool current() =>
+        epoch == _walletSessionVersion &&
+        request == _productAvailabilityVersion;
+    try {
+      final next = await api.disabledProducts();
+      if (!current()) return;
+      disabledProducts = next;
+      for (final product in next) {
+        privateViews.remove(product);
+        productBalances[product] = [];
+      }
+      _materializePrivate();
+      _subscribePrivateSelected();
+    } catch (_) {
+      // A missing configuration response is unknown, never proof of a zero balance.
+      if (!current()) return;
+      disabledProducts = {};
+      _materializePrivate();
+      _subscribePrivateSelected();
+    }
+  }
+
   double? productBalancesUsdt({ProductMode? product}) {
     var total = 0.0;
     if (!isLoggedIn ||
-        (product == null
-            ? !assetsReady
-            : !valuedProducts.contains(product) ||
-                  privateViews[product]?.ready != true)) {
+        (product == null ? !assetsReady : !productAssetsReady(product))) {
       return null;
     }
     for (final balance
@@ -1293,6 +1324,7 @@ class AppState extends ChangeNotifier {
     pendingBiometricSession = null;
     api.setSession(next);
     if (persist) await sessionStore.saveSession(next);
+    await refreshProductAvailability();
     await _connectRealtime(forceReconnect: true);
     await refreshPrivateData();
     await refreshAnnouncements();
@@ -1596,13 +1628,17 @@ class AppState extends ChangeNotifier {
         selectedMode == mode;
     loadingPrivate = true;
     notifyListeners();
+    await refreshProductAvailability();
+    if (!current()) return;
     final walletRefresh = refreshWallet();
     final orderTermsRefresh = refreshOrderTerms();
     final algoRefresh = refreshAlgoOrders();
     try {
-      final liquidations = await (selectedMode.isDerivative
-          ? api.liquidationOrders(id, productLine: selectedMode.productLine)
-          : Future<List<LiquidationOrder>>.value(const []));
+      final liquidations =
+          await (selectedMode.isDerivative &&
+                  !disabledProducts.contains(selectedMode)
+              ? api.liquidationOrders(id, productLine: selectedMode.productLine)
+              : Future<List<LiquidationOrder>>.value(const []));
       if (!current()) {
         return;
       }
@@ -1626,6 +1662,12 @@ class AppState extends ChangeNotifier {
   Future<void> refreshAlgoOrders() async {
     final id = userId, product = mode, epoch = _walletSessionVersion;
     if (offline || id == null) return;
+    if (disabledProducts.contains(product)) {
+      openAlgoOrders = [];
+      algoOrdersError = null;
+      loadingAlgoOrders = false;
+      return;
+    }
     final request = ++_algoOrdersRequestVersion;
     final filter = onlyCurrentTradingPair;
     final instrument = selectedInstrument;
@@ -4129,7 +4171,9 @@ class AppState extends ChangeNotifier {
     final subscriptions = !isLoggedIn
         ? <Map<String, String>>[]
         : [
-            for (final product in ProductMode.values)
+            for (final product in ProductMode.values.where(
+              (p) => !disabledProducts.contains(p),
+            ))
               for (final channel in [
                 'accountState',
                 'orders',
@@ -4162,6 +4206,17 @@ class AppState extends ChangeNotifier {
     valuedProducts.clear();
     positionPnlUnits.clear();
     for (final product in ProductMode.values) {
+      if (disabledProducts.contains(product)) {
+        productBalances[product] = [];
+        if (product == mode) {
+          balances = [];
+          positions = [];
+          openOrders = [];
+          openTriggerOrders = [];
+          positionRisks = [];
+        }
+        continue;
+      }
       final view = privateViews[product];
       if (view == null) {
         complete = false;
@@ -4318,6 +4373,8 @@ class AppState extends ChangeNotifier {
         isLoggedIn &&
         asInt(message['userId']) == userId) {
       _privateAuthenticated = true;
+      _materializePrivate();
+      _scheduleRealtimeNotify();
       return;
     }
     if (op == 'error') {

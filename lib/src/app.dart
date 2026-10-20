@@ -6548,9 +6548,16 @@ class PrivateTradingPanel extends StatefulWidget {
 
 class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
   int tab = 0;
+  (ProductMode, int?)? _selectionScope;
   AppState get state => widget.state;
   @override
   Widget build(BuildContext context) {
+    // AppState is mutable; compare the last rendered owner rather than oldWidget.state.
+    final scope = (state.mode, state.userId);
+    if (_selectionScope != scope) {
+      _selectionScope = scope;
+      tab = state.mode.isSpot ? 1 : 0;
+    }
     final botCount =
         state.openAlgoOrders.length + state.openTriggerOrders.length;
     return Column(
@@ -6596,7 +6603,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
         if (state.isLoggedIn &&
             !(state.privateViews[state.mode]?.ready ?? false))
           const Text('账户同步中 / Syncing account'),
-        if (state.isLoggedIn && state.accountRisk != null)
+        if (!state.mode.isSpot && state.isLoggedIn && state.accountRisk != null)
           Panel(
             padding: const EdgeInsets.all(10),
             child: Row(
@@ -6636,19 +6643,19 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
           child: Row(
             children: [
               for (final entry in [
-                '持仓 (${state.positions.length})',
-                '当前委托 (${state.openOrders.length})',
-                '止盈止损 / 策略 ($botCount)',
-                '最近订单更新',
-              ].asMap().entries)
+                if (!state.mode.isSpot) (0, '持仓 (${state.positions.length})'),
+                (1, '当前委托 (${state.openOrders.length})'),
+                (2, '止盈止损 / 策略 ($botCount)'),
+                (3, '最近订单更新'),
+              ])
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(entry.value),
-                    selected: tab == entry.key,
+                    label: Text(entry.$2),
+                    selected: tab == entry.$1,
                     onSelected: (_) {
-                      setState(() => tab = entry.key);
-                      if (entry.key == 0) {
+                      setState(() => tab = entry.$1);
+                      if (entry.$1 == 0) {
                         unawaited(state.refreshPositionRiskDetails());
                       }
                     },
@@ -6708,7 +6715,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
         if (!state.isLoggedIn)
           TextButton(
             onPressed: () => showAuthSheet(context),
-            child: const Text('登录查看持仓与委托'),
+            child: Text(state.mode.isSpot ? '登录查看账户与委托' : '登录查看持仓与委托'),
           ),
         if (tab == 0) ...[
           if (state.positions.isEmpty)

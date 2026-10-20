@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-20",
+  "branch": "feature/telegram-okx",
+  "wholeFeatureComplete": false,
+  "mergeAllowed": false,
+  "flutterAnalyze": "No issues found",
+  "flutterTests": {
+    "passed": 434,
+    "existingLiveEnvironmentSkipped": 10,
+    "failed": 0
+  },
+  "financialChecks": [
+    "Immutable per-user transfer intent is persisted before HTTP; same-key recovery across restart, lost response, 404, 428 and storage failure.",
+    "Completion stays locked until durable receipt removal; a late response cannot alter another user.",
+    "Asset scale registry drives product valuation and transfer MAX; missing precision is unavailable.",
+    "Withdrawal uses exact decimal balance, lower ledger/network precision, canonical family, BigDecimal fee normalization and truncating MAX."
+  ],
+  "scannerRaceRegression": "Original concurrent implementation failed closing-during-permission test; restored serialized implementation passes full suite.",
+  "native": {
+    "android": {
+      "fixture": "synthetic accounts, balances, addresses and candles only",
+      "sceneCount": 17,
+      "scenes": [
+        "assets-dark",
+        "assets-light",
+        "capture-restored",
+        "deposit-address",
+        "deposit-assets",
+        "deposit-entry",
+        "deposit-menu",
+        "deposit-networks",
+        "home-dark",
+        "home-light",
+        "markets-dark",
+        "tradingview-dark",
+        "transfer-dark",
+        "withdrawal-assets",
+        "withdrawal-form",
+        "withdrawal-networks",
+        "withdrawal-protected"
+      ],
+      "systemCaptureSha256": {
+        "assets-dark-os.png": "0739e9abc898ab882c5623df1ef02c23eda8fc068caa95ccff94f5a50c51fcb5",
+        "assets-light-os.png": "11d5a8eaf2f15d46dd8e6bd9d7fd388564e26fdf62bbc6bff5ea8bd473f9497c",
+        "capture-restored-os.png": "daaf08a1c7e9d35be148934396b84037bd4317bb92c42cf110ed0bb43b071b44",
+        "deposit-address-os.png": "e0d7cf24cab0f2eb0babfd59955279c79baa2cdfbc7f0c9295ba023fa81dad48",
+        "deposit-assets-os.png": "a2777f4496e115342761e7fcb740b49d43aefdf85d9087680f01d8e0410933d4",
+        "deposit-entry-os.png": "62ae59ceae0b133abd404456576602865fc19ff0a55d7b92b8b1c121b3e2a4d6",
+        "deposit-menu-os.png": "f69e80895ca36d28c4c713006276db8d667e526d6dcdda27f92d77588a9d4643",
+        "deposit-networks-os.png": "31d48f9405055b39a4212e3694dc5f1188797700db1c6f6e09d64329d5f686f0",
+        "home-dark-os.png": "1f380d2e2d357f057c76cc65f8671acc9724a6b9873846a1eaf8f5de6ae272f2",
+        "home-light-os.png": "d148351c1345376cbf6d434abd711266514b82fb4588bb01b04f027519adcac7",
+        "markets-dark-os.png": "c9a32d62a23f59ffe23e1a5b2b0540187739dcf74f07332e393e6f7b77bcece7",
+        "tradingview-dark-os.png": "ad60236d6e25cdd0adeea7636cfec796a67f35557fb62e44043ba95acd7ba458",
+        "transfer-dark-os.png": "c061d2b58488a988245d23bba64662d4e4dd7402889ce35220a8ed69eaae2960",
+        "withdrawal-assets-os.png": "3bc43f73727074fb06d5fa5305df11ed0651010629a7749f3c9e8a3b7b904764",
+        "withdrawal-form-os.png": "3bc43f73727074fb06d5fa5305df11ed0651010629a7749f3c9e8a3b7b904764",
+        "withdrawal-networks-os.png": "3bc43f73727074fb06d5fa5305df11ed0651010629a7749f3c9e8a3b7b904764",
+        "withdrawal-protected-os.png": "c35bacdb98b522206335afa5b9baffd2e4e3352a40749bb747e469cd403af514"
+      },
+      "screenshotProtection": "verified secure flag, black OS capture and restored public capture",
+      "nativeQrImageDecode": "passed"
+    },
+    "ios": {
+      "fixture": "synthetic accounts, balances, addresses and candles only",
+      "sceneCount": 17,
+      "scenes": [
+        "assets-dark",
+        "assets-light",
+        "capture-restored",
+        "deposit-address",
+        "deposit-assets",
+        "deposit-entry",
+        "deposit-menu",
+        "deposit-networks",
+        "home-dark",
+        "home-light",
+        "markets-dark",
+        "tradingview-dark",
+        "transfer-dark",
+        "withdrawal-assets",
+        "withdrawal-form",
+        "withdrawal-networks",
+        "withdrawal-protected"
+      ],
+      "systemCaptureSha256": {
+        "assets-dark-os.png": "a82ca3e9554efb20cc78f6a52908a258c6fdfdd2631ab4df329e74e470c58b8c",
+        "assets-light-os.png": "bb283caa173e17b767d7b90acae1f49683a8c00b79d34b76deb17ffd0f9d6219",
+        "capture-restored-os.png": "3f91457adfc5d06601af67959c17b163f73eaf243a8b87e643495039bbfb8ea0",
+        "deposit-address-os.png": "bff7475b222a95d9b8d370b1282d6a73a2878f838ee78d0436516e944167307b",
+        "deposit-assets-os.png": "d4c1d809bb3c1c42cececdab9de721706c0b406e4a183165e535f52a81b165ab",
+        "deposit-entry-os.png": "ec4c7ccdfb5cd148305aed0e1b46c20e8cee52cbae93bf138117a268ece3711e",
+        "deposit-menu-os.png": "76cba719157f42130c509dc58934fb3815006b585059bf261a67187de621ad11",
+        "deposit-networks-os.png": "039c8f0ec52f0bb4b6c24c588db6b9a132ca62123f1abfef8e53d71359551179",
+        "home-dark-os.png": "e42a47f7bf436aafc253366b482ad582207c9e1a135d05bee0f6952fa6dcdef4",
+        "home-light-os.png": "73a62ab6b9d9d66f516247e8dd4658423a4d457d74562e28ea16313f7f1e1904",
+        "markets-dark-os.png": "4c0429a3fed960072f604aa8a0d996e6db580ce7db4de4e342c164195c27f2fa",
+        "tradingview-dark-os.png": "5dae739e9d417066005d14dfd735618cf73eb93b7495a1d21cd5f41e3dbdd8be",
+        "transfer-dark-os.png": "e0001afc75d25055294b040ddc834bdd98a9e53ceb9816ea561f3092e8a2a477",
+        "withdrawal-assets-os.png": "983c3047d94979acfb48337b89ea0a40ff10b78b639ffbbd5bf9e9f9cd5abd3f",
+        "withdrawal-form-os.png": "f72c03ba906d3e002d62540525a9b986332b2b8d1f1835acfbdbae9e36508035",
+        "withdrawal-networks-os.png": "5c25f300f335c94e638f430f6c08718030e661e10332a0a4dbe698d3c730ce85",
+        "withdrawal-protected-os.png": "5dab512c8d297b705c96cbf454ab845d49fa8fb7cf49a936bc32980647065f6c"
+      },
+      "screenshotProtection": "NOT VERIFIED: simctl capture exposes synthetic protected content; physical device acceptance required",
+      "nativeQrImageDecode": "unsupported_ios_simulator (explicit plugin limitation)"
+    }
+  },
+  "sourceChangesForNativeBuild": [
+    "Scoped KGP/JVM17 compatibility for screen_protector under existing AGP9 builtInKotlin=false.",
+    "iOS camera/photo usage descriptions cover QR; bundled Lightweight Charts, scanner, screen protection and share dependencies resolved.",
+    "QA harness exempts loopback from inherited proxies for Flutter VM connection."
+  ],
+  "notClaimed": [
+    "Real Telegram provider authorization: local TELEGRAM_CLIENT_SECRET remains empty; /config enabled=false.",
+    "iOS physical-device screenshot protection, camera and QR decoding.",
+    "Native file-picker save/share completion and scanner gallery selection need further interaction validation.",
+    "Daily-income backend with authoritative opening equity and external-flow adjustments is not implemented; UI shows unavailable.",
+    "Passwordless account security-settings enrollment still requires a safe primary-authentication path."
+  ],
+  "evidenceSha256": {
+    "flutterAnalyze": "6b006e4456e72b7df11f40671ea6e5aca4e3a6ab3bc6c3a6c5fb8a5f61525976",
+    "flutterTests": "5a8db9a7cfa5fef17785b414b9d3044f5f7d70fa327ad77ee6d7c07b451e75b4",
+    "androidNative": "bd514a543c610f95ace6465a44e4d13f2c0f09222b9d8ea94a51f22c87ab656a",
+    "iosNative": "8be94f51c400bfd157f4efa33880dd2f1961b5364dc4cca9059c5014ecbc59eb",
+    "scannerOriginalRace": "206eab929bc32db33e3393c5aca467fb1dbd061c759f34a2e7a9e310c57fd798"
+  }
+}

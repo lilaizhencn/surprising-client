@@ -28,14 +28,16 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('USDT'), findsOneWidget);
+        expect(find.text('选择资产'), findsOneWidget);
+        expect(find.text('USDT'), findsWidgets);
         expect(find.text('SOL'), findsNothing);
-        await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+        await tester.tap(find.byKey(const ValueKey('deposit-asset-USDT')));
         await tester.pumpAndSettle();
+        expect(find.text('选择网络'), findsOneWidget);
         await tester.tap(find.text('Ethereum').last);
         await tester.pump(const Duration(milliseconds: 400));
         expect(api.networks, ['ETH']);
-        await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+        await tester.tap(find.byTooltip('返回'));
         await tester.pump(const Duration(milliseconds: 400));
         await tester.tap(find.text('Tron').last);
         await tester.pump(const Duration(milliseconds: 400));

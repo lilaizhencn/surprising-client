@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'models.dart';
@@ -9,6 +10,18 @@ import 'account_records.dart';
 import 'c2c_models.dart';
 
 part 'c2c_api.dart';
+
+int? _fundingPrecision(String? scale, Object? chainDecimals) {
+  if (scale == null ||
+      !RegExp(r'^10*$').hasMatch(scale) ||
+      scale.length > 37 ||
+      chainDecimals is! int ||
+      chainDecimals < 0 ||
+      chainDecimals > 36) {
+    return null;
+  }
+  return math.min(scale.length - 1, chainDecimals);
+}
 
 class ApiClient {
   ApiClient(this.config, {HttpClient? httpClient})
@@ -23,6 +36,27 @@ class ApiClient {
   int? _sessionUserId;
   String? _refreshToken;
   Future<AuthSession?>? _refreshInFlight;
+
+  Future<String> Function()? deviceIdLoader;
+  Future<String>? _deviceId;
+
+  static String newDeviceId() {
+    final random = math.Random.secure();
+    return 'mobile-${base64UrlEncode(List<int>.generate(16, (_) => random.nextInt(256))).replaceAll('=', '')}';
+  }
+
+  Future<String> resolveDeviceId() => _deviceId ??=
+      Future<String>.sync(() => deviceIdLoader?.call() ?? newDeviceId())
+          .then((value) {
+            if (!RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(value)) {
+              throw const FormatException('设备标识不可用');
+            }
+            return value;
+          })
+          .catchError((Object error, StackTrace stack) {
+            _deviceId = null;
+            Error.throwWithStackTrace(error, stack);
+          });
 
   Future<void> Function(AuthSession session)? onSessionRefreshed;
   Future<void> Function()? onSessionExpired;
@@ -1051,14 +1085,21 @@ class ApiClient {
   }) async {
     final query = {'userId': '$userId'};
     if (accountType != null) query['accountType'] = accountType;
+    final scales = await assetScales();
     final json = await get(
       '/api/v1/gateway/account/product-balances',
       query: query,
       productLine: productLine,
     );
-    return asList(
-      json['balances'],
-    ).map((item) => ProductBalance.fromJson(asMap(item))).toList();
+    return asList(json['balances']).map((item) {
+      final row = asMap(item);
+      return ProductBalance.fromJson(
+        row,
+        scaleUnits: int.tryParse(
+          scales[asString(row['asset']).toUpperCase()] ?? '',
+        ),
+      );
+    }).toList();
   }
 
   Future<Map<String, dynamic>> leverageSetting(
@@ -1796,15 +1837,16 @@ class ApiClient {
           {
             'chain': network['networkCode'],
             'network': network['displayName'],
+            'family': network['family'],
             'withdrawalEnabled': true,
             'tokens': [
               {
                 'symbol': asset['asset'],
                 'platformEnabled': true,
-                'decimals':
-                    RegExp(r'^10*$').hasMatch(scales[asset['asset']] ?? '')
-                    ? scales[asset['asset']]!.length - 1
-                    : null,
+                'decimals': _fundingPrecision(
+                  scales[asset['asset']],
+                  network['chainDecimals'],
+                ),
                 'minWithdraw': network['minWithdrawal'],
                 'withdrawalFee': network['withdrawalFee'],
               },
@@ -1845,6 +1887,7 @@ class ApiClient {
           return WalletAssetSummary(
             symbol: asset,
             availableBalance: units(available),
+            availableBalanceText: formatAccountUnits(available, scales[asset]),
             lockedBalance: units(locked),
             totalBalance: units(available + locked),
             chains: const [],
@@ -2029,6 +2072,10 @@ class ApiClient {
     };
   }
 
+  Future<List<Map<String, dynamic>>> notifications() async => asList(
+    await _send('GET', '/api/v1/notifications', query: const {'limit': '100'}),
+  ).map(asMap).toList();
+
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, String>? query,
@@ -2211,6 +2258,7 @@ class ApiClient {
       path: path,
       queryParameters: query == null || query.isEmpty ? null : query,
     );
+    final deviceId = await resolveDeviceId();
     final request = await _httpClient
         .openUrl(method, uri)
         .timeout(const Duration(seconds: 6));
@@ -2219,6 +2267,7 @@ class ApiClient {
       throw ApiException(401, '登录账户已变化，未发送请求');
     }
     request.headers.contentType = ContentType.json;
+    request.headers.set('X-Device-Id', deviceId);
     request.headers.set(
       'X-Trace-Id',
       'mobile-${DateTime.now().microsecondsSinceEpoch}',

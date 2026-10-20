@@ -5,6 +5,7 @@ import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/models.dart';
 import 'account_display_test.dart' show session;
+import 'transfer_page_test.dart' show MemorySettings;
 
 void main() {
   for (final theme in [ClientTheme.dark, ClientTheme.light]) {
@@ -16,9 +17,14 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final state = AppState(offline: true)
-          ..session = session
-          ..clientTheme = theme;
+        final state =
+            AppState(
+                offline: true,
+                apiClient: AvailabilityApi(),
+                settingsStore: MemorySettings(),
+              )
+              ..session = session
+              ..clientTheme = theme;
         addTearDown(state.dispose);
         await tester.pumpWidget(
           SurprisingClientApp(state: state, bootstrap: false),
@@ -54,11 +60,14 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('钱包工具'), findsNothing);
         expect(find.text('资产估值'), findsNothing);
+        expect(find.text('资产组合'), findsOneWidget);
         expect(
-          tester
-              .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '总览'))
-              .selected,
-          isTrue,
+          find.byKey(const ValueKey('asset-account-funding')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('asset-account-trading')),
+          findsOneWidget,
         );
         final actions = [
           '充值',
@@ -73,7 +82,7 @@ void main() {
         await tester.tap(find.text('划转'));
         await tester.pumpAndSettle();
         expect(find.byType(TransferPage), findsOneWidget);
-        expect(find.text('账户划转'), findsOneWidget);
+        expect(find.text('确认转出'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }
@@ -105,6 +114,19 @@ void main() {
 class AvailabilityApi extends ApiClient {
   AvailabilityApi() : super(const AppConfig());
   bool fail = false;
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+    int? userId,
+    String? productLine,
+    Map<String, String>? headers,
+    bool unwrapResponseResult = true,
+  }) async {
+    if (path == '/api/v1/c2c/status') return {'runtimeEnabled': false};
+    throw ApiException(503, 'offline navigation fixture');
+  }
+
   @override
   Future<Set<ProductMode>> disabledProducts() async {
     if (fail) throw ApiException(503, 'configuration unavailable');

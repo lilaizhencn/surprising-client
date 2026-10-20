@@ -5,6 +5,7 @@ import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/asset_overview.dart';
+import 'package:surprising_client/src/exchange_widgets.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/realtime_state.dart';
 
@@ -76,6 +77,7 @@ void main() {
         ..receivedAt = DateTime.now();
       s.productBalances[p] = [
         ProductBalance(
+          scaleUnits: 100000000,
           accountType: p.accountType,
           asset: 'USDT',
           availableUnits: p.isSpot
@@ -110,8 +112,16 @@ void main() {
       tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
       '17.00',
     );
-    expect(find.text('资金账户（含现货）'), findsOneWidget);
+    expect(find.text('资金账户'), findsOneWidget);
     expect(find.widgetWithText(ListTile, '现货'), findsNothing);
+    expect(s.productBalancesUsdt(includeSpot: false), 5);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AccountValueHeader(state: s)),
+      ),
+    );
+    expect(find.text('17.00'), findsOneWidget);
+    expect(find.text('29.00'), findsNothing);
   });
 
   test('funding balance survives a failed history endpoint', () async {
@@ -141,6 +151,7 @@ void main() {
         s.valuationRates[ValuationCurrency.cny] = 7;
         s.productBalances[ProductMode.linear] = [
           const ProductBalance(
+            scaleUnits: 100000000,
             accountType: 'USDT_PERPETUAL',
             asset: 'USDT',
             availableUnits: 300000000,
@@ -175,7 +186,7 @@ void main() {
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
           '—',
         );
-        await tester.tap(find.widgetWithText(ChoiceChip, '资金账户'));
+        await tester.tap(find.byKey(const ValueKey('asset-account-funding')));
         await tester.pumpAndSettle();
         expect(
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
@@ -196,15 +207,16 @@ void main() {
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
           '84.00',
         );
-        await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'U本位永续'));
-        await tester.tap(find.widgetWithText(ChoiceChip, 'U本位永续'));
+        await tester.tap(find.byTooltip('资产筛选'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, 'U本位永续'));
         await tester.pumpAndSettle();
         expect(
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
           '35.00',
         );
         expect(find.text('资金账户 · USDT'), findsNothing);
-        expect(find.text('5.0000'), findsOneWidget);
+        expect(find.text('5'), findsOneWidget);
         expect(s.mode, ProductMode.linear);
         expect(tester.takeException(), isNull);
       },

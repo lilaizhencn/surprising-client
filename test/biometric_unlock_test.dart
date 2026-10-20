@@ -10,6 +10,12 @@ import 'package:surprising_client/src/session_store.dart';
 
 void main() {
   Future<void> lifecycle(WidgetTester tester, AppLifecycleState next) async {
+    // Match the platform's legal reverse transition when returning from pause.
+    if (next == AppLifecycleState.resumed &&
+        tester.binding.lifecycleState == AppLifecycleState.paused) {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    }
     tester.binding.handleAppLifecycleStateChanged(next);
     await tester.pump();
   }
@@ -27,8 +33,14 @@ void main() {
   }
 
   setUp(() {
-    TestWidgetsFlutterBinding.ensureInitialized()
-        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final binding = TestWidgetsFlutterBinding.ensureInitialized();
+    if (binding.lifecycleState == AppLifecycleState.paused) {
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    }
+    if (binding.lifecycleState == AppLifecycleState.hidden) {
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    }
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
 
   testWidgets(

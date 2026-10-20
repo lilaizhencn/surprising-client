@@ -12,6 +12,7 @@ import 'account_records.dart';
 import 'session_store.dart';
 import 'spot_order.dart';
 import 'telegram_login.dart';
+import 'pending_transfer.dart';
 
 class WithdrawalAssetRule {
   const WithdrawalAssetRule({
@@ -34,19 +35,26 @@ class WithdrawalAssetRule {
   final String? configuredMinimum;
   final String? fee;
 
+  String? get feeAmount => fee == null ? null : plainNonnegativeDecimal(fee!);
+  bool get hasValidFee => fee == null || feeAmount != null;
+
   String? get minimumAmount {
     final configured = configuredMinimum?.trim();
-    if (configured != null && configured.isNotEmpty) return configured;
+    if (configured != null) return plainNonnegativeDecimal(configured);
     final precision = decimals;
-    if (precision == null || precision < 0) return null;
+    if (precision == null || precision < 0 || precision > 36) return null;
     if (precision == 0) return '1';
     return '0.${'0' * (precision - 1)}1';
   }
 
   String? receivedAmount(String amount) {
-    final configuredFee = fee?.trim();
-    if (configuredFee == null || configuredFee.isEmpty) return null;
-    return _subtractDecimal(amount, configuredFee);
+    final configuredFee = feeAmount;
+    final input = amount.trim();
+    if (configuredFee == null ||
+        !RegExp(r'^(?:0|[1-9]\d*)(?:\.\d+)?$').hasMatch(input)) {
+      return null;
+    }
+    return _subtractDecimal(input, configuredFee);
   }
 }
 
@@ -187,6 +195,7 @@ class AppState extends ChangeNotifier {
        realtime = realtimeClient ?? RealtimeClient(config),
        sessionStore = sessionStore ?? SecureSessionStore() {
     this.settingsStore = settingsStore ?? SecureClientSettingsStore();
+    if (apiClient == null) api.deviceIdLoader = _persistentDeviceId;
     api.onSessionRefreshed = _persistRefreshedSession;
     api.onSessionExpired = _clearExpiredSession;
     final initialInstruments = offline
@@ -686,6 +695,8 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<String, dynamic>> _publicVersions = {};
   final Map<ProductMode, PrivateView> privateViews = {};
   final Map<ProductMode, List<ProductBalance>> productBalances = {};
+  Map<String, String> _balanceScales = {};
+  int _balanceScalesVersion = 0;
   bool assetsReady = false;
   bool onlyCurrentTradingPair = true;
   final Map<String, int> positionPnlUnits = {};
@@ -766,10 +777,17 @@ class AppState extends ChangeNotifier {
   bool loadingPublic = false;
   bool loadingPrivate = false;
   int _privateDataRequestVersion = 0;
-  bool transferSubmitting = false;
-  bool transferOutcomeLocked = false;
-  bool transferOutcomeTerminalFailure = false;
-  bool transferVerificationRequired = false;
+  final Map<int, PendingAccountTransfer> _pendingTransfers = {};
+  final Set<int> _transfersInFlight = {};
+  bool _transferIntentsRestored = false;
+  Future<bool>? _transferRestore;
+  PendingAccountTransfer? get pendingTransfer => _pendingTransfers[userId];
+  bool get transferSubmitting => _transfersInFlight.contains(userId);
+  bool get transferOutcomeLocked =>
+      pendingTransfer != null && !transferVerificationRequired;
+  bool get transferOutcomeTerminalFailure =>
+      pendingTransfer?.status == 'FAILED';
+  bool get transferVerificationRequired => pendingTransfer?.status == 'VERIFY';
   bool withdrawalSubmitting = false;
   bool withdrawalOutcomeLocked = false;
   bool withdrawalOutcomeUnknown = false;
@@ -792,7 +810,6 @@ class AppState extends ChangeNotifier {
   int _openOrdersRequestVersion = 0;
   int _announcementsRequestVersion = 0;
   final Map<int, int> _triggerOrderEventVersions = {};
-  String? _transferIdempotencyKey;
   String? _withdrawalIdempotencyKey;
   String? _withdrawalIntentFingerprint;
   int? _withdrawalIntentUserId;
@@ -885,7 +902,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  double? productBalancesUsdt({ProductMode? product}) {
+  double? productBalancesUsdt({ProductMode? product, bool includeSpot = true}) {
     var total = 0.0;
     if (!isLoggedIn ||
         (product == null ? !assetsReady : !productAssetsReady(product))) {
@@ -893,13 +910,19 @@ class AppState extends ChangeNotifier {
     }
     for (final balance
         in product == null
-            ? allProductBalances
+            ? productBalances.entries
+                  .where(
+                    (entry) => includeSpot || entry.key != ProductMode.spot,
+                  )
+                  .expand((entry) => entry.value)
             : (productBalances[product] ?? <ProductBalance>[])) {
-      if (balance.equity == 0) continue;
+      final equity = balance.equity;
+      if (equity == null) return null;
+      if (equity == 0) continue;
       final asset = balance.asset.toUpperCase();
       final price = asset == 'USDT' ? 1.0 : walletAssetPricesUsdt[asset];
       if (price == null || !price.isFinite || price <= 0) return null;
-      total += balance.equity * price;
+      total += equity * price;
     }
     return total;
   }
@@ -965,6 +988,18 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Future<String> _persistentDeviceId() async {
+    final values = await settingsStore.read();
+    final existing = values['deviceId'];
+    if (existing != null &&
+        RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(existing)) {
+      return existing;
+    }
+    final created = ApiClient.newDeviceId();
+    await settingsStore.write({...values, 'deviceId': created});
+    return created;
+  }
+
   Future<void> _restoreSettings() async {
     try {
       final values = await settingsStore.read();
@@ -973,6 +1008,7 @@ class AppState extends ChangeNotifier {
       valuationCurrency = ValuationCurrency.fromCode(
         values['valuationCurrency'] ?? 'USDT',
       );
+      _readPendingTransfers(values);
       _withdrawalIdempotencyKey = _nonEmpty(values['withdrawalKey']);
       _withdrawalIntentFingerprint = _nonEmpty(values['withdrawalFingerprint']);
       _withdrawalIntentUserId = int.tryParse(values['withdrawalUserId'] ?? '');
@@ -1071,6 +1107,7 @@ class AppState extends ChangeNotifier {
 
   Future<bool> _writeSettings({
     PendingTradingOrder? completedTradingIntent,
+    PendingAccountTransfer? completedTransferIntent,
   }) async {
     final previous = _settingsWriteTail;
     final completed = Completer<void>();
@@ -1084,12 +1121,30 @@ class AppState extends ChangeNotifier {
           )) {
         return false;
       }
+      if (completedTransferIntent != null &&
+          !identical(
+            _pendingTransfers[completedTransferIntent.userId],
+            completedTransferIntent,
+          )) {
+        return false;
+      }
       final values = <String, String>{
+        'deviceId': await api.resolveDeviceId(),
         'theme': clientTheme.code,
         'language': language.code,
         'valuationCurrency': valuationCurrency.code,
       };
       final withdrawalKey = _withdrawalIdempotencyKey;
+      // Preserve recovery receipts if a settings action precedes restoration.
+      if (!_transferIntentsRestored && !await restorePendingTransfers()) {
+        return false;
+      }
+      values['pendingTransfers'] = jsonEncode(
+        _pendingTransfers.values
+            .where((pending) => !identical(pending, completedTransferIntent))
+            .map((pending) => pending.toJson())
+            .toList(),
+      );
       if (withdrawalKey != null) values['withdrawalKey'] = withdrawalKey;
       final withdrawalFingerprint = _withdrawalIntentFingerprint;
       if (withdrawalFingerprint != null) {
@@ -1134,6 +1189,15 @@ class AppState extends ChangeNotifier {
           return false;
         }
         _pendingTradingOrders.remove(completedTradingIntent.userId);
+      }
+      if (completedTransferIntent != null) {
+        if (!identical(
+          _pendingTransfers[completedTransferIntent.userId],
+          completedTransferIntent,
+        )) {
+          return false;
+        }
+        _pendingTransfers.remove(completedTransferIntent.userId);
       }
       return true;
     } catch (_) {
@@ -1694,6 +1758,44 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  int? _balanceScaleFor(String asset) {
+    final code = asset.toUpperCase();
+    bool valid(int? scale) =>
+        scale != null && RegExp(r'^10*$').hasMatch('$scale');
+    if (_balanceScales.containsKey(code)) {
+      final scale = int.tryParse(_balanceScales[code]!);
+      return valid(scale) ? scale : null;
+    }
+    // Instrument scales also originate from the authoritative asset catalog.
+    final known = <int>{};
+    for (final instrument in instruments) {
+      for (final entry in [
+        (instrument.baseAsset, instrument.baseScaleUnits),
+        (instrument.quoteAsset, instrument.quoteScaleUnits),
+        (instrument.settleAsset, instrument.settleScaleUnits),
+      ]) {
+        if (entry.$1.toUpperCase() == code && valid(entry.$2)) {
+          known.add(entry.$2!);
+        }
+      }
+    }
+    return known.length == 1 ? known.single : null;
+  }
+
+  Future<void> refreshBalanceScales() async {
+    final version = ++_balanceScalesVersion, epoch = _walletSessionVersion;
+    try {
+      final scales = await api.assetScales();
+      if (version != _balanceScalesVersion || epoch != _walletSessionVersion) {
+        return;
+      }
+      _balanceScales = Map.unmodifiable(scales);
+      _materializePrivate();
+    } catch (_) {
+      // Unknown precision is represented by nullable amounts, never 1e8.
+    }
+  }
+
   Future<void> refreshPrivateData() async {
     final id = userId;
     if (offline || id == null) return;
@@ -1711,6 +1813,7 @@ class AppState extends ChangeNotifier {
     await refreshProductAvailability();
     if (!current()) return;
     final walletRefresh = refreshWallet();
+    final scalesRefresh = refreshBalanceScales();
     final orderTermsRefresh = refreshOrderTerms();
     final algoRefresh = refreshAlgoOrders();
     try {
@@ -1730,6 +1833,7 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       await walletRefresh;
+      await scalesRefresh;
       await orderTermsRefresh;
       await algoRefresh;
       if (current()) {
@@ -3500,6 +3604,38 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  void _readPendingTransfers(Map<String, String> values) {
+    final raw = jsonDecode(values['pendingTransfers'] ?? '[]');
+    if (raw is! List || raw.length > 128) {
+      throw const FormatException('划转恢复资料无效');
+    }
+    final restored = <int, PendingAccountTransfer>{};
+    for (final row in raw) {
+      if (row is! Map) throw const FormatException('划转恢复资料无效');
+      final pending = PendingAccountTransfer.fromJson(asMap(row));
+      if (restored.containsKey(pending.userId)) {
+        throw const FormatException('划转恢复资料重复');
+      }
+      restored[pending.userId] = pending;
+    }
+    for (final entry in restored.entries) {
+      _pendingTransfers.putIfAbsent(entry.key, () => entry.value);
+    }
+    _transferIntentsRestored = true;
+  }
+
+  Future<bool> restorePendingTransfers() {
+    if (_transferIntentsRestored) return Future.value(true);
+    return _transferRestore ??= () async {
+      try {
+        _readPendingTransfers(await settingsStore.read());
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }();
+  }
+
   Future<void> transfer({
     required String sourceAccountType,
     required String targetAccountType,
@@ -3509,8 +3645,7 @@ class AppState extends ChangeNotifier {
     String? emailCode,
     String? totpCode,
   }) async {
-    final id = userId;
-    final epoch = _walletSessionVersion;
+    final id = userId, epoch = _walletSessionVersion;
     bool current() => id == userId && epoch == _walletSessionVersion;
     if (id == null) {
       lastError = '请先登录再划转';
@@ -3525,110 +3660,186 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    transferSubmitting = true;
+    _transfersInFlight.add(id);
+    lastError = null;
+    lastNotice = null;
     notifyListeners();
-    late int amountUnits;
+    PendingAccountTransfer? pending;
     try {
       final scales = await api.assetScales();
-      if (!current()) {
-        transferSubmitting = false;
-        return;
-      }
-      amountUnits = exactAmountUnits(
+      if (!current()) return;
+      final units = exactAmountUnits(
         amountText ?? '$amount',
         scales[asset.toUpperCase()] ?? '',
       );
-    } catch (error) {
-      if (!current()) {
-        transferSubmitting = false;
+      if (!await restorePendingTransfers()) {
+        throw StateError('无法读取原划转凭证，请检查安全存储后重试');
+      }
+      if (!current()) return;
+      final original = _pendingTransfers[id];
+      if (original != null) {
+        if (original.status != 'VERIFY' ||
+            original.source != sourceAccountType ||
+            original.target != targetAccountType ||
+            original.asset != asset.toUpperCase() ||
+            original.amountUnits != units) {
+          lastError = '请先确认原划转结果';
+          return;
+        }
+        pending = original;
+      } else {
+        pending = PendingAccountTransfer.create(
+          userId: id,
+          source: sourceAccountType,
+          target: targetAccountType,
+          asset: asset.toUpperCase(),
+          amountUnits: units,
+        );
+        _pendingTransfers[id] = pending;
+      }
+      if (!await _writeSettings()) {
+        // No HTTP request has been sent; retain the original identity for a safe retry.
+        if (current()) {
+          lastError = '无法安全保存划转凭证，未发送请求，请检查安全存储';
+        }
         return;
       }
+      if (!current()) return;
+      await _submitPendingTransfer(
+        pending,
+        emailCode: emailCode,
+        totpCode: totpCode,
+      );
+    } catch (error) {
       if (current()) {
         lastError = error is FormatException
             ? error.message
-            : '币种精度暂不可用，请刷新后重试';
+            : clientErrorMessage(error);
       }
-      transferSubmitting = false;
-      notifyListeners();
+    } finally {
+      _transfersInFlight.remove(id);
+      if (current()) notifyListeners();
+    }
+  }
+
+  /// An explicit recovery action resends only the durably stored command. A 404
+  /// or missing receipt never permits replacing an uncertain monetary command.
+  Future<void> resumePendingTransfer({
+    String? emailCode,
+    String? totpCode,
+  }) async {
+    final pending = pendingTransfer;
+    final epoch = _walletSessionVersion;
+    bool current() =>
+        epoch == _walletSessionVersion && userId == pending?.userId;
+    if (pending == null || transferSubmitting || pending.status == 'FAILED') {
       return;
     }
-    final idempotencyKey = _transferIdempotencyKey ??=
-        'app-transfer-$id-${DateTime.now().microsecondsSinceEpoch}';
-    transferSubmitting = true;
+    _transfersInFlight.add(pending.userId);
     lastError = null;
     lastNotice = null;
     notifyListeners();
     try {
-      final result = await api.transfer(
-        userId: id,
-        sourceAccountType: sourceAccountType,
-        targetAccountType: targetAccountType,
-        asset: asset,
-        amountUnits: amountUnits,
-        idempotencyKey: idempotencyKey,
+      if (!await _writeSettings()) {
+        if (current()) {
+          lastError = '无法安全保存划转凭证，未发送请求，请检查安全存储';
+        }
+        return;
+      }
+      if (epoch != _walletSessionVersion || userId != pending.userId) return;
+      await _submitPendingTransfer(
+        pending,
         emailCode: emailCode,
         totpCode: totpCode,
       );
-      if (!current()) {
-        transferOutcomeLocked = true;
-        transferOutcomeTerminalFailure = false;
-        return;
+    } finally {
+      _transfersInFlight.remove(pending.userId);
+      if (epoch == _walletSessionVersion && userId == pending.userId) {
+        notifyListeners();
       }
+    }
+  }
+
+  Future<void> _submitPendingTransfer(
+    PendingAccountTransfer pending, {
+    String? emailCode,
+    String? totpCode,
+  }) async {
+    final epoch = _walletSessionVersion;
+    bool current() =>
+        epoch == _walletSessionVersion && userId == pending.userId;
+    try {
+      final result = await api.transfer(
+        userId: pending.userId,
+        sourceAccountType: pending.source,
+        targetAccountType: pending.target,
+        asset: pending.asset,
+        amountUnits: pending.amountUnits,
+        idempotencyKey: pending.key,
+        emailCode: emailCode,
+        totpCode: totpCode,
+      );
+      if (!identical(_pendingTransfers[pending.userId], pending)) return;
       final status = asString(
         result['status'],
         fallback: 'UNKNOWN',
       ).toUpperCase();
       final transferId = asString(result['transferId']).trim();
       if (status == 'COMPLETED') {
-        _transferIdempotencyKey = null;
-        transferVerificationRequired = false;
-        lastNotice = '划转已完成${transferId.isEmpty ? '' : '，流水号 $transferId'}';
-        await refreshPrivateData();
-      } else {
-        transferOutcomeLocked = true;
-        transferOutcomeTerminalFailure = status == 'FAILED';
-        lastError = status == 'FAILED'
-            ? '划转未完成${transferId.isEmpty ? '' : '，流水号 $transferId'}，请查看资金记录'
-            : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
-      }
-    } catch (error) {
-      if (!current()) {
-        transferOutcomeLocked = true;
-        transferOutcomeTerminalFailure = false;
-        return;
-      }
-      if (error is ApiException && error.statusCode == 428) {
-        transferVerificationRequired = true;
-        try {
-          final challenge = await api.issueSecurityChallenge('LARGE_TRANSFER');
-          if (!current()) return;
-          lastNotice = '大额划转需要验证，验证码已发送至 ${asString(challenge['destination'])}';
-        } catch (_) {
-          lastError = '验证码发送失败，请稍后重试';
+        if (!await _writeSettings(completedTransferIntent: pending)) {
+          if (current()) lastError = '划转已完成，但恢复凭证未能清除，请继续确认原请求';
+          return;
+        }
+        if (current()) {
+          lastNotice = '划转已完成${transferId.isEmpty ? '' : '，流水号 $transferId'}';
+          await refreshPrivateData();
         }
       } else {
-        transferOutcomeLocked = true;
-        transferOutcomeTerminalFailure = false;
-        lastError =
-            error is ApiException &&
-                error.statusCode >= 400 &&
-                error.statusCode < 500
-            ? '划转未完成，请查看资金记录后再决定下一步'
-            : '划转结果未知，请勿重复提交，请查看资金记录';
+        _pendingTransfers[pending.userId] = pending.withStatus(
+          const {'FAILED', 'PENDING', 'SOURCE_DEBITED'}.contains(status)
+              ? status
+              : 'UNKNOWN',
+        );
+        await _writeSettings();
+        if (current()) {
+          lastError = status == 'FAILED'
+              ? '划转未完成${transferId.isEmpty ? '' : '，流水号 $transferId'}，请查看资金记录'
+              : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
+        }
       }
-    } finally {
-      transferSubmitting = false;
+    } catch (error) {
+      if (!identical(_pendingTransfers[pending.userId], pending)) return;
+      if (error is ApiException && error.statusCode == 428) {
+        _pendingTransfers[pending.userId] = pending.withStatus('VERIFY');
+        await _writeSettings();
+        if (!current()) return;
+        try {
+          final challenge = await api.issueSecurityChallenge('LARGE_TRANSFER');
+          if (current()) {
+            lastNotice =
+                '大额划转需要验证，验证码已发送至 ${asString(challenge['destination'])}';
+          }
+        } catch (_) {
+          if (current()) lastError = '验证码发送失败，请稍后重试';
+        }
+      } else {
+        _pendingTransfers[pending.userId] = pending.withStatus('UNKNOWN');
+        await _writeSettings();
+        if (current()) lastError = '划转结果未知，请勿重复提交，请确认原划转';
+      }
     }
-    if (current()) notifyListeners();
   }
 
-  void resetTransferIntent() {
-    if (!transferOutcomeTerminalFailure || transferSubmitting) return;
-    _transferIdempotencyKey = null;
-    transferOutcomeLocked = false;
-    transferOutcomeTerminalFailure = false;
-    transferVerificationRequired = false;
-    lastError = null;
+  Future<void> resetTransferIntent() async {
+    final pending = pendingTransfer;
+    if (pending == null || pending.status != 'FAILED' || transferSubmitting) {
+      return;
+    }
+    if (!await _writeSettings(completedTransferIntent: pending)) {
+      lastError = '无法清除原划转凭证，请检查安全存储';
+    } else {
+      lastError = null;
+    }
     notifyListeners();
   }
 
@@ -3672,7 +3883,7 @@ class AppState extends ChangeNotifier {
           .where((asset) => asset.totalBalance != 0)
           .map((asset) => asset.symbol.toUpperCase()),
       ...allProductBalances
-          .where((balance) => balance.equity != 0)
+          .where((balance) => balance.equityUnits != 0)
           .map((balance) => balance.asset.toUpperCase()),
     };
     if (assets.isEmpty) {
@@ -3806,16 +4017,22 @@ class AppState extends ChangeNotifier {
   }) {
     if (session == null) return '请先登录再提币';
     if (!withdrawalRulesReady) return '提币规则暂不可用，请刷新后重试';
+    if (!walletReady) return '可用余额暂不可用，请刷新后重试';
     final normalizedChain = chain.trim().toUpperCase();
     final normalizedSymbol = symbol.trim().toUpperCase();
     if (normalizedChain.isEmpty || normalizedSymbol.isEmpty) {
       return '请选择提币资产和网络';
     }
     final rule = withdrawalRuleFor(normalizedChain, normalizedSymbol);
-    if (rule != null && !rule.withdrawalEnabled) return '当前网络暂不支持提币';
+    if (rule == null || !rule.withdrawalEnabled) return '当前网络暂不支持提币';
+    if (rule.family.trim().isEmpty) return '网络类型尚未同步，请刷新后重试';
+    if (!rule.hasValidFee) return '提币手续费资料暂不可用，请刷新后重试';
+    if (rule.configuredMinimum != null && rule.minimumAmount == null) {
+      return '最低提币数量资料暂不可用，请刷新后重试';
+    }
     final addressError = _validateWithdrawalAddress(
       toAddress,
-      rule?.family ?? normalizedChain,
+      rule.family.isEmpty ? normalizedChain : rule.family,
     );
     if (addressError != null) return addressError;
 
@@ -3826,27 +4043,21 @@ class AppState extends ChangeNotifier {
       return '提币数量必须大于 0';
     }
     final fractionDigits = match.group(1)?.length ?? 0;
-    final precision = rule?.decimals;
-    if (precision != null && fractionDigits > precision) {
+    final precision = rule.decimals;
+    if (precision == null) return '提币精度尚未同步，请刷新后重试';
+    if (fractionDigits > precision) {
       return '$normalizedSymbol 最多支持 $precision 位小数';
     }
-    if (precision == null && fractionDigits > 18) {
-      return '提币数量最多支持 18 位小数';
-    }
-    final minimum = rule?.minimumAmount;
+    final minimum = rule.minimumAmount;
     if (minimum != null && _compareDecimals(rawAmount, minimum) < 0) {
       return '最低提币数量为 $minimum $normalizedSymbol';
     }
-    final available = _withdrawalAvailableBalance(
-      normalizedChain,
-      normalizedSymbol,
-    );
-    if (available != null &&
-        (!available.isFinite ||
-            _compareDecimals(rawAmount, available.toString()) > 0)) {
+    final available = _withdrawalAvailableBalance(normalizedSymbol);
+    if (available == null) return '可用余额暂不可用，请刷新后重试';
+    if (_compareDecimals(rawAmount, available) > 0) {
       return '提币数量超过可用余额';
     }
-    final received = rule?.receivedAmount(rawAmount);
+    final received = rule.receivedAmount(rawAmount);
     if (received != null && _compareDecimals(received, '0') <= 0) {
       return '提币数量必须大于手续费';
     }
@@ -3929,7 +4140,7 @@ class AppState extends ChangeNotifier {
       final rule = withdrawalRuleFor(normalizedChain, normalizedSymbol);
       final fee =
           _firstDecimal(result, const ['fee', 'withdrawalFee', 'networkFee']) ??
-          rule?.fee;
+          rule?.feeAmount;
       final received =
           _firstDecimal(result, const [
             'receivedAmount',
@@ -4013,15 +4224,29 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  double? _withdrawalAvailableBalance(String chain, String symbol) {
+  String? _withdrawalAvailableBalance(String symbol) {
     for (final asset in walletPortfolio.assets) {
       if (asset.symbol.toUpperCase() != symbol) continue;
-      for (final item in asset.chains) {
-        if (item.chain.toUpperCase() == chain) return item.availableBalance;
-      }
-      return asset.availableBalance;
+      return asset.availableAmount;
     }
     return null;
+  }
+
+  String? withdrawalMaximum(String chain, String symbol) {
+    final decimals = withdrawalRuleFor(chain, symbol)?.decimals;
+    final available = _withdrawalAvailableBalance(symbol);
+    if (decimals == null ||
+        decimals < 0 ||
+        decimals > 36 ||
+        available == null) {
+      return null;
+    }
+    final parts = available.split('.');
+    final fraction = parts.length == 1 ? '' : parts[1];
+    final bounded = fraction.substring(0, math.min(fraction.length, decimals));
+    return plainNonnegativeDecimal(
+      '${parts.first}${bounded.isEmpty ? '' : '.$bounded'}',
+    );
   }
 
   List<WithdrawalAssetRule> _withdrawalRulesFrom(
@@ -4403,8 +4628,6 @@ class AppState extends ChangeNotifier {
       if (equity.keys.any((asset) => !cash.any((b) => b['asset'] == asset))) {
         productComplete = false;
       }
-      if (productComplete && _privateAuthenticated) valuedProducts.add(product);
-      complete = complete && productComplete;
       productBalances[product] = cash
           .map(
             (b) => ProductBalance(
@@ -4413,9 +4636,17 @@ class AppState extends ChangeNotifier {
               availableUnits: asInt(b['availableUnits']),
               lockedUnits: asInt(b['lockedUnits']),
               equityUnits: equity[asString(b['asset'])] ?? 0,
+              scaleUnits: _balanceScaleFor(asString(b['asset'])),
             ),
           )
           .toList();
+      if (productBalances[product]!.any(
+        (b) => b.available == null || b.locked == null || b.equity == null,
+      )) {
+        productComplete = false;
+      }
+      if (productComplete && _privateAuthenticated) valuedProducts.add(product);
+      complete = complete && productComplete;
       if (product == mode) {
         balances = productBalances[product]!;
         positions = activePositions

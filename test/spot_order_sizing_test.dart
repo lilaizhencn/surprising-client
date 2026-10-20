@@ -22,6 +22,7 @@ Instrument instrument([Map<String, dynamic> changes = const {}]) =>
       ...changes,
     });
 ProductBalance balance(int units, [String asset = 'USDT']) => ProductBalance(
+  scaleUnits: 100000000,
   accountType: 'SPOT',
   asset: asset,
   availableUnits: units,

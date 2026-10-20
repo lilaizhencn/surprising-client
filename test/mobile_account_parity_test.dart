@@ -10,6 +10,7 @@ import 'package:surprising_client/src/device_access_panel.dart';
 import 'package:surprising_client/src/funding_records_page.dart';
 import 'package:surprising_client/src/kyc_application_page.dart';
 import 'package:surprising_client/src/models.dart';
+import 'transfer_page_test.dart' show MemorySettings;
 import 'account_display_test.dart' show AccountApi, session;
 
 void main() {
@@ -62,7 +63,11 @@ void main() {
     'transfer rejects excessive precision before any debit command',
     () async {
       final api = TransferPrecisionApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        offline: true,
+        apiClient: api,
+        settingsStore: MemorySettings(),
+      )..session = session;
       addTearDown(state.dispose);
       await state.transfer(
         sourceAccountType: 'FUNDING',
@@ -249,7 +254,11 @@ void main() {
     tester,
   ) async {
     final api = KycApi();
-    final state = AppState(offline: true, apiClient: api)..session = session;
+    final state = AppState(
+      offline: true,
+      apiClient: api,
+      settingsStore: MemorySettings(),
+    )..session = session;
     addTearDown(state.dispose);
     await tester.pumpWidget(
       MaterialApp(home: KycApplicationPage(state: state)),

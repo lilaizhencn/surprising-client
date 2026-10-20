@@ -122,6 +122,29 @@ void main() {
       ),
     );
     expect(find.text('17.00'), findsOneWidget);
+    final RenderBox amountBox = tester.renderObject(find.text('17.00'));
+    final RenderBox currencyBox = tester.renderObject(
+      find
+          .descendant(
+            of: find.byType(DropdownButton<ValuationCurrency>),
+            matching: find.text('USDT'),
+          )
+          .first,
+    );
+    double baseline(RenderBox box) => box
+        .localToGlobal(
+          Offset(
+            0,
+            box.getDryBaseline(box.constraints, TextBaseline.alphabetic)!,
+          ),
+        )
+        .dy;
+    expect(
+      baseline(currencyBox),
+      closeTo(baseline(amountBox), .1),
+      reason: 'The valuation currency must share the amount baseline',
+    );
+
     expect(find.text('29.00'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     s.dispose();
@@ -143,6 +166,8 @@ void main() {
     testWidgets(
       'account filter, privacy and currency on small $brightness screen',
       (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         tester.view.physicalSize = const Size(320, 900);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);

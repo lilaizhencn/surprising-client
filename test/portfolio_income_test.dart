@@ -231,6 +231,26 @@ void main() {
         ),
       );
       expect(find.textContaining('+21.00'), findsOneWidget);
+      await tester.tap(find.byTooltip('隐藏资产'));
+      await tester.pumpAndSettle();
+      final privateText = tester.widget<Text>(
+        find.textContaining('••••••').last,
+      );
+      final muted = Theme.of(
+        tester.element(find.byType(AccountValueHeader)),
+      ).colorScheme.onSurfaceVariant;
+      expect(
+        privateText.style?.color,
+        muted,
+        reason: 'Hidden income must not reveal gain/loss through its color',
+      );
+      if (privateText.textSpan case final TextSpan span) {
+        expect(
+          span.children!.whereType<TextSpan>().map((s) => s.style?.color),
+          everyElement(muted),
+        );
+      }
+
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       state.dispose();

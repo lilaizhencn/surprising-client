@@ -1117,6 +1117,7 @@ class _HomePageState extends State<HomePage> {
           ]);
         },
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -1313,6 +1314,23 @@ class MarketProductStrip extends StatelessWidget {
                 key: ValueKey('market-product-${product.name}'),
                 label: Text(product.label),
                 selected: state.mode == product,
+                selectedColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF262626)
+                    : const Color(0xFFECECEC),
+                backgroundColor: Colors.transparent,
+                labelStyle: TextStyle(
+                  color: state.mode == product
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: state.mode == product
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 showCheckmark: false,
                 side: BorderSide.none,
                 shape: const StadiumBorder(),
@@ -1342,6 +1360,7 @@ class MarketListHeading extends StatelessWidget {
           ),
         ),
       ),
+      const SizedBox(width: 8),
       Expanded(
         flex: 3,
         child: Text(
@@ -1425,6 +1444,8 @@ class _MarketsPageState extends State<MarketsPage> {
             child: RefreshIndicator(
               onRefresh: state.refreshInstruments,
               child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
@@ -1527,6 +1548,7 @@ class PublicMarketRow extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Expanded(
               flex: 3,
               child: Column(
@@ -1544,6 +1566,7 @@ class PublicMarketRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
+                      fontFeatures: exchangeNumberFeatures,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -1568,22 +1591,29 @@ class PublicMarketRow extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: change == null
-                    ? colors.surfaceContainerHighest
+                    ? exchangePanel(context)
                     : change >= 0
-                    ? const Color(0xFF20A255)
+                    ? const Color(0xFF15803D)
                     : const Color(0xFFC83E65),
                 borderRadius: BorderRadius.circular(5),
               ),
-              child: Text(
-                change == null
-                    ? '—'
-                    : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
-                style: TextStyle(
-                  color: change == null
-                      ? colors.onSurfaceVariant
-                      : Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    change == null
+                        ? '—'
+                        : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      color: change == null
+                          ? colors.onSurfaceVariant
+                          : Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: exchangeNumberFeatures,
+                    ),
+                  ),
                 ),
               ),
             ),

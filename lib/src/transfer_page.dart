@@ -223,9 +223,7 @@ class _TransferPageState extends State<TransferPage> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final colors = Theme.of(context).colorScheme;
-    final fill = Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFF111111)
-        : const Color(0xFFF4F4F4);
+    final fill = exchangePanel(context);
     final locked = state.transferSubmitting || state.pendingTransfer != null;
     final available = _available(state, asset);
     final scale = int.tryParse(scales[asset] ?? '');
@@ -247,6 +245,7 @@ class _TransferPageState extends State<TransferPage> {
     Widget accountCard(String value, String label, VoidCallback onTap) =>
         Expanded(
           child: Material(
+            key: ValueKey('transfer-account-$label'),
             color: fill,
             borderRadius: BorderRadius.circular(22),
             clipBehavior: Clip.antiAlias,
@@ -333,21 +332,19 @@ class _TransferPageState extends State<TransferPage> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             const SizedBox(height: 18),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                accountCard(source, '从', () {
-                                  _account(state, from: true);
-                                }),
-                                SizedBox(
-                                  width: 26,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 28),
+                            IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  accountCard(source, '从', () {
+                                    _account(state, from: true);
+                                  }),
+                                  Center(
                                     child: IconButton(
                                       key: const ValueKey('transfer-swap'),
                                       tooltip: '互换账户',
-                                      padding: EdgeInsets.zero,
                                       style: IconButton.styleFrom(
+                                        minimumSize: const Size.square(44),
                                         backgroundColor: colors.onSurface,
                                         foregroundColor: colors.surface,
                                         shape: const CircleBorder(),
@@ -363,15 +360,15 @@ class _TransferPageState extends State<TransferPage> {
                                             }),
                                       icon: const Icon(
                                         Icons.swap_horiz,
-                                        size: 20,
+                                        size: 22,
                                       ),
                                     ),
                                   ),
-                                ),
-                                accountCard(target, '到', () {
-                                  _account(state, from: false);
-                                }),
-                              ],
+                                  accountCard(target, '到', () {
+                                    _account(state, from: false);
+                                  }),
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 30),
                             Row(
@@ -383,6 +380,9 @@ class _TransferPageState extends State<TransferPage> {
                                   ),
                                 ),
                                 TextButton(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: colors.onSurface,
+                                  ),
                                   onPressed: locked || loading
                                       ? null
                                       : () {
@@ -411,6 +411,7 @@ class _TransferPageState extends State<TransferPage> {
                                     style: const TextStyle(
                                       fontSize: 36,
                                       fontWeight: FontWeight.w500,
+                                      fontFeatures: exchangeNumberFeatures,
                                     ),
                                     decoration: InputDecoration(
                                       hintText: '0 $asset',

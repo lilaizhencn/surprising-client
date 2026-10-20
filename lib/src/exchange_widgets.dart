@@ -4,6 +4,21 @@ import 'app_state.dart';
 import 'models.dart';
 
 const exchangeAccent = Color(0xFFB7FF26);
+const exchangeNumberFeatures = [FontFeature.tabularFigures()];
+
+Color exchangePanel(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFF111111)
+    : const Color(0xFFF4F4F4);
+
+Color exchangeIncomeColor(BuildContext context, double? amount) =>
+    amount == null
+    ? Theme.of(context).colorScheme.onSurfaceVariant
+    : amount >= 0
+    ? Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF38C979)
+          : const Color(0xFF15803D)
+    : const Color(0xFFC83E65);
 
 String groupedMoney(double amount, {int digits = 2}) {
   final parts = money(amount, digits: digits).split('.');
@@ -38,7 +53,7 @@ ButtonStyle exchangeIconStyle(BuildContext context) => IconButton.styleFrom(
   shape: const CircleBorder(),
 );
 
-class ExchangeSearchField extends StatelessWidget {
+class ExchangeSearchField extends StatefulWidget {
   const ExchangeSearchField({
     required this.onChanged,
     this.onScan,
@@ -50,6 +65,19 @@ class ExchangeSearchField extends StatelessWidget {
   final String hintText;
 
   @override
+  State<ExchangeSearchField> createState() => _ExchangeSearchFieldState();
+}
+
+class _ExchangeSearchFieldState extends State<ExchangeSearchField> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final fill = dark ? const Color(0xFF222222) : const Color(0xFFF3F3F3);
@@ -58,11 +86,28 @@ class ExchangeSearchField extends StatelessWidget {
         Expanded(
           child: TextField(
             key: const ValueKey('exchange-search-input'),
-            onChanged: onChanged,
+            controller: controller,
+            onChanged: (value) {
+              setState(() {});
+              widget.onChanged(value);
+            },
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
+            onSubmitted: (_) => FocusScope.of(context).unfocus(),
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: hintText,
+              hintText: widget.hintText,
               prefixIcon: const Icon(Icons.search, size: 23),
+              suffixIcon: controller.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: '清空搜索',
+                      style: exchangeIconStyle(context),
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        setState(controller.clear);
+                        widget.onChanged('');
+                      },
+                    ),
               filled: true,
               fillColor: fill,
               contentPadding: const EdgeInsets.symmetric(
@@ -86,10 +131,10 @@ class ExchangeSearchField extends StatelessWidget {
             ),
           ),
         ),
-        if (onScan != null) ...[
+        if (widget.onScan != null) ...[
           const SizedBox(width: 9),
           IconButton.filledTonal(
-            onPressed: onScan,
+            onPressed: widget.onScan,
             tooltip: '扫一扫',
             style: IconButton.styleFrom(
               backgroundColor: fill,
@@ -175,6 +220,121 @@ class _EtherGlyph extends CustomPainter {
   bool shouldRepaint(_EtherGlyph oldDelegate) => false;
 }
 
+class ExchangeValueRow extends StatelessWidget {
+  const ExchangeValueRow({
+    required this.state,
+    required this.value,
+    this.valueKey,
+    super.key,
+  });
+  final AppState state;
+  final String value;
+  final Key? valueKey;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.baseline,
+    textBaseline: TextBaseline.alphabetic,
+    children: [
+      Flexible(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            key: valueKey,
+            style: const TextStyle(
+              fontSize: 40,
+              height: 1.2,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -.8,
+              fontFeatures: exchangeNumberFeatures,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      DropdownButtonHideUnderline(
+        child: DropdownButton<ValuationCurrency>(
+          value: state.valuationCurrency,
+          borderRadius: BorderRadius.circular(16),
+          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+          items: [
+            for (final currency in ValuationCurrency.values)
+              DropdownMenuItem(value: currency, child: Text(currency.code)),
+          ],
+          onChanged: (value) {
+            if (value != null) state.selectValuationCurrency(value);
+          },
+        ),
+      ),
+    ],
+  );
+}
+
+class ExchangeIncomeLine extends StatelessWidget {
+  const ExchangeIncomeLine({
+    required this.amount,
+    required this.percent,
+    required this.hidden,
+    this.onTap,
+    super.key,
+  });
+  final double? amount, percent;
+  final bool hidden;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final value = hidden
+        ? '••••••'
+        : amount == null
+        ? '—'
+        : '${amount! > 0 ? '+' : ''}${groupedMoney(amount!)}';
+    final rate = hidden || percent == null
+        ? ''
+        : ' (${percent! >= 0 ? '+' : ''}${percent!.toStringAsFixed(2)}%)';
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                text: '今日收益 ',
+                children: [
+                  TextSpan(
+                    text: '$value$rate',
+                    style: TextStyle(
+                      color: exchangeIncomeColor(
+                        context,
+                        hidden ? null : amount,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 14,
+                color: muted,
+                fontFeatures: exchangeNumberFeatures,
+              ),
+            ),
+          ),
+          if (onTap != null) Icon(Icons.chevron_right, size: 18, color: muted),
+        ],
+      ),
+    );
+  }
+}
+
 class AccountValueHeader extends StatefulWidget {
   const AccountValueHeader({required this.state, this.onTap, super.key});
   final AppState state;
@@ -223,71 +383,13 @@ class _AccountValueHeaderState extends State<AccountValueHeader> {
             ),
           ],
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  shown(total),
-                  style: const TextStyle(
-                    fontSize: 40,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -.8,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            DropdownButtonHideUnderline(
-              child: DropdownButton<ValuationCurrency>(
-                value: state.valuationCurrency,
-                isDense: true,
-                items: [
-                  for (final currency in ValuationCurrency.values)
-                    DropdownMenuItem(
-                      value: currency,
-                      child: Text(
-                        currency.code,
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value != null) state.selectValuationCurrency(value);
-                },
-              ),
-            ),
-          ],
-        ),
+        ExchangeValueRow(state: state, value: shown(total)),
         const SizedBox(height: 10),
-        InkWell(
+        ExchangeIncomeLine(
+          amount: pnl,
+          percent: pnlPercent,
+          hidden: hidden,
           onTap: widget.onTap,
-          child: Row(
-            children: [
-              Text('今日收益 ', style: TextStyle(color: muted, fontSize: 14)),
-              Flexible(
-                child: Text(
-                  '${pnl != null && pnl > 0 && !hidden ? '+' : ''}${shown(pnl)}${pnlPercent == null || hidden ? '' : ' (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toStringAsFixed(2)}%)'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: pnl == null
-                        ? muted
-                        : pnl >= 0
-                        ? const Color(0xFF20A255)
-                        : const Color(0xFFC83E65),
-                  ),
-                ),
-              ),
-              if (widget.onTap != null)
-                Icon(Icons.chevron_right, size: 18, color: muted),
-            ],
-          ),
         ),
       ],
     );

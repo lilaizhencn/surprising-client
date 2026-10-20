@@ -73,9 +73,7 @@ class _AssetOverviewState extends State<AssetOverview> {
     final state = widget.state;
     final colors = Theme.of(context).colorScheme;
     final muted = colors.onSurfaceVariant;
-    final fill = Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFF111111)
-        : const Color(0xFFF4F4F4);
+    final fill = exchangePanel(context);
     final product = ProductMode.values
         .where((p) => p.accountType == account)
         .firstOrNull;
@@ -200,7 +198,12 @@ class _AssetOverviewState extends State<AssetOverview> {
     Widget card(String key, double? value, IconData icon) => Expanded(
       child: Material(
         color: fill,
-        borderRadius: BorderRadius.circular(22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(
+            color: account == key ? colors.onSurface : Colors.transparent,
+          ),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           key: ValueKey('asset-account-$key'),
@@ -214,7 +217,7 @@ class _AssetOverviewState extends State<AssetOverview> {
                 Icon(
                   icon,
                   size: 22,
-                  color: account == key ? colors.primary : muted,
+                  color: account == key ? colors.onSurface : muted,
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -230,6 +233,7 @@ class _AssetOverviewState extends State<AssetOverview> {
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
+                      fontFeatures: exchangeNumberFeatures,
                     ),
                   ),
                 ),
@@ -281,51 +285,13 @@ class _AssetOverviewState extends State<AssetOverview> {
               ),
           ],
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  shown(state.valuationAmount(total)),
-                  key: const ValueKey('asset-total'),
-                  style: const TextStyle(
-                    fontSize: 40,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -.8,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            DropdownButtonHideUnderline(
-              child: DropdownButton<ValuationCurrency>(
-                value: state.valuationCurrency,
-                isDense: true,
-                items: [
-                  for (final c in ValuationCurrency.values)
-                    DropdownMenuItem(
-                      value: c,
-                      child: Text(c.code, style: const TextStyle(fontSize: 16)),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value != null) state.selectValuationCurrency(value);
-                },
-              ),
-            ),
-          ],
+        ExchangeValueRow(
+          state: state,
+          value: shown(state.valuationAmount(total)),
+          valueKey: const ValueKey('asset-total'),
         ),
-        const SizedBox(height: 14),
-        Text(
-          '今日收益 ${pnl != null && pnl > 0 && !hidden ? '+' : ''}${shown(pnl)}${pnlPercent == null || hidden ? '' : ' (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toStringAsFixed(2)}%)'}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: muted, fontSize: 14),
-        ),
+        const SizedBox(height: 10),
+        ExchangeIncomeLine(amount: pnl, percent: pnlPercent, hidden: hidden),
         const SizedBox(height: 30),
         Row(
           key: const ValueKey('asset-actions'),
@@ -436,7 +402,10 @@ class _AssetOverviewState extends State<AssetOverview> {
                     fit: BoxFit.scaleDown,
                     child: Text(
                       '${shown(value)} ${state.valuationCurrency.code}',
-                      style: const TextStyle(fontSize: 15),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontFeatures: exchangeNumberFeatures,
+                      ),
                     ),
                   ),
                 ),

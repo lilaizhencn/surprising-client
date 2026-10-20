@@ -37,6 +37,7 @@ class _UserScannerPageState extends State<UserScannerPage>
   bool busy = false, foreground = true, selectingPhoto = false;
   bool disposed = false;
   Future<void> cameraOperation = Future<void>.value();
+  Completer<bool>? photoResume;
   int generation = 0;
   String? identity, error;
 
@@ -58,6 +59,7 @@ class _UserScannerPageState extends State<UserScannerPage>
       generation++;
       busy = false;
       error = null;
+      if (photoResume?.isCompleted == false) photoResume!.complete(false);
       _syncCamera();
     }
     setState(() {});
@@ -66,7 +68,23 @@ class _UserScannerPageState extends State<UserScannerPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     foreground = state == AppLifecycleState.resumed;
+    if (foreground && photoResume?.isCompleted == false) {
+      photoResume!.complete(true);
+    }
     _syncCamera();
+  }
+
+  Future<bool> _resumePhoto() async {
+    if (foreground) return true;
+    final pending = photoResume = Completer<bool>();
+    try {
+      return await pending.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => false,
+      );
+    } finally {
+      if (identical(photoResume, pending)) photoResume = null;
+    }
   }
 
   Future<void> _syncCamera() {
@@ -190,6 +208,9 @@ class _UserScannerPageState extends State<UserScannerPage>
       final selection = await FilePicker.platform.pickFiles(
         type: FileType.image,
       );
+      // Activity results may arrive before the app resumes. Keep the selected
+      // image until foreground processing is possible, rather than dropping it.
+      if (!mounted || owner != identity || !await _resumePhoto()) return;
       if (!mounted || owner != identity || tabs.index != 0) return;
       final path = selection?.files.single.path;
       if (path == null) return;
@@ -197,6 +218,7 @@ class _UserScannerPageState extends State<UserScannerPage>
         path,
         formats: [BarcodeFormat.qrCode],
       );
+      if (!mounted || owner != identity || !await _resumePhoto()) return;
       if (!mounted || owner != identity) return;
       final code = result?.barcodes
           .map((barcode) => barcode.rawValue)
@@ -219,6 +241,7 @@ class _UserScannerPageState extends State<UserScannerPage>
   @override
   void dispose() {
     disposed = true;
+    if (photoResume?.isCompleted == false) photoResume!.complete(false);
     generation++;
     widget.state.removeListener(_identityChanged);
     WidgetsBinding.instance.removeObserver(this);

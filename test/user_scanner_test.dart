@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +19,14 @@ const attributes = MobileScannerViewAttributes(
 void main() {
   late ScannerPlatform platform;
   late MobileScannerPlatform previous;
+  late FilePicker previousPicker;
   setUp(() {
+    try {
+      previousPicker = FilePicker.platform;
+    } on Error {
+      previousPicker = FilePickerIO();
+    }
+    FilePicker.platform = previousPicker;
     previous = MobileScannerPlatform.instance;
     platform = ScannerPlatform();
     MobileScannerPlatform.instance = platform;
@@ -26,7 +34,41 @@ void main() {
   tearDown(() async {
     await platform.captures.close();
     MobileScannerPlatform.instance = previous;
+    FilePicker.platform = previousPicker;
   });
+
+  testWidgets(
+    'gallery result arriving before resume is processed after resume',
+    (tester) async {
+      final picker = ScannerPhotoPicker();
+      FilePicker.platform = picker;
+      final api = ScannerApi();
+      final state = AppState(offline: true, apiClient: api)..session = session;
+      addTearDown(state.dispose);
+      await tester.pumpWidget(MaterialApp(home: UserScannerPage(state: state)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('相册'));
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      picker.result.complete(
+        FilePickerResult([
+          PlatformFile(name: 'synthetic.png', path: '/synthetic.png', size: 10),
+        ]),
+      );
+      await tester.pumpAndSettle();
+      expect(api.requests, isEmpty);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(api.requests, [userQrCode(9)]);
+      api.response.complete({'userId': 9, 'displayName': '相册用户'});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('相册用户'), findsOneWidget);
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets(
     'swiping away during permission request stops the late camera start',
@@ -55,6 +97,54 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final closePage in [false, true]) {
+    testWidgets(
+      'pending gallery resume cancels on ${closePage ? "disposal" : "logout"}',
+      (tester) async {
+        final previousPicker = FilePicker.platform;
+        final picker = ScannerPhotoPicker();
+        FilePicker.platform = picker;
+        addTearDown(() => FilePicker.platform = previousPicker);
+        final api = ScannerApi();
+        final state = AppState(offline: true, apiClient: api)
+          ..session = session;
+        addTearDown(state.dispose);
+        await tester.pumpWidget(
+          MaterialApp(home: UserScannerPage(state: state)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('相册'));
+        await tester.pumpAndSettle();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        picker.result.complete(
+          FilePickerResult([
+            PlatformFile(
+              name: 'synthetic.png',
+              path: '/synthetic.png',
+              size: 10,
+            ),
+          ]),
+        );
+        await tester.pumpAndSettle();
+        if (closePage) {
+          await tester.pumpWidget(const SizedBox());
+        } else {
+          state.session = null;
+          state.notifyListeners();
+        }
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(api.requests, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'closing while permission is pending releases the eventual camera session',
@@ -147,6 +237,11 @@ class ScannerPlatform extends MobileScannerPlatform {
   int starts = 0, stops = 0, disposals = 0;
   bool running = false;
   @override
+  Future<BarcodeCapture?> analyzeImage(
+    String path, {
+    List<BarcodeFormat> formats = const [],
+  }) async => BarcodeCapture(barcodes: [Barcode(rawValue: userQrCode(9))]);
+  @override
   Stream<BarcodeCapture?> get barcodesStream => captures.stream;
   @override
   Stream<TorchState> get torchStateStream => const Stream.empty();
@@ -176,4 +271,23 @@ class ScannerPlatform extends MobileScannerPlatform {
   Future<void> dispose() async {
     disposals++;
   }
+}
+
+class ScannerPhotoPicker extends FilePicker {
+  final result = Completer<FilePickerResult?>();
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = false,
+    int compressionQuality = 0,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) => result.future;
 }

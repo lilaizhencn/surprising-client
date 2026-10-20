@@ -1,0 +1,50 @@
+{
+  "platform": "Android emulator",
+  "syntheticFixtures": true,
+  "actions": [
+    "save",
+    "share",
+    "cancel-save",
+    "prepare-gallery",
+    "gallery"
+  ],
+  "externalMessagesSent": false,
+  "passed": true,
+  "date": "2026-10-20",
+  "wholeFeatureComplete": false,
+  "mergeAllowed": false,
+  "flutterTests": {
+    "passed": 441,
+    "existingLiveEnvironmentSkipped": 10
+  },
+  "flutterAnalyze": "No issues found",
+  "ios": {
+    "sceneCount": 17,
+    "nativeScenarios": "passed",
+    "qrImageDecode": "unsupported_ios_simulator",
+    "screenshotProtection": "NOT VERIFIED: simctl capture exposes synthetic protected content; physical device required"
+  },
+  "galleryRaceRegression": "Old implementation drops a result returned while inactive; fixed implementation waits for resume and cancels on logout/dispose; all six scanner tests pass.",
+  "sourceSha256": {
+    "lib/src/deposit_page.dart": "b96007741cc1faf4f286ee26f25b0a4a2e6eea3e8501c9669066b7bce60e7955",
+    "lib/src/user_scanner_page.dart": "ccd4861b9932dfc246e14ab87c85fd797bf37baf44922293744a6d3b54fc4edc",
+    "test/user_scanner_test.dart": "f0e5446752df08bd5e9bf3ad482a293ac229b882bad0f1bd9baad4e748bf0868",
+    "integration_test/funding_export_test.dart": "085ab56a13365d0d127b963a55de3974a5738ad0798e702cd6e8cc4e03e0c273",
+    "scripts/native-export-qa.py": "ff995f3b4b6a869ccf59eccd3630a080c08dfcb6aeff4b108d304a3dac87dfcd"
+  },
+  "evidenceSha256": {
+    "/tmp/surprising-gallery-final-analyze.log": "d2349880fd43791c69d3ade3ce22a679927e70c8ddc4995b81d69f5dde38b808",
+    "/tmp/surprising-gallery-final-tests.log": "4ee55a4c96f377e67113de693a342cbb65920aeef089423970f40b39fae9dcc5",
+    "/tmp/surprising-gallery-resume-before-fix.log": "7cc682fc14b5c8d44725d1c344c1c9250b3ca946d5848d97a33374c9c8c04f39",
+    "/tmp/surprising-native-export-qa-6/native-run.log": "03c0d82c6efe59b321f51e34364b237e133aaa0658a78f5465e8736b3c060181",
+    "/tmp/surprising-gallery-ios-native-qa/native-run.log": "0beabd365d99a11fed20ec506daaba041507bdcb3273ce68f21ccc8a54e1daca"
+  },
+  "systemCaptureSha256": {
+    "gallery.png": "a6296df89652286d41e70020d7a7f0d3d2b90ad6dfe0375aa1e86329d984d8ed",
+    "saved-deposit.png": "123a14fe6c8d3785611164668b7ef9d4413e9195dee7ddba93002704871ce8b2",
+    "share.png": "ab1114b7859eee63caec159548e9aba06bdf2a4cefca2339a871868c0d6f5763",
+    "synthetic-gallery.png": "21901b4e29d65a004846874aec00891e8bba09a627e78b6e20ba4922f20531fa",
+    "cancel-save.png": "434022ced78cd1b2f1dd2c479395608ef361226d59fecb758233a66af2fe184e",
+    "save.png": "b73cb2d2174cc442801a3ead980be80667634a350a5b5bf9bc197c6c0e32fe17"
+  }
+}

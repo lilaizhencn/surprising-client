@@ -135,10 +135,16 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
 
   Future<void> _saveQr() async {
     final identity = token, currentAddress = address;
+    if (exporting || currentAddress == null) return;
+    setState(() {
+      exporting = true;
+      error = null;
+      notice = null;
+    });
     try {
       final boundary =
           qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null || currentAddress == null) return;
+      if (boundary == null) return;
       final image = await boundary.toImage(pixelRatio: 2);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
@@ -148,14 +154,24 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
           data == null) {
         return;
       }
-      await FilePicker.platform.saveFile(
+      final saved = await FilePicker.platform.saveFile(
         dialogTitle: '保存充值二维码',
         fileName:
             'deposit-${currentAddress.symbol}-${currentAddress.chain}.png',
         bytes: data.buffer.asUint8List(),
       );
+      if (mounted &&
+          identity == widget.state.session?.accessToken &&
+          address == currentAddress &&
+          saved != null) {
+        setState(() => notice = '二维码已保存');
+      }
     } catch (_) {
-      if (mounted) setState(() => error = '二维码无法保存，请重试');
+      if (mounted && identity == widget.state.session?.accessToken) {
+        setState(() => error = '二维码无法保存，请重试');
+      }
+    } finally {
+      if (mounted) setState(() => exporting = false);
     }
   }
 

@@ -62,6 +62,7 @@ class _InboxState extends State<_Inbox> {
       started = false;
   int tab = 0, generation = 0, offset = 0;
   String? error;
+  bool roomOpen = false;
   bool get current =>
       mounted && widget.state.session?.user.userId == widget.owner;
   @override
@@ -71,8 +72,11 @@ class _InboxState extends State<_Inbox> {
       if (event['op'] == 'c2c.changed') {
         debounce?.cancel();
         debounce = Timer(const Duration(milliseconds: 300), () => load());
-      } else if (event['op'] == 'c2c.error' && current) {
-        setState(() => error = '聊天订阅未完成，请重试');
+      } else if (event['op'] == 'c2c.error' && current && !roomOpen) {
+        setState(() {
+          started = false;
+          error = '聊天订阅未完成，请重试';
+        });
       }
     });
     unawaited(load());
@@ -142,15 +146,20 @@ class _InboxState extends State<_Inbox> {
   }
 
   Future<void> room(C2cConversation conversation) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => C2cChatRoom(
-          state: widget.state,
-          owner: widget.owner,
-          conversation: conversation,
+    roomOpen = true;
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => C2cChatRoom(
+            state: widget.state,
+            owner: widget.owner,
+            conversation: conversation,
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      roomOpen = false;
+    }
     if (current) {
       widget.state.realtime.watchC2c(owner: widget.owner);
       await load();
@@ -423,7 +432,7 @@ class C2cChatRoom extends StatefulWidget {
   State<C2cChatRoom> createState() => _C2cChatRoomState();
 }
 
-class _C2cChatRoomState extends State<C2cChatRoom> {
+class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
   final text = TextEditingController(), scroll = ScrollController();
   final storage = const FlutterSecureStorage();
   StreamSubscription<Map<String, dynamic>>? events;
@@ -441,6 +450,8 @@ class _C2cChatRoomState extends State<C2cChatRoom> {
       reading = false,
       pendingLoaded = false;
   String after = '0', afterEvent = '0', readMessage = '0', readEvent = '0';
+  String requestedReadMessage = '0', requestedReadEvent = '0';
+  late bool wasLocked;
   bool get current =>
       mounted && widget.state.session?.user.userId == widget.owner;
   String get id => widget.conversation.id;
@@ -449,6 +460,9 @@ class _C2cChatRoomState extends State<C2cChatRoom> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    wasLocked = widget.state.requiresBiometricUnlock;
+    widget.state.addListener(unlockChanged);
     events = widget.state.realtime.c2cEvents(widget.owner).listen((event) {
       if (!current) return;
       if (event['op'] == 'c2c.error') {
@@ -595,23 +609,47 @@ class _C2cChatRoomState extends State<C2cChatRoom> {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (!current ||
         !atBottom ||
-        reading ||
+        widget.state.requiresBiometricUnlock ||
         (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
         (ModalRoute.of(context)?.isCurrent == false) ||
         (after == readMessage && afterEvent == readEvent)) {
       return;
     }
+    requestedReadMessage = after;
+    requestedReadEvent = afterEvent;
+    if (reading) return;
     reading = true;
-    final message = after, event = afterEvent;
     try {
-      await widget.state.api.c2cRead(widget.owner, id, message, event);
-      readMessage = message;
-      readEvent = event;
+      while (current &&
+          (requestedReadMessage != readMessage ||
+              requestedReadEvent != readEvent)) {
+        final message = requestedReadMessage, event = requestedReadEvent;
+        await widget.state.api.c2cRead(widget.owner, id, message, event);
+        readMessage = message;
+        readEvent = event;
+      }
     } catch (_) {
       /* Retry the same read watermark on the next visible update. */
     } finally {
       reading = false;
     }
+  }
+
+  void unlockChanged() {
+    final locked = widget.state.requiresBiometricUnlock;
+    if (wasLocked && !locked) scheduleRead();
+    wasLocked = locked;
+  }
+
+  void scheduleRead() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (current) unawaited(markRead());
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) scheduleRead();
   }
 
   Future<void> send() async {
@@ -789,6 +827,8 @@ class _C2cChatRoomState extends State<C2cChatRoom> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.state.removeListener(unlockChanged);
     unawaited(events?.cancel());
     text.dispose();
     scroll.dispose();

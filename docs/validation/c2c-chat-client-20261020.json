@@ -104,5 +104,37 @@
       "sha256": "f52d1e141283854fbd5a3227e16778ac2b900afce5879faa211f33d49154a50e"
     }
   ],
-  "goalComplete": false
+  "goalComplete": false,
+  "readAndInboxRecoveryFollowup": {
+    "analyzeIssues": 0,
+    "testsPassed": 394,
+    "testsSkipped": 10,
+    "testsFailed": 0,
+    "widgetCases": 11,
+    "cases": [
+      "已读请求在途时合并已见消息，完成后继续确认最新水位",
+      "后台消息不提前标记，回到可见会话或生物解锁完成后再确认",
+      "聊天订阅失败可在原页面重试，不重建行情连接"
+    ],
+    "files": [
+      {
+        "path": "lib/src/c2c_chat_page.dart",
+        "sha256": "417e2eda7b19ea0c6c94dc052464964b763a429854acca0bf979fdb78f3c7969"
+      },
+      {
+        "path": "test/c2c_chat_page_test.dart",
+        "sha256": "2b81b185825451c972b3eb0658e6f9db0aca462f2c4bf62709fdd93694b92fa3"
+      }
+    ],
+    "logs": [
+      {
+        "originalPath": "/tmp/surprising-c2c-client-read-final-analyze-20261020.log",
+        "sha256": "0359c08e006a975555e0630d423e6e8fcefc074d0a9237d9592b57fe2f2346fe"
+      },
+      {
+        "originalPath": "/tmp/surprising-c2c-client-read-final-tests-20261020.log",
+        "sha256": "723ebf857143d28e6ac71660b476896d65ddd1c471015277e34cf8e1a535b62f"
+      }
+    ]
+  }
 }

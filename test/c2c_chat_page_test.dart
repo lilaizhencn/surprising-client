@@ -43,6 +43,8 @@ class ChatApi extends ApiClient {
   int posts = 0;
   Map<String, dynamic>? saved;
   final queries = <String>[];
+  final readBodies = <Map<String, dynamic>>[];
+  Completer<void>? firstRead;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -91,7 +93,11 @@ class ChatApi extends ApiClient {
     Map<String, String>? headers,
     bool unwrapResponseResult = false,
   }) async {
-    if (path.endsWith('/read')) return {'reads': []};
+    if (path.endsWith('/read')) {
+      readBodies.add(Map.of(body));
+      if (readBodies.length == 1 && firstRead != null) await firstRead!.future;
+      return {'reads': []};
+    }
     if (path.endsWith('/messages')) {
       posts++;
       saved = Map.of(body);
@@ -137,6 +143,55 @@ class ChatState extends AppState {
 }
 
 void main() {
+  testWidgets(
+    'visible messages arriving during an in-flight read advance the final receipt',
+    (tester) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final api = ChatApi()..firstRead = Completer<void>();
+      final realtime = ChatRealtime();
+      final state = ChatState(api, realtime);
+      addTearDown(state.dispose);
+      await tester.pumpWidget(
+        AppScope(
+          notifier: state,
+          child: MaterialApp(
+            home: C2cChatRoom(
+              state: state,
+              owner: 12,
+              conversation: C2cConversation.fromJson(conversationJson()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      void emit(String messageId, String text) => realtime.events.add({
+        'op': 'c2c.messages',
+        'channel': 'c2c.messages',
+        'data': {
+          'conversationId': conversationId,
+          'messages': [
+            {
+              ...messageJson('10000000-0000-4000-8000-000000000002', text),
+              'messageId': messageId,
+            },
+          ],
+          'orderEvents': [],
+          'reads': [],
+          'hasMore': false,
+        },
+      });
+      emit('9223372036854775806', 'first visible message');
+      await tester.pumpAndSettle();
+      expect(api.readBodies, hasLength(1));
+      emit('9223372036854775807', 'second visible message');
+      await tester.pumpAndSettle();
+      expect(api.readBodies, hasLength(1));
+      api.firstRead!.complete();
+      await tester.pumpAndSettle();
+      expect(api.readBodies.last['messageId'], '9223372036854775807');
+      expect(api.readBodies, hasLength(2));
+    },
+  );
   late ChatApi api;
   late ChatRealtime realtime;
   late ChatState state;
@@ -179,6 +234,79 @@ void main() {
       expect(find.text('C2C 聊天暂未开启'), findsOneWidget);
       expect(api.queries.where((p) => p.endsWith('/conversations')), isEmpty);
       expect(realtime.plans, isEmpty);
+    },
+  );
+  testWidgets(
+    'inbox subscription error can be retried without reopening the page',
+    (tester) async {
+      await mount(tester, const Scaffold(body: C2cMessagingPage()));
+      expect(realtime.plans, hasLength(1));
+      realtime.events.add({'op': 'c2c.error', 'channel': 'c2c.messages'});
+      await tester.pumpAndSettle();
+      expect(find.text('聊天订阅未完成，请重试'), findsOneWidget);
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(realtime.plans, hasLength(2));
+    },
+  );
+  testWidgets(
+    'resuming the visible room acknowledges messages received while backgrounded',
+    (tester) async {
+      await mount(
+        tester,
+        C2cChatRoom(
+          state: state,
+          owner: 12,
+          conversation: C2cConversation.fromJson(conversationJson()),
+        ),
+      );
+      for (final lifecycle in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(lifecycle);
+      }
+      void resume() {
+        if (tester.binding.lifecycleState == AppLifecycleState.paused) {
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.hidden,
+          );
+        }
+        if (tester.binding.lifecycleState == AppLifecycleState.hidden) {
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.inactive,
+          );
+        }
+        if (tester.binding.lifecycleState == AppLifecycleState.inactive) {
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+        }
+      }
+
+      addTearDown(resume);
+      realtime.events.add({
+        'op': 'c2c.messages',
+        'channel': 'c2c.messages',
+        'data': {
+          'conversationId': conversationId,
+          'messages': [
+            messageJson(
+              '10000000-0000-4000-8000-000000000002',
+              'received while paused',
+            ),
+          ],
+          'orderEvents': [],
+          'reads': [],
+          'hasMore': false,
+        },
+      });
+      await tester.pump();
+      expect(api.readBodies, isEmpty);
+      resume();
+      await tester.pumpAndSettle();
+      expect(api.readBodies.last['messageId'], '9223372036854775807');
     },
   );
   testWidgets(

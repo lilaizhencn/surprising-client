@@ -13,6 +13,7 @@ import 'session_store.dart';
 import 'spot_order.dart';
 import 'telegram_login.dart';
 import 'pending_transfer.dart';
+import 'portfolio_income.dart';
 
 class WithdrawalAssetRule {
   const WithdrawalAssetRule({
@@ -868,6 +869,82 @@ class AppState extends ChangeNotifier {
     return total;
   }
 
+  PortfolioIncomeSummary? _portfolioIncome;
+  int? _incomeOwner;
+  Stopwatch? _incomeElapsed;
+  Timer? _incomeRefreshTimer, _incomeExpiryTimer;
+  int _incomeRequest = 0;
+  bool _incomeLoading = false;
+
+  PortfolioIncome? portfolioIncome([String scope = 'overview']) =>
+      isLoggedIn && _incomeOwner == userId
+      ? _portfolioIncome?.fresh(scope, _incomeElapsed?.elapsed ?? Duration.zero)
+      : null;
+
+  void _resetPortfolioIncome() {
+    ++_incomeRequest;
+    _incomeLoading = false;
+    _portfolioIncome = null;
+    _incomeOwner = null;
+    _incomeElapsed?.stop();
+    _incomeElapsed = null;
+    _incomeRefreshTimer?.cancel();
+    _incomeRefreshTimer = null;
+    _incomeExpiryTimer?.cancel();
+    _incomeExpiryTimer = null;
+  }
+
+  void _scheduleIncomeExpiry() {
+    _incomeExpiryTimer?.cancel();
+    final remaining = _portfolioIncome?.nextExpiry(
+      _incomeElapsed?.elapsed ?? Duration.zero,
+    );
+    if (remaining == null) return;
+    _incomeExpiryTimer = Timer(remaining, () {
+      notifyListeners();
+      _scheduleIncomeExpiry();
+    });
+  }
+
+  Future<void> refreshPortfolioIncome() async {
+    final id = userId, epoch = _walletSessionVersion;
+    if (offline || id == null || _incomeLoading) return;
+    final request = ++_incomeRequest;
+    bool current() =>
+        request == _incomeRequest &&
+        epoch == _walletSessionVersion &&
+        id == userId;
+    _incomeLoading = true;
+    _incomeRefreshTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(refreshPortfolioIncome());
+    });
+    final elapsed = Stopwatch()..start();
+    try {
+      final result = await api.get('/api/v1/portfolio/income', userId: id);
+      final next = PortfolioIncomeSummary.fromJson(result);
+      if (!current()) {
+        elapsed.stop();
+        return;
+      }
+      _incomeElapsed?.stop();
+      _incomeElapsed = elapsed;
+      _portfolioIncome = next;
+      _incomeOwner = id;
+      _scheduleIncomeExpiry();
+    } catch (_) {
+      elapsed.stop();
+      if (!current()) return;
+      // A failed refresh never certifies zero or extends an older cut's age.
+      _portfolioIncome = null;
+      _incomeExpiryTimer?.cancel();
+    } finally {
+      if (current()) {
+        _incomeLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Set<ProductMode> disabledProducts = {};
   int _productAvailabilityVersion = 0;
   bool productAssetsReady(ProductMode product) =>
@@ -991,9 +1068,8 @@ class AppState extends ChangeNotifier {
   Future<String> _persistentDeviceId() async {
     final values = await settingsStore.read();
     final existing = values['deviceId'];
-    if (existing != null &&
-        RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(existing)) {
-      return existing;
+    if (existing != null && ApiClient.isDeviceId(existing)) {
+      return existing.toLowerCase();
     }
     final created = ApiClient.newDeviceId();
     await settingsStore.write({...values, 'deviceId': created});
@@ -1556,6 +1632,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearWalletData() {
+    _resetPortfolioIncome();
     _resetAlgoOrders();
     ++_walletSessionVersion;
     submittingOrder = false;
@@ -1813,6 +1890,7 @@ class AppState extends ChangeNotifier {
     await refreshProductAvailability();
     if (!current()) return;
     final walletRefresh = refreshWallet();
+    final incomeRefresh = refreshPortfolioIncome();
     final scalesRefresh = refreshBalanceScales();
     final orderTermsRefresh = refreshOrderTerms();
     final algoRefresh = refreshAlgoOrders();
@@ -1833,6 +1911,7 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       await walletRefresh;
+      await incomeRefresh;
       await scalesRefresh;
       await orderTermsRefresh;
       await algoRefresh;
@@ -4985,6 +5064,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _resetPortfolioIncome();
     ++_telegramLoginVersion;
     _resetBiometricUnlock();
     ++_optionReferenceRequest;

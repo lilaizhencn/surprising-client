@@ -79,17 +79,12 @@ class _AssetOverviewState extends State<AssetOverview> {
     final product = ProductMode.values
         .where((p) => p.accountType == account)
         .firstOrNull;
-    final funding = state.isLoggedIn && state.walletReady
-        ? state.walletPortfolioUsdt(state.walletPortfolio)
-        : null;
-    final trading = state.productBalancesUsdt(includeSpot: false);
-    final total = switch (account) {
-      'overview' =>
-        funding == null || trading == null ? null : funding + trading,
-      'funding' => funding,
-      'trading' => trading,
-      _ => state.productBalancesUsdt(product: product),
-    };
+    final income = state.portfolioIncome(account);
+    final funding = state.portfolioIncome('funding')?.equityValue;
+    final trading = state.portfolioIncome('trading')?.equityValue;
+    final total = income?.equityValue;
+    final pnl = state.valuationAmount(income?.amountValue);
+    final pnlPercent = income?.percentValue;
     String shown(double? value, {int digits = 2}) => hidden
         ? '••••••'
         : value == null
@@ -309,7 +304,9 @@ class _AssetOverviewState extends State<AssetOverview> {
         ),
         const SizedBox(height: 14),
         Text(
-          '今日收益 ${hidden ? '••••••' : '—'}',
+          '今日收益 ${pnl != null && pnl > 0 && !hidden ? '+' : ''}${shown(pnl)}${pnlPercent == null || hidden ? '' : ' (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toStringAsFixed(2)}%)'}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(color: muted, fontSize: 14),
         ),
         const SizedBox(height: 30),

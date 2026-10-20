@@ -3,21 +3,58 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/api.dart';
+import 'package:surprising_client/src/app_state.dart';
+import 'transfer_page_test.dart' show MemorySettings;
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/telegram_login.dart';
 
 void main() {
+  test('new device IDs follow the gateway UUID contract', () {
+    final identifiers = List.generate(100, (_) => ApiClient.newDeviceId());
+    expect(identifiers.toSet(), hasLength(100));
+    for (final id in identifiers) {
+      expect(
+        id,
+        matches(
+          RegExp(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          ),
+        ),
+      );
+    }
+  });
+
+  test(
+    'persisted non-UUID identifiers are replaced once and survive app restart',
+    () async {
+      final store = MemorySettings()
+        ..values = {
+          'deviceId': 'mobile-obsolete-local-device',
+          'theme': 'light',
+        };
+      final first = AppState(settingsStore: store);
+      final id = await first.api.resolveDeviceId();
+      expect(ApiClient.isDeviceId(id), isTrue);
+      expect(store.values['deviceId'], id);
+      expect(store.values['theme'], 'light');
+      first.dispose();
+      final restarted = AppState(settingsStore: store);
+      expect(await restarted.api.resolveDeviceId(), id);
+      restarted.dispose();
+    },
+  );
+
   test('a synchronous device storage failure can be retried safely', () async {
     final api = ApiClient(const AppConfig());
     var calls = 0;
     api.deviceIdLoader = () {
       calls++;
       if (calls == 1) throw StateError('storage unavailable');
-      return Future.value('mobile-synthetic-recovered-device');
+      return Future.value('3105164f-5122-46be-8cb7-9c4e09825980');
     };
     await expectLater(api.resolveDeviceId(), throwsStateError);
-    expect(await api.resolveDeviceId(), 'mobile-synthetic-recovered-device');
-    expect(await api.resolveDeviceId(), 'mobile-synthetic-recovered-device');
+    expect(await api.resolveDeviceId(), '3105164f-5122-46be-8cb7-9c4e09825980');
+    expect(await api.resolveDeviceId(), '3105164f-5122-46be-8cb7-9c4e09825980');
     expect(calls, 2);
   });
 
@@ -51,6 +88,11 @@ void main() {
           request.headers.value('x-device-id'),
           body,
         ));
+        if (!ApiClient.isDeviceId(request.headers.value('x-device-id') ?? '')) {
+          request.response.statusCode = 400;
+          await request.response.close();
+          return;
+        }
         request.response.headers.contentType = ContentType.json;
         request.response.write(
           jsonEncode(
@@ -97,7 +139,7 @@ void main() {
       await restarted.refresh(refreshed.refreshToken);
       expect(requests, hasLength(4));
       expect(requests.map((request) => request.$2).toSet(), {persisted});
-      expect(persisted, startsWith('mobile-'));
+      expect(ApiClient.isDeviceId(persisted!), isTrue);
       expect(created, 1);
       expect(requests[1].$3, {'flowId': 's' * 43, 'verifier': 'v' * 43});
       expect(requests.last.$3, {'refreshToken': 'synthetic-refresh'});

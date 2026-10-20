@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-20",
+  "scope": "Committed income API consumption in actual SurprisingClientApp home/assets, strict freshness/account isolation, UUID device contract",
+  "backend_commit": "67eade79f",
+  "flutter": {
+    "analyze": "No issues found",
+    "passed": 451,
+    "external_environment_skipped": 11,
+    "actual_gateway_device_test_passed": 1,
+    "focused_income_and_account_display_passed": 18,
+    "device_contract_tests_passed": 4
+  },
+  "logs": {
+    "analyze": {
+      "path": "/tmp/surprising-portfolio-submit-analyze.log",
+      "sha256": "ceb9b216583cf94097804c9a24d85fefc2c2f9ccd92043579483e3bf368149ae"
+    },
+    "full_tests": {
+      "path": "/tmp/surprising-portfolio-complete-tests.log",
+      "sha256": "a8472254873b468eb2a34e96bd962dc36472445e634b5b1f6673a6899b2aaad7"
+    },
+    "uuid_regression_before_fix": {
+      "path": "/tmp/surprising-device-uuid-before-fix.log",
+      "sha256": "6c200f2084ae23f5579348e87e6bad0285af5a99de86006983c1fb2d82ce001c"
+    },
+    "uuid_after_fix": {
+      "path": "/tmp/surprising-device-uuid-final-tests.log",
+      "sha256": "e49116cd596333599f1c417dee6152344046bafd867f6b95cf897c15bf125eef"
+    },
+    "actual_gateway_device": {
+      "path": "/tmp/surprising-device-gateway-live-final-tests.log",
+      "sha256": "db302ded24a5e8f2ac2fdaeb5d33073945c5e406564a8d149bc4680e03831100"
+    }
+  },
+  "native": {
+    "isolated_gateway_http": true,
+    "controlled_projection_fixture": true,
+    "actual_live_core_trade": false,
+    "owner": 9,
+    "no_store": true,
+    "income": "-2",
+    "equity": "118",
+    "native": [
+      {
+        "platform": "ios",
+        "exit": 0,
+        "os_captures": 3
+      },
+      {
+        "platform": "android",
+        "exit": 0,
+        "os_captures": 3
+      }
+    ]
+  },
+  "surfaces": "Actual full application; dark/light home and trading-account filter on assets; not standalone component containers",
+  "screenshots": [
+    {
+      "platform": "android",
+      "scene": "income-assets-filter-os",
+      "path": "/tmp/surprising-portfolio-native-qa/android/income-assets-filter-os.png",
+      "sha256": "16294ca7a4931b5c3b7310cfed92438771cadcc8ac4df563ae0c2b38a0f5b136"
+    },
+    {
+      "platform": "android",
+      "scene": "income-home-dark-os",
+      "path": "/tmp/surprising-portfolio-native-qa/android/income-home-dark-os.png",
+      "sha256": "c1da1939a9f7694ccc1a38bd7bc3ea0f8cd9f99581fc1290391d339ac162a1e4"
+    },
+    {
+      "platform": "android",
+      "scene": "income-home-light-os",
+      "path": "/tmp/surprising-portfolio-native-qa/android/income-home-light-os.png",
+      "sha256": "7db1b59bd3faeac200138b1d83f1fb684848bcc245ec9eca5e6980bac9ee69fd"
+    },
+    {
+      "platform": "ios",
+      "scene": "income-assets-filter-os",
+      "path": "/tmp/surprising-portfolio-native-qa/ios/income-assets-filter-os.png",
+      "sha256": "099dac1e98ea2a105edc500b2e130c81d6798f8479f5d2fcbfb1c232e4134667"
+    },
+    {
+      "platform": "ios",
+      "scene": "income-home-dark-os",
+      "path": "/tmp/surprising-portfolio-native-qa/ios/income-home-dark-os.png",
+      "sha256": "dbd6ed0026fca7cd3dee8fd23295948f345b8ef56ddd4336d339c4687597b4d6"
+    },
+    {
+      "platform": "ios",
+      "scene": "income-home-light-os",
+      "path": "/tmp/surprising-portfolio-native-qa/ios/income-home-light-os.png",
+      "sha256": "af7a2d15e1b2011e1660a2f88f8a6de4b2a8d138ca790138215523595b70cac4"
+    }
+  ],
+  "cleanup": {
+    "financial_fixture_removed": true,
+    "qa_sessions_revoked": true,
+    "qa_user_frozen": true,
+    "private_files_removed": true,
+    "task_owned_android_emulator_stopped": true,
+    "standalone_device_qa_user_frozen": true
+  },
+  "environment_recovery": {
+    "initial_native_attempt_no_data": "/tmp/surprising-portfolio-native-qa-failed1",
+    "initial_actual_app_startup_no_captures": "/tmp/surprising-portfolio-native-qa-startup-failed",
+    "earlier_component_only_success": "/tmp/surprising-portfolio-native-qa-components-passed",
+    "final_android": "Cold-started task-owned AVD with host GPU and Vulkan disabled after software-renderer memory-pressure/System UI ANR; no other workspace Java processes stopped"
+  },
+  "financial_test_limit": "Controlled projection in dedicated QA database, real HTTP API and native application; actual committed Archive writer verified separately in backend tests. No claim of production financial data or new live Core trades.",
+  "remaining_external": [
+    "TELEGRAM_CLIENT_SECRET remains absent and actual Telegram consent is not verified",
+    "Physical iOS camera/gallery/screen-capture verification; simulator capture protection remains unpassed"
+  ],
+  "whole_feature_complete": false,
+  "merge_allowed": false
+}

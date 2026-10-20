@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--device', default='emulator-5554')
 parser.add_argument('--platform', choices=['android', 'ios'], default='android')
 parser.add_argument('--output', default='/tmp/surprising-mobile-native-qa')
+parser.add_argument('--scenario', choices=['redesign', 'portfolio'], default='redesign')
+parser.add_argument('--defines-file', type=Path)
 args = parser.parse_args()
 output = Path(args.output)
 output.mkdir(parents=True, exist_ok=True)
@@ -25,9 +27,13 @@ package = 'com.surprising.surprising_client'
 command = [
     'flutter', 'drive', '-d', args.device,
     '--driver=test_driver/redesign_driver.dart',
-    '--target=integration_test/redesign_smoke_test.dart',
+    '--target=integration_test/' + ('portfolio_income_smoke_test.dart' if args.scenario == 'portfolio' else 'redesign_smoke_test.dart'),
     '--dart-define=NATIVE_CAPTURE_HANDSHAKE=true',
 ]
+if args.scenario == 'portfolio':
+    if args.defines_file is None or not args.defines_file.is_file():
+        parser.error('portfolio requires a private --defines-file')
+    command.append('--dart-define-from-file=' + str(args.defines_file.resolve()))
 completed = set()
 failure = None
 environment = os.environ.copy()
@@ -96,6 +102,8 @@ required = {'home-dark', 'home-light', 'markets-dark', 'tradingview-dark',
             'deposit-networks', 'deposit-address', 'deposit-menu', 'transfer-dark',
             'withdrawal-assets', 'withdrawal-networks', 'withdrawal-form',
             'withdrawal-protected', 'capture-restored'}
+if args.scenario == 'portfolio':
+    required = {'income-home-dark', 'income-home-light', 'income-assets-filter'}
 if failure or result or completed != required:
     sys.exit(failure or f'Native QA failed: exit={result}, captured={sorted(completed)}')
 print('Native scenarios and phase captures passed. Review platform coverage in the report.')

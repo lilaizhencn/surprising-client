@@ -176,16 +176,9 @@ class _EtherGlyph extends CustomPainter {
 }
 
 class AccountValueHeader extends StatefulWidget {
-  const AccountValueHeader({
-    required this.state,
-    this.onTap,
-    this.dailyPnl,
-    this.dailyPnlPercent,
-    super.key,
-  });
+  const AccountValueHeader({required this.state, this.onTap, super.key});
   final AppState state;
   final VoidCallback? onTap;
-  final double? dailyPnl, dailyPnlPercent;
   @override
   State<AccountValueHeader> createState() => _AccountValueHeaderState();
 }
@@ -195,16 +188,11 @@ class _AccountValueHeaderState extends State<AccountValueHeader> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
-    final funding = state.walletReady
-        ? state.walletPortfolioUsdt(state.walletPortfolio)
-        : null;
-    // The funding API and SPOT private view describe the same cash balances.
-    final trading = state.productBalancesUsdt(includeSpot: false);
-    final total = funding == null || trading == null
-        ? null
-        : state.valuationAmount(funding + trading);
+    final income = state.portfolioIncome();
+    final total = state.valuationAmount(income?.equityValue);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    final pnl = state.valuationAmount(widget.dailyPnl);
+    final pnl = state.valuationAmount(income?.amountValue);
+    final pnlPercent = income?.percentValue;
     String shown(double? amount) => hidden
         ? '••••••'
         : amount == null
@@ -283,7 +271,7 @@ class _AccountValueHeaderState extends State<AccountValueHeader> {
               Text('今日收益 ', style: TextStyle(color: muted, fontSize: 14)),
               Flexible(
                 child: Text(
-                  '${pnl != null && pnl > 0 && !hidden ? '+' : ''}${shown(pnl)}${widget.dailyPnlPercent == null || hidden ? '' : ' (${widget.dailyPnlPercent! >= 0 ? '+' : ''}${widget.dailyPnlPercent!.toStringAsFixed(2)}%)'}',
+                  '${pnl != null && pnl > 0 && !hidden ? '+' : ''}${shown(pnl)}${pnlPercent == null || hidden ? '' : ' (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toStringAsFixed(2)}%)'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

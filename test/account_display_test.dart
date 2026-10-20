@@ -8,6 +8,7 @@ import 'package:surprising_client/src/asset_overview.dart';
 import 'package:surprising_client/src/exchange_widgets.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/realtime_state.dart';
+import 'support/portfolio_income_fixture.dart' show IncomeApi;
 
 const session = AuthSession(
   user: AuthUser(
@@ -64,12 +65,11 @@ void main() {
   testWidgets('overview counts shared funding and spot money once', (
     tester,
   ) async {
-    final s = AppState(offline: true)
+    final s = AppState(apiClient: IncomeApi())
       ..session = session
       ..walletReady = true
       ..walletPortfolio = portfolio(12)
       ..assetsReady = true;
-    addTearDown(s.dispose);
     for (final p in ProductMode.values) {
       s.valuedProducts.add(p);
       s.privateViews[p] = PrivateView()
@@ -94,6 +94,7 @@ void main() {
         ),
       ];
     }
+    await s.refreshPortfolioIncome();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -122,6 +123,8 @@ void main() {
     );
     expect(find.text('17.00'), findsOneWidget);
     expect(find.text('29.00'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    s.dispose();
   });
 
   test('funding balance survives a failed history endpoint', () async {
@@ -144,7 +147,7 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final s = AppState(offline: true)
+        final s = AppState(apiClient: IncomeApi(overviewAvailable: false))
           ..session = session
           ..walletReady = true
           ..walletPortfolio = portfolio(12);
@@ -163,7 +166,7 @@ void main() {
         s.privateViews[ProductMode.linear] = PrivateView()
           ..status = 'READY'
           ..receivedAt = DateTime.now();
-        addTearDown(s.dispose);
+        await s.refreshPortfolioIncome();
         await tester.pumpWidget(
           MaterialApp(
             theme: ThemeData(brightness: brightness),
@@ -219,6 +222,8 @@ void main() {
         expect(find.text('5'), findsOneWidget);
         expect(s.mode, ProductMode.linear);
         expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        s.dispose();
       },
     );
   }

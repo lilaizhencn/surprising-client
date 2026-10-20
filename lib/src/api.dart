@@ -42,16 +42,26 @@ class ApiClient {
 
   static String newDeviceId() {
     final random = math.Random.secure();
-    return 'mobile-${base64UrlEncode(List<int>.generate(16, (_) => random.nextInt(256))).replaceAll('=', '')}';
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
+
+  static bool isDeviceId(String value) => RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  ).hasMatch(value);
 
   Future<String> resolveDeviceId() => _deviceId ??=
       Future<String>.sync(() => deviceIdLoader?.call() ?? newDeviceId())
           .then((value) {
-            if (!RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(value)) {
+            if (!isDeviceId(value)) {
               throw const FormatException('设备标识不可用');
             }
-            return value;
+            return value.toLowerCase();
           })
           .catchError((Object error, StackTrace stack) {
             _deviceId = null;

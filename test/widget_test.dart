@@ -444,46 +444,29 @@ void main() {
     expect(find.byIcon(Icons.info_outline), findsNWidgets(3));
   });
 
-  testWidgets('opens product pages from the trade product selector', (
+  testWidgets('trade product tabs switch pages without a duplicate selector', (
     tester,
   ) async {
     final state = AppState(offline: true);
-
+    addTearDown(state.dispose);
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
     );
-
     await tester.tap(find.text('合约').last);
     await tester.pumpAndSettle();
-
-    expect(find.text('交易产品页'), findsOneWidget);
-    expect(find.text('U本位永续'), findsWidgets);
-    expect(state.mode, ProductMode.linear);
-
-    await tester.tap(find.text('交易产品页'));
-    await tester.pumpAndSettle();
-    expect(find.text('打开产品页'), findsOneWidget);
-    await tester.tap(find.text('币本位永续').last);
-    await tester.pumpAndSettle();
-    expect(state.mode, ProductMode.inverse);
-
-    await tester.tap(find.text('交易产品页'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('U本位交割').last);
-    await tester.pumpAndSettle();
-    expect(state.mode, ProductMode.linearDelivery);
-
-    await tester.tap(find.text('交易产品页'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('期权').last);
-    await tester.pumpAndSettle();
-    expect(state.mode, ProductMode.option);
-
-    await tester.tap(find.text('交易产品页'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('现货').last);
-    await tester.pumpAndSettle();
-    expect(state.mode, ProductMode.spot);
+    expect(find.text('交易产品页'), findsNothing);
+    expect(find.text('打开产品页'), findsNothing);
+    expect(find.byType(ProductLineTabs), findsOneWidget);
+    for (final mode in ProductMode.values) {
+      final tab = find.byKey(ValueKey('product-tab-${mode.name}'));
+      await tester.ensureVisible(tab);
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+      expect(state.mode, mode);
+      expect(tester.widget<ChoiceChip>(tab).selected, isTrue);
+      expect(find.text('交易产品页'), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   test('converts price decimals to backend ticks', () {

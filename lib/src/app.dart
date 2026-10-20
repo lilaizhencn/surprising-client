@@ -1392,12 +1392,6 @@ class _TradePageState extends State<TradePage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  ProductPageSelector(
-                    value: state.mode,
-                    title: '交易产品页',
-                    compact: true,
-                    onChanged: (mode) => unawaited(state.selectMode(mode)),
-                  ),
                   const SizedBox(height: 40),
                   Text(
                     '${state.mode.label}暂无可交易合约',
@@ -1441,16 +1435,6 @@ class _TradePageState extends State<TradePage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
               children: [
-                ProductPageSelector(
-                  value: state.mode,
-                  title: '交易产品页',
-                  compact: true,
-                  onChanged: (mode) => unawaited(state.selectMode(mode)),
-                ),
-                Divider(
-                  height: 10,
-                  color: Theme.of(context).colorScheme.outlineVariant,
-                ),
                 TradeSymbolHeader(
                   instrument: instrument,
                   latestPrice: latestPrice,
@@ -5272,10 +5256,37 @@ class OrderTicket extends StatelessWidget {
             ],
             const SizedBox(height: 5),
             if (orderType == 'LIMIT') ...[
-              ToggleLine(
-                label: 'BBO 最优价',
-                value: bboEnabled,
-                onChanged: onBboEnabled,
+              Row(
+                children: [
+                  Expanded(
+                    child: ToggleLine(
+                      label: 'BBO 最优价',
+                      value: bboEnabled,
+                      onChanged: onBboEnabled,
+                    ),
+                  ),
+                  if (!bboEnabled)
+                    BestPriceButton(
+                      enabled: true,
+                      onTap: () {
+                        final book = AppScope.of(context).orderBook;
+                        final levels = buy ? book.asks : book.bids;
+                        if (levels.isEmpty) return;
+                        priceController.text = instrument.isSpot
+                            ? scaledAmount(
+                                BigInt.from(levels.first.priceTicks) *
+                                    BigInt.from(instrument.priceTickUnits),
+                                instrument.quoteScaleUnits,
+                              )
+                            : money(
+                                instrument.priceFromTicks(
+                                  levels.first.priceTicks,
+                                ),
+                                digits: instrument.pricePrecision,
+                              );
+                      },
+                    ),
+                ],
               ),
               if (bboEnabled) ...[
                 SmallDropdown(
@@ -5295,39 +5306,12 @@ class OrderTicket extends StatelessWidget {
               ],
             ],
             if (!bboEnabled || orderType == 'MARKET')
-              Row(
-                children: [
-                  Expanded(
-                    child: TradeNumericField(
-                      controller: priceController,
-                      label: '价格 (${instrument.quoteAsset})',
-                      enabled: orderType != 'MARKET',
-                      onMinus: () => stepPrice(-1),
-                      onPlus: () => stepPrice(1),
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  BestPriceButton(
-                    enabled: orderType != 'MARKET',
-                    onTap: () {
-                      final book = AppScope.of(context).orderBook;
-                      final levels = buy ? book.asks : book.bids;
-                      if (levels.isEmpty) return;
-                      priceController.text = instrument.isSpot
-                          ? scaledAmount(
-                              BigInt.from(levels.first.priceTicks) *
-                                  BigInt.from(instrument.priceTickUnits),
-                              instrument.quoteScaleUnits,
-                            )
-                          : money(
-                              instrument.priceFromTicks(
-                                levels.first.priceTicks,
-                              ),
-                              digits: instrument.pricePrecision,
-                            );
-                    },
-                  ),
-                ],
+              TradeNumericField(
+                controller: priceController,
+                label: '价格 (${instrument.quoteAsset})',
+                enabled: orderType != 'MARKET',
+                onMinus: () => stepPrice(-1),
+                onPlus: () => stepPrice(1),
               ),
             const SizedBox(height: 5),
             TradeNumericField(
@@ -5490,9 +5474,10 @@ class OrderTicket extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
-                minimumSize: const Size.fromHeight(34),
+                minimumSize: const Size.fromHeight(36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 textStyle: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -7503,191 +7488,6 @@ class MarketPrimaryTabs extends StatelessWidget {
   }
 }
 
-class ProductPageSelector extends StatelessWidget {
-  const ProductPageSelector({
-    required this.value,
-    required this.title,
-    required this.onChanged,
-    this.compact = false,
-    super.key,
-  });
-
-  final ProductMode value;
-  final String title;
-  final ValueChanged<ProductMode> onChanged;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => _openProductPagePicker(context),
-        child: Container(
-          constraints: BoxConstraints(minHeight: compact ? 42 : 50),
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 10 : 12,
-            vertical: compact ? 8 : 10,
-          ),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: .16),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.open_in_new,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 17,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value.label,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openProductPagePicker(BuildContext context) async {
-    final selected = await showModalBottomSheet<ProductMode>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) {
-        return ProductPagePickerSheet(current: value);
-      },
-    );
-    if (selected != null && selected != value) {
-      onChanged(selected);
-    }
-  }
-}
-
-class ProductPagePickerSheet extends StatelessWidget {
-  const ProductPagePickerSheet({required this.current, super.key});
-
-  final ProductMode current;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      (label: 'U本位永续', detail: 'USDT 保证金永续合约', mode: ProductMode.linear),
-      (label: '币本位永续', detail: '币本位保证金永续合约', mode: ProductMode.inverse),
-      (label: 'U本位交割', detail: '到期现金交割合约', mode: ProductMode.linearDelivery),
-      (label: '币本位交割', detail: '币本位到期交割合约', mode: ProductMode.inverseDelivery),
-      (label: '期权', detail: '欧式现金行权期权', mode: ProductMode.option),
-      (label: '现货', detail: '资产和资产直接兑换', mode: ProductMode.spot),
-    ];
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '打开产品页',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (final item in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(
-                    color: item.mode == current
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                tileColor: item.mode == current
-                    ? Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: .14)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                title: Text(
-                  item.label,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                subtitle: Text(
-                  item.detail,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-                trailing: item.mode == current
-                    ? Icon(
-                        Icons.check_circle,
-                        color: Theme.of(context).colorScheme.primary,
-                      )
-                    : Icon(
-                        Icons.chevron_right,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                onTap: () => Navigator.of(context).pop(item.mode),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class CategoryStrip extends StatelessWidget {
   const CategoryStrip({super.key});
 
@@ -8928,7 +8728,8 @@ class BuySellSwitch extends StatelessWidget {
         Expanded(
           child: FilledButton(
             style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(36),
+              minimumSize: const Size.fromHeight(32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               backgroundColor: value == 'BUY'
                   ? Theme.of(context).colorScheme.tertiary
                   : Theme.of(context).colorScheme.surfaceContainerHighest
@@ -8940,7 +8741,7 @@ class BuySellSwitch extends StatelessWidget {
                 borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
               ),
               textStyle: const TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -8951,7 +8752,8 @@ class BuySellSwitch extends StatelessWidget {
         Expanded(
           child: FilledButton(
             style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(36),
+              minimumSize: const Size.fromHeight(32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               backgroundColor: value == 'SELL'
                   ? Theme.of(context).colorScheme.error
                   : Theme.of(context).colorScheme.surfaceContainerHighest
@@ -8965,7 +8767,7 @@ class BuySellSwitch extends StatelessWidget {
                 ),
               ),
               textStyle: const TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -8998,60 +8800,70 @@ class TradeNumericField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 46,
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface,
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-        ),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w500,
-          ),
-          filled: true,
-          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 4,
-            vertical: 6,
-          ),
-          prefixIcon: IconButton(
-            tooltip: '减少',
-            onPressed: enabled ? onMinus : null,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-            icon: const Icon(Icons.remove, size: 16),
-          ),
-          suffixIcon: SizedBox(
-            width: suffixLabel == null ? 28 : 58,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (suffixLabel != null)
-                  Flexible(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 2),
-                      child: Text(
-                        suffixLabel!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+    const suffixWidth = 24.0;
+    const textStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final measure = TextPainter(
+            text: TextSpan(text: value.text, style: textStyle),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            maxLines: 1,
+          )..layout();
+          final available = math.max(
+            1.0,
+            constraints.maxWidth - 24 - suffixWidth - 20,
+          );
+          final fontSize = measure.width <= available
+              ? 13.0
+              : (13 * available / measure.width).clamp(10.0, 13.0);
+          measure.dispose();
+          return SizedBox(
+            height: 42,
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: textStyle.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: fontSize,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                labelText: suffixLabel == null
+                    ? label
+                    : '$label ($suffixLabel)',
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                filled: true,
+                fillColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 6,
+                ),
+                prefixIcon: IconButton(
+                  tooltip: '减少',
+                  onPressed: enabled ? onMinus : null,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 24,
+                    height: 28,
                   ),
-                IconButton(
+                  style: IconButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.remove, size: 16),
+                ),
+                suffixIcon: IconButton(
                   tooltip: '增加',
                   onPressed: enabled ? onPlus : null,
                   padding: EdgeInsets.zero,
@@ -9059,33 +8871,46 @@ class TradeNumericField extends StatelessWidget {
                     width: 24,
                     height: 28,
                   ),
+                  style: IconButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   icon: const Icon(Icons.add, size: 16),
                 ),
-              ],
+                prefixIconConstraints: const BoxConstraints.tightFor(
+                  width: 24,
+                  height: 40,
+                ),
+                suffixIconConstraints: BoxConstraints.tightFor(
+                  width: suffixWidth,
+                  height: 40,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outlineVariant.withValues(alpha: .55),
+                  ),
+                ),
+              ),
             ),
-          ),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          disabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(
-              color: Theme.of(
-                context,
-              ).colorScheme.outlineVariant.withValues(alpha: .55),
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -9107,8 +8932,8 @@ class BestPriceButton extends StatelessWidget {
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 58,
-        height: 46,
+        width: 48,
+        height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: enabled
@@ -9127,7 +8952,7 @@ class BestPriceButton extends StatelessWidget {
             color: enabled
                 ? Theme.of(context).colorScheme.onSurface
                 : Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 12,
+            fontSize: 10.5,
             fontWeight: FontWeight.w700,
           ),
         ),

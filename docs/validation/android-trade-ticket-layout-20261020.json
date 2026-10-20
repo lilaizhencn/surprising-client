@@ -1,0 +1,234 @@
+{
+  "date": "2026-10-20",
+  "goalStatus": "progress",
+  "previousGoalTurn": {
+    "classification": "progress",
+    "commit": "4b0ad37",
+    "evidence": "docs/validation/android-device-preview-20261020.json",
+    "outcome": "首次 Android 真机预览安装已完成；原始多产品线功能/UI目标保持进行中。"
+  },
+  "scope": "按用户真机反馈，收紧交易下单区并解决正常交易价格被输入框图标挤压的问题；移除顶部产品线切换下方重复的交易产品页入口。",
+  "behavior": [
+    "最优价按钮移动到 BBO 行，价格输入独占下单区整行；BBO 选择、最优买卖价、数量和价格加减及提交回调沿用原逻辑。",
+    "价格/数量输入高42；明确设置加减图标约束，避免 InputDecoration 默认最小宽度吃掉输入空间。",
+    "数量单位移到标签；数字字号按实际可用宽度和系统缩放测量，在10～13之间收敛；超长输入仍可编辑和横向滚动，不截断控制器内容。",
+    "买卖切换改32高，减少按钮默认额外点击留白；最优价按钮改48×28；提交按钮紧凑显示。",
+    "有合约和无合约两处分支都移除二次入口，删除不再调用的 ProductPageSelector 与 ProductPagePickerSheet，保留 ProductLineTabs 和其产品切换回调。"
+  ],
+  "verification": {
+    "commands": {
+      "analyze": {
+        "command": [
+          "flutter",
+          "analyze"
+        ],
+        "exit": 0
+      },
+      "tests": {
+        "command": [
+          "flutter",
+          "test",
+          "--machine"
+        ],
+        "exit": 0
+      },
+      "build": {
+        "command": [
+          "flutter",
+          "build",
+          "apk",
+          "--release",
+          "--target-platform",
+          "android-arm64",
+          "--build-number",
+          "20261021",
+          "--build-name",
+          "1.0.1-preview.20261020",
+          "--dart-define=SURPRISING_GATEWAY_URL=https://ex-api.tokdou.com",
+          "--dart-define=SURPRISING_WEBSOCKET_URL=wss://ex-api.tokdou.com/ws/v1"
+        ],
+        "exit": 0
+      }
+    },
+    "analyze": "No issues found",
+    "tests": {
+      "success": 347,
+      "skipped": 10
+    },
+    "doneSuccess": true,
+    "newLayoutCases": 13,
+    "layoutMatrix": {
+      "logicalWidths": [
+        320,
+        392,
+        430
+      ],
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "textScales": [
+        1,
+        1.3
+      ],
+      "normalScalePrice": "1282044.5",
+      "enlargedScalePrice": "82044.5",
+      "quantity": "100000",
+      "assertion": "actual RenderEditable.maxScrollExtent==0; no framework exceptions"
+    },
+    "interaction": "增加/减少分别修改一档，最优价读取真实表单盘口数据结构；键盘输入保持精确文本。单测使用明确 fixture，不替代真机交易数据。",
+    "productNavigation": "更新既有产品选择回归，经顶部6个产品 Chip 切换并核对当前 mode 与 selected；没有二次入口。",
+    "redEvidence": {
+      "command": "flutter test test/trade_ticket_layout_test.dart --plain-name '392.0 Brightness.dark scale=1.0 shows the entire price without horizontal clipping'",
+      "exit": 1,
+      "observedOverflowPixels": 103.07142857142856,
+      "scope": "修改前实际控件的输入可视宽度回归失败；最终13项同类及交互检查通过。"
+    }
+  },
+  "android": {
+    "model": "Huawei LIO-AN00",
+    "physical": true,
+    "android": "12",
+    "api": 31,
+    "physicalSize": [
+      1176,
+      2400
+    ],
+    "density": 480,
+    "logicalSize": [
+      392,
+      800
+    ],
+    "fontScale": 1,
+    "applicationId": "com.surprising.surprising_client",
+    "versionName": "1.0.1-preview.20261020",
+    "versionCode": 20261021,
+    "install": "adb install -r returned Success; existing signing certificate matched the installed preview identity",
+    "launch": "am start -W returned ok; cold launch904ms",
+    "firstInstallTime": "2026-10-20 12:05:38",
+    "lastUpdateTime": "2026-10-20 12:24:39",
+    "dataRetention": "No uninstall or data clearing; the actual app restored the user login state after updating.",
+    "actualReview": [
+      "Viewed original screenshot with clipped order price.",
+      "Viewed updated SPOT empty product screen with no duplicate selector.",
+      "Tapped only the top U-margined perpetual product Chip; viewed the real trade page with full price82090.2 and compact controls, no duplicate entry.",
+      "No order, cancellation, transfer or position action was submitted on the user device."
+    ],
+    "startupFatalErrors": 0,
+    "apk": {
+      "path": "/Users/atomex/Desktop/surprising/surprising-client/build/app/outputs/flutter-apk/app-release.apk",
+      "bytes": 20602564,
+      "sha256": "8a4c03341c64af2cc7055803df4cfea32a53ed6eebfe5d5b1356d89f6a8b0912",
+      "sourceSnapshotUnchanged": true
+    }
+  },
+  "publicationBoundary": {
+    "baseCommit": "4b0ad3795798e9e7f1f040358cb1142e4a8190a8",
+    "apkIncludesOtherInProgressSource": true,
+    "sourceUnchangedDuringFinalBuildAndInstall": true,
+    "committedModule": "Only the Android order-entry layout, duplicate-selector removal, related tests and this evidence.",
+    "ongoingModule": "Pending SPOT algo creation/source changes remain in the worktree for their own verification, including the corresponding backend receipt/execution changes.",
+    "backendDeployment": false,
+    "newProductRuntimeStarted": false,
+    "completeProductGoalClaimed": false
+  },
+  "buildResources": {
+    "jdk": "Microsoft OpenJDK21",
+    "gradleMaxHeapMiB": 1536,
+    "gradleWorkers": 2,
+    "singleUseDaemon": true,
+    "buildOrder": "analyze, full tests, release build sequentially; no --no-pub",
+    "earlierLayoutOnlyApk": "Built before the user requested removing the duplicate selector; not installed. Final merged source was tested and rebuilt before installing."
+  },
+  "sourceSha256": {
+    "android/app/build.gradle.kts": "35d0726db9f1b7419b8325acf7df32e130428ceb02869d8fbbcba9ed6d4849d2",
+    "android/app/src/main/AndroidManifest.xml": "5f227507a56b2e7c76636b832daf240d51bc0f911c16c2d2e8a11f605ad47dbb",
+    "lib/main.dart": "678a5702829bba1c8cf838f18d3d567619c64055e22eb3c2506746dde88fe803",
+    "lib/src/account_records.dart": "da449b52eba1d375d4c7310430c51642c61c5cb4791f281f8abe96f1f8ff6039",
+    "lib/src/api.dart": "992fa1795380ea4eac773b94f3757f165c1b57893e93fc187aa830cf35d0dc5e",
+    "lib/src/app.dart": "9f9754727ae77b101773dc813be4714658949fda335df7100aec66485bc0786f",
+    "lib/src/app_state.dart": "01b8a830af622f98fe801be09fba185eed0718a129111038603b3f8b1e2e7f32",
+    "lib/src/asset_overview.dart": "da2c1bbbe842062eae38e0febf9fb9a9a4420064de913f0025b01353750e4389",
+    "lib/src/deposit_page.dart": "8f099251e5e71b113a29f80c5e2d1313f697834a3e3e6a2696b232b06f179f1c",
+    "lib/src/device_access_panel.dart": "8000eb3c5bd1d61e20e6cf342eb6b735c2e40bc0ed65b411dabfe3d1b54035c6",
+    "lib/src/funding_records_page.dart": "f554371f37ebb1aaa66d72df646c46292d8e7d03963a42f8b1a2c34833150477",
+    "lib/src/kyc_application_page.dart": "d5c3383c5385322e7340f2cf870c090c2a796f5ecff29c8feb7a0fb20c5a9262",
+    "lib/src/kyc_documents_page.dart": "c4a2a40459f9801eb5b06fbb72456afbf0e0f1d55da5f87318de131fc0c46ae4",
+    "lib/src/models.dart": "25b64131e19292c57f792191828727395f0150de1ffea7e7bbd3c19ffb191817",
+    "lib/src/option_market.dart": "2d32180fe55bede511ad9829e9ab5e87e344f7a4831dcc00e2735dea0aaecb4a",
+    "lib/src/realtime_state.dart": "fc4cc277ecc2667971f64691dc32be59d03cdef422c067ee7768017f135eeccb",
+    "lib/src/session_store.dart": "0a0542b5b8ce6f2c77f3e67edd035a3914d63b7f041372edd7277b1c6502ede7",
+    "lib/src/spot_algo_order_sheet.dart": "e25018e662caab3597da2db74f8f762fb63b1944ee63a5a13f7756d1db6ccf9b",
+    "lib/src/spot_amend_order_sheet.dart": "23c33f38423f552e66a2a33ce7236f5cf8a80199720afa551790b07f7c6c2e38",
+    "lib/src/spot_order.dart": "35f1407994197e48faf84d6aec8ae178db6f823f6c401d0d1ed7ee20671780a4",
+    "pubspec.lock": "3acbc50aa2d23546f37b268cdd1560cca720d0e085668c7b8fbb6e2ae45bb814",
+    "pubspec.yaml": "43321ab0a27e515bc62716eb9adecbf066d4cde92847abd9bd9baed6c3038e4b"
+  },
+  "evidence": {
+    "analyze-final.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/analyze-final.log",
+      "bytes": 96,
+      "sha256": "7b969c6318a348de9096023f528faeed0744556b4df0803d3906748259901e2d"
+    },
+    "tests-final.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/tests-final.log",
+      "bytes": 190233,
+      "sha256": "cfbfc4ee10da327dfba72fe30544ae380b08297524d17844c797738ab3ce68c4"
+    },
+    "build-final.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/build-final.log",
+      "bytes": 1176,
+      "sha256": "1d64a82609a081ec4ef09afe570bba0a30c2f9d9c3266f240dafa8e46c07ba5d"
+    },
+    "apk-badging.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/apk-badging.log",
+      "bytes": 5289,
+      "sha256": "5dfb4166096ea891d927cc1bc2d2e1f9ca0cd462fb572f730111df94cf619ddd"
+    },
+    "apk-signature.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/apk-signature.log",
+      "bytes": 307,
+      "sha256": "3f9ae6f74abaa990baeeacd222eb2192b5429e4a0e77f92ed622acd281765db9"
+    },
+    "install.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/install.log",
+      "bytes": 36,
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    "launch.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/launch.log",
+      "bytes": 196,
+      "sha256": "857c8a1ee1aa577bd608c91883e02f1caf6eb90f7351f61423495896426b53b5"
+    },
+    "installed-package.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/installed-package.log",
+      "bytes": 150,
+      "sha256": "6cb6072a4dfd526b23fbef7682b1334bfedd9ca41b597e8ddbb50c542080dc15"
+    },
+    "startup-logcat.log": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/startup-logcat.log",
+      "bytes": 2318,
+      "sha256": "43c9ecc3f49b8ce3528aa9a2422b091f3cf82fd003b48541fe1850fd48541b26"
+    },
+    "before.png": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/before.png",
+      "bytes": 267506,
+      "sha256": "31b12176b38de46da1a28b97e621a2e201455c2080732055c59fae56f2fba246"
+    },
+    "after-trade.png": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/after-trade.png",
+      "bytes": 92536,
+      "sha256": "d4a2da81fe6eb146bc42cd3f52660fa01b63646c7447a40247594ce4cde5a6a6"
+    },
+    "after-linear-ticket.png": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/after-linear-ticket.png",
+      "bytes": 278449,
+      "sha256": "5d4230b458b75b123c326a1dcfc283184922d8c841adcb3dfe5943ccf9c0077f"
+    },
+    "ui-only.patch": {
+      "historicalPath": "/tmp/surprising-android-trade-layout-20261020_121213/ui-only.patch",
+      "bytes": 22603,
+      "sha256": "6dd7546faa2bf23ded7542ec9b6c081e105735ee1a6233b09c501928798ecd16"
+    }
+  }
+}

@@ -59,3 +59,22 @@ String formatAccountUnits(Object? units, String? scale) {
       .replaceFirst(RegExp(r'0+$'), '');
   return '${integer.isNegative ? '-' : ''}$whole${fraction.isEmpty ? '' : '.$fraction'}';
 }
+
+/// Fractional average ticks retain all transmitted digits and immutable tick size.
+String formatExecutionPrice(Object? ticks, int? tickUnits, String? assetScale) {
+  final value = '$ticks';
+  if (!RegExp(r'^\d+(?:\.\d+)?$').hasMatch(value) ||
+      tickUnits == null ||
+      tickUnits <= 0 ||
+      assetScale == null ||
+      !RegExp(r'^10*$').hasMatch(assetScale)) {
+    return '—';
+  }
+  final parts = value.split('.');
+  final fraction = parts.length == 2 ? parts[1].length : 0;
+  final scale = BigInt.parse(assetScale) * BigInt.from(10).pow(fraction);
+  return formatAccountUnits(
+    BigInt.parse(parts.join()) * BigInt.from(tickUnits),
+    '$scale',
+  );
+}

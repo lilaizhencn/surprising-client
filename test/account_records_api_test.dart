@@ -115,7 +115,16 @@ void main() {
         requests.add(request);
         request.response.headers.contentType = ContentType.json;
         request.response.write(
-          jsonEncode({'entries': [], 'transfers': [], 'orders': []}),
+          jsonEncode({
+            'entries': [],
+            'transfers': [],
+            'orders': [],
+            'count': 0,
+            'limit': 100,
+            'hasMore': false,
+            'nextCursor': null,
+            'sort': 'updatedAt.desc',
+          }),
         );
         await request.response.close();
       });

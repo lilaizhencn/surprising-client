@@ -4,6 +4,15 @@ import 'account_records.dart';
 import 'app_state.dart';
 import 'models.dart';
 
+typedef _RecordFilters = ({
+  String asset,
+  String referenceType,
+  String instrumentId,
+  String status,
+  DateTime? from,
+  DateTime? to,
+});
+
 class FundingRecordsPage extends StatefulWidget {
   const FundingRecordsPage({
     required this.state,
@@ -39,9 +48,11 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
   DateTime? from, to;
   String? cursor, token, error;
   Map<String, String> scales = {};
+  Map<String, Instrument> recordInstruments = {};
   List<Map<String, dynamic>> rows = [];
   bool loading = false;
   int generation = 0;
+  _RecordFilters? appliedFilters;
 
   @override
   void initState() {
@@ -68,6 +79,10 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
       rows = [];
       cursor = null;
       scales = {};
+      recordInstruments = {};
+      appliedFilters = null;
+      loading = false;
+      error = null;
     });
     if (next != null) _load();
   }
@@ -76,14 +91,44 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
     final identity = token, id = widget.state.userId;
     if (identity == null ||
         id == null ||
-        (more && (cursor == null || loading))) {
+        (more && (cursor == null || appliedFilters == null || loading))) {
       return;
     }
+    if (!more && from != null && to != null && from!.isAfter(to!)) {
+      generation++;
+      setState(() {
+        error = '开始日期不能晚于结束日期';
+        loading = false;
+        rows = [];
+        cursor = null;
+        appliedFilters = null;
+        recordInstruments = {};
+      });
+      return;
+    }
+    final queryCategory = category, queryProduct = product;
+    final filters = more
+        ? appliedFilters!
+        : (
+            asset: asset.text.trim(),
+            referenceType: reference.text.trim(),
+            instrumentId: instrument.text.trim(),
+            status: status.text.trim(),
+            from: from,
+            to: to == null
+                ? null
+                : DateTime(
+                    to!.year,
+                    to!.month,
+                    to!.day + 1,
+                  ).subtract(const Duration(milliseconds: 1)),
+          );
     final version = ++generation;
     setState(() {
       loading = true;
       error = null;
       if (!more) {
+        appliedFilters = filters;
         rows = [];
         cursor = null;
       }
@@ -99,21 +144,15 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
       }
       scales = loadedScales;
       final page = await widget.state.api.accountRecords(
-        category: category,
+        category: queryCategory,
         userId: id,
-        product: product,
-        asset: asset.text,
-        referenceType: reference.text,
-        instrumentId: instrument.text.trim(),
-        status: status.text,
-        from: from,
-        to: to == null
-            ? null
-            : DateTime(
-                to!.year,
-                to!.month,
-                to!.day + 1,
-              ).subtract(const Duration(milliseconds: 1)),
+        product: queryProduct,
+        asset: filters.asset,
+        referenceType: filters.referenceType,
+        instrumentId: filters.instrumentId,
+        status: filters.status,
+        from: filters.from,
+        to: filters.to,
         cursor: more ? cursor : null,
       );
       if (!mounted ||
@@ -121,12 +160,42 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
           identity != widget.state.session?.accessToken) {
         return;
       }
+      final metadata = more
+          ? Map<String, Instrument>.of(recordInstruments)
+          : <String, Instrument>{};
+      if (queryCategory == 'order' || queryCategory == 'trade') {
+        for (final row in page.rows) {
+          final instrumentId = asString(row['instrumentId']);
+          final key = '${queryProduct.productLine}:$instrumentId';
+          if (metadata.containsKey(key)) continue;
+          final known = widget.state.instruments
+              .where(
+                (i) => i.instrumentId == instrumentId && i.mode == queryProduct,
+              )
+              .firstOrNull;
+          metadata[key] =
+              known ??
+              await widget.state.api.instrumentLatest(
+                instrumentId,
+                queryProduct,
+              );
+          if (!mounted ||
+              version != generation ||
+              identity != widget.state.session?.accessToken) {
+            return;
+          }
+        }
+      }
       setState(() {
-        final seen = <String>{};
-        rows = [
-          if (more) ...rows,
-          ...page.rows,
-        ].where((r) => seen.add(jsonEncode(r))).toList();
+        recordInstruments = metadata;
+        String key(Map<String, dynamic> row) => queryCategory == 'order'
+            ? '${row['orderId']}'
+            : queryCategory == 'trade'
+            ? '${row['tradeId']}:${row['liquidityRole']}:${row['orderId']}'
+            : jsonEncode(row);
+        rows = {
+          for (final row in [if (more) ...rows, ...page.rows]) key(row): row,
+        }.values.toList();
         cursor = page.hasMore ? page.nextCursor : null;
       });
     } catch (_) {
@@ -156,7 +225,9 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
   }
 
   bool _visible(Map<String, dynamic> row) {
-    final wantedAsset = asset.text.trim().toUpperCase();
+    final filters = appliedFilters;
+    if (filters == null) return false;
+    final wantedAsset = filters.asset.toUpperCase();
     if (wantedAsset.isNotEmpty &&
         asString(
               row['asset'] ?? row['assetSymbol'] ?? row['currency'],
@@ -164,16 +235,16 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
             wantedAsset) {
       return false;
     }
-    if (reference.text.trim().isNotEmpty &&
+    if (filters.referenceType.isNotEmpty &&
         asString(row['referenceType']).toUpperCase() !=
-            reference.text.trim().toUpperCase()) {
+            filters.referenceType.toUpperCase()) {
       return false;
     }
-    if (instrument.text.trim().isNotEmpty &&
-        asString(row['instrumentId']) != instrument.text.trim()) {
+    if (filters.instrumentId.isNotEmpty &&
+        asString(row['instrumentId']) != filters.instrumentId) {
       return false;
     }
-    final wantedStatus = status.text.trim().toUpperCase();
+    final wantedStatus = filters.status.toUpperCase();
     if (wantedStatus.isNotEmpty &&
         asString(row['status']).toUpperCase() != wantedStatus) {
       return false;
@@ -186,16 +257,30 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
             row['tradeTime'],
       ),
     );
-    if (from != null && (date == null || date.isBefore(from!))) return false;
-    if (to != null &&
-        (date == null ||
-            !date.isBefore(DateTime(to!.year, to!.month, to!.day + 1)))) {
+    if (filters.from != null &&
+        (date == null || date.isBefore(filters.from!))) {
+      return false;
+    }
+    if (filters.to != null && (date == null || date.isAfter(filters.to!))) {
       return false;
     }
     return true;
   }
 
   Widget _record(Map<String, dynamic> row) {
+    if (category == 'trade') {
+      return _tradeRecord(
+        row,
+        recordInstruments['${product.productLine}:${row['instrumentId']}'],
+      );
+    }
+    if (category == 'order') {
+      return _orderRecord(
+        row,
+        recordInstruments['${product.productLine}:${row['instrumentId']}'],
+      );
+    }
+
     final contract = widget.state.instruments
         .where(
           (i) =>
@@ -203,7 +288,6 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
               i.mode == product,
         )
         .firstOrNull;
-    if (category == 'trade') return _tradeRecord(row, contract);
     final currency = asString(
       row['asset'] ??
           row['assetSymbol'] ??
@@ -282,6 +366,66 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
             }.entries)
               if (row[pair.key] != null)
                 SelectableText('${pair.value}：${row[pair.key]}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _orderRecord(Map<String, dynamic> row, Instrument? contract) {
+    String quantity(String field) {
+      if (contract == null) return '—';
+      if (!contract.isSpot) return '${row[field]} 张';
+      final steps = BigInt.tryParse('${row[field]}');
+      return steps == null
+          ? '—'
+          : '${formatAccountUnits(steps * BigInt.from(contract.quantityStepUnits), scales[contract.baseAsset])} ${contract.baseAsset}';
+    }
+
+    String price(Object? ticks) => contract == null
+        ? '—'
+        : '${formatExecutionPrice(ticks, contract.priceTickUnits, scales[contract.quoteAsset])} ${contract.quoteAsset}';
+    final feeAsset = contract == null
+        ? null
+        : contract.isSpot
+        ? contract.quoteAsset
+        : contract.settleAsset;
+    final label =
+        const {
+          'FILLED': '全部成交',
+          'CANCELED': '已撤销',
+          'REJECTED': '已拒绝',
+        }[row['status']] ??
+        asString(row['status']);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              contract?.symbol ?? '合约 ${row['instrumentId']}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            Text(
+              '${row['side'] == 'BUY' ? '买入' : '卖出'} · ${row['orderType'] == 'MARKET' ? '市价' : '限价'} · $label',
+            ),
+            Text(
+              '委托价格：${row['orderType'] == 'MARKET' ? '市价' : price(row['priceTicks'])}',
+            ),
+            Text(
+              '成交均价：${asString(row['executedQuantitySteps']) == '0' ? '—' : price(row['averagePriceTicks'])}',
+            ),
+            Text('委托数量：${quantity('quantitySteps')}'),
+            Text('已成交：${quantity('executedQuantitySteps')}'),
+            Text('剩余：${quantity('remainingQuantitySteps')}'),
+            Text(
+              '累计手续费：${formatAccountUnits(row['cumulativeFeeUnits'], scales[feeAsset])}${feeAsset == null ? '' : ' $feeAsset'}',
+            ),
+            Text('有效方式：${row['timeInForce']}'),
+            Text('创建时间：${row['createdAt']}'),
+            Text('更新时间：${row['updatedAt']}'),
+            SelectableText('订单号：${row['orderId']}'),
           ],
         ),
       ),
@@ -414,12 +558,15 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                         .toList(),
                     onChanged: (p) {
                       if (p != null) {
-                        setState(() => product = p);
+                        setState(() {
+                          product = p;
+                          instrument.clear();
+                        });
                         _load();
                       }
                     },
                   ),
-                if (category != 'trade')
+                if (category != 'trade' && category != 'order')
                   TextField(
                     controller: asset,
                     decoration: const InputDecoration(labelText: '币种（可留空）'),
@@ -434,7 +581,22 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     controller: instrument,
                     decoration: const InputDecoration(labelText: '合约 ID（可留空）'),
                   ),
-                if (category != 'trade')
+                if (category == 'order')
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('history-status-${status.text}'),
+                    initialValue: status.text,
+                    decoration: const InputDecoration(labelText: '委托状态'),
+                    items: const [
+                      DropdownMenuItem(value: '', child: Text('全部状态')),
+                      DropdownMenuItem(value: 'FILLED', child: Text('全部成交')),
+                      DropdownMenuItem(value: 'CANCELED', child: Text('已撤销')),
+                      DropdownMenuItem(value: 'REJECTED', child: Text('已拒绝')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => status.text = value);
+                    },
+                  ),
+                if (category != 'trade' && category != 'order')
                   TextField(
                     controller: status,
                     decoration: const InputDecoration(labelText: '状态（可留空）'),
@@ -473,12 +635,6 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                   onPressed: loading
                       ? null
                       : () {
-                          if (from != null &&
-                              to != null &&
-                              from!.isAfter(to!)) {
-                            setState(() => error = '开始日期不能晚于结束日期');
-                            return;
-                          }
                           _load();
                         },
                   child: const Text('筛选 / 刷新'),

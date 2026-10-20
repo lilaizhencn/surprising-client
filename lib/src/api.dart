@@ -441,6 +441,59 @@ class ApiClient {
         throw const FormatException('成交记录身份、内容或分页资料不匹配');
       }
     }
+    if (category == 'order') {
+      final page = asMap(response);
+      final orders = asList(page['orders']);
+      final next = page['nextCursor'];
+      bool integer(Object? value, {bool positive = false}) {
+        final n = BigInt.tryParse('$value');
+        return n != null &&
+            n >= (positive ? BigInt.one : BigInt.zero) &&
+            n <= BigInt.parse('9223372036854775807');
+      }
+
+      if (page['orders'] is! List ||
+          page['count'] != orders.length ||
+          page['limit'] is! int ||
+          (page['limit'] as int) < orders.length ||
+          (page['limit'] as int) < 1 ||
+          (page['limit'] as int) > 1000 ||
+          page['sort'] != 'updatedAt.desc' ||
+          page['hasMore'] is! bool ||
+          (page['hasMore'] == true
+              ? next is! String || next.trim().isEmpty || next == cursor
+              : next != null) ||
+          orders.any((raw) {
+            final order = asMap(raw);
+            final average = order['averagePriceTicks'];
+            return asString(order['userId']) != '$userId' ||
+                !integer(order['orderId'], positive: true) ||
+                !integer(order['instrumentId'], positive: true) ||
+                (instrumentId.isNotEmpty &&
+                    asString(order['instrumentId']) != instrumentId) ||
+                (status.trim().isNotEmpty &&
+                    order['status'] != status.trim().toUpperCase()) ||
+                !['BUY', 'SELL'].contains(order['side']) ||
+                !['LIMIT', 'MARKET'].contains(order['orderType']) ||
+                !['REJECTED', 'CANCELED', 'FILLED'].contains(order['status']) ||
+                !integer(order['priceTicks']) ||
+                !integer(order['quantitySteps'], positive: true) ||
+                !integer(order['executedQuantitySteps']) ||
+                !integer(order['remainingQuantitySteps']) ||
+                BigInt.parse('${order['executedQuantitySteps']}') >
+                    BigInt.parse('${order['quantitySteps']}') ||
+                BigInt.parse('${order['remainingQuantitySteps']}') >
+                    BigInt.parse('${order['quantitySteps']}') ||
+                int.tryParse('${order['cumulativeFeeUnits']}') == null ||
+                (average != null &&
+                    (average is! String ||
+                        !RegExp(r'^\d+(?:\.\d+)?$').hasMatch(average))) ||
+                DateTime.tryParse(asString(order['createdAt'])) == null ||
+                DateTime.tryParse(asString(order['updatedAt'])) == null;
+          })) {
+        throw const FormatException('历史委托身份、内容或分页资料不匹配');
+      }
+    }
     return AccountRecordPage.fromJson(response, key);
   }
 

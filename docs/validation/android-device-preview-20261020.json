@@ -1,0 +1,195 @@
+{
+  "date": "2026-10-20",
+  "goalStatus": "progress",
+  "scope": "用户要求在已连接的 Android 手机安装当前预览版。没有据此宣布整条产品线或全部端到端功能验收完成。",
+  "previousGoalTurn": {
+    "classification": "progress",
+    "changes": "修正算法委托截止时间索引测试的数据隔离、真实子单身份 fixture，以及现货创建表单的账户/合约切换保护；保持整体目标 active。",
+    "backendVerification": "83 Core + 232 gateway targeted tests passed, zero failures/errors/skips; actual SPOT FUSED execution of this new creation work remains required."
+  },
+  "device": {
+    "model": "Huawei LIO-AN00",
+    "physical": true,
+    "androidVersion": "12",
+    "api": 31,
+    "abi": "arm64-v8a"
+  },
+  "package": {
+    "applicationId": "com.surprising.surprising_client",
+    "versionName": "1.0.0-preview.20261020",
+    "versionCode": 20261020,
+    "buildType": "release; existing Android debug signing identity, user preview only",
+    "apk": {
+      "path": "/Users/atomex/Desktop/surprising/surprising-client/build/app/outputs/flutter-apk/app-release.apk",
+      "bytes": 20602660,
+      "sha256": "003b20e427f78fdc68f68fba12a5b0e19517556356ac185599daf64f9c7ad128",
+      "sourceSnapshotUnchanged": true
+    }
+  },
+  "source": {
+    "baseCommit": "385c89ab8c6dc8b8b5ebfa927a732bbb0ef311a5",
+    "includesUncommittedWork": true,
+    "unchangedDuringSuccessfulBuild": true,
+    "files": {
+      "android/app/build.gradle.kts": "35d0726db9f1b7419b8325acf7df32e130428ceb02869d8fbbcba9ed6d4849d2",
+      "android/app/src/main/AndroidManifest.xml": "5f227507a56b2e7c76636b832daf240d51bc0f911c16c2d2e8a11f605ad47dbb",
+      "lib/main.dart": "678a5702829bba1c8cf838f18d3d567619c64055e22eb3c2506746dde88fe803",
+      "lib/src/account_records.dart": "da449b52eba1d375d4c7310430c51642c61c5cb4791f281f8abe96f1f8ff6039",
+      "lib/src/api.dart": "992fa1795380ea4eac773b94f3757f165c1b57893e93fc187aa830cf35d0dc5e",
+      "lib/src/app.dart": "0b78234da6e77b98d4047e84dc436db31e6b4d3d0bcbe5fa61fe1b16a6d51795",
+      "lib/src/app_state.dart": "fccf7737a5975eed7119757f32d269b8bb01a9196246d390ea6fd939b37e7cd6",
+      "lib/src/asset_overview.dart": "da2c1bbbe842062eae38e0febf9fb9a9a4420064de913f0025b01353750e4389",
+      "lib/src/deposit_page.dart": "8f099251e5e71b113a29f80c5e2d1313f697834a3e3e6a2696b232b06f179f1c",
+      "lib/src/device_access_panel.dart": "8000eb3c5bd1d61e20e6cf342eb6b735c2e40bc0ed65b411dabfe3d1b54035c6",
+      "lib/src/funding_records_page.dart": "f554371f37ebb1aaa66d72df646c46292d8e7d03963a42f8b1a2c34833150477",
+      "lib/src/kyc_application_page.dart": "d5c3383c5385322e7340f2cf870c090c2a796f5ecff29c8feb7a0fb20c5a9262",
+      "lib/src/kyc_documents_page.dart": "c4a2a40459f9801eb5b06fbb72456afbf0e0f1d55da5f87318de131fc0c46ae4",
+      "lib/src/models.dart": "25b64131e19292c57f792191828727395f0150de1ffea7e7bbd3c19ffb191817",
+      "lib/src/option_market.dart": "2d32180fe55bede511ad9829e9ab5e87e344f7a4831dcc00e2735dea0aaecb4a",
+      "lib/src/realtime_state.dart": "fc4cc277ecc2667971f64691dc32be59d03cdef422c067ee7768017f135eeccb",
+      "lib/src/session_store.dart": "0a0542b5b8ce6f2c77f3e67edd035a3914d63b7f041372edd7277b1c6502ede7",
+      "lib/src/spot_algo_order_sheet.dart": "e25018e662caab3597da2db74f8f762fb63b1944ee63a5a13f7756d1db6ccf9b",
+      "lib/src/spot_amend_order_sheet.dart": "23c33f38423f552e66a2a33ce7236f5cf8a80199720afa551790b07f7c6c2e38",
+      "lib/src/spot_order.dart": "35f1407994197e48faf84d6aec8ae178db6f823f6c401d0d1ed7ee20671780a4",
+      "pubspec.lock": "3acbc50aa2d23546f37b268cdd1560cca720d0e085668c7b8fbb6e2ae45bb814",
+      "pubspec.yaml": "43321ab0a27e515bc62716eb9adecbf066d4cde92847abd9bd9baed6c3038e4b"
+    }
+  },
+  "verification": {
+    "analysis": {
+      "command": "flutter analyze",
+      "exit": 0,
+      "output": "No issues found",
+      "evidence": {
+        "historicalPath": "/tmp/surprising-android-preview-20261020_120056/analyze.log",
+        "bytes": 96,
+        "sha256": "d235d0b1c4e1e451b0e9b7f5fdd5ec7d64e92678c88dfad5d62e2c600d430cb5"
+      }
+    },
+    "tests": {
+      "command": "flutter test --machine",
+      "exit": 0,
+      "passed": 334,
+      "liveOptInSkipped": 10,
+      "doneSuccess": true,
+      "evidence": {
+        "historicalPath": "/tmp/surprising-android-preview-20261020_120056/tests.log",
+        "bytes": 182710,
+        "sha256": "2ed9856aba2c7b9e3b966044812532bfa4b877eded4b0be28793e0c277d529b1"
+      },
+      "harnessNote": "The first result-summary wrapper exited1 after the test command itself exited0 because a non-event JSON array was parsed as an event; a corrected parser independently confirmed the done event and 334 real tests, excluding36 loading events."
+    }
+  },
+  "installation": {
+    "command": "adb -s <connected-phone> install -r <verified-apk>",
+    "result": "Success",
+    "launchCommand": "adb -s <connected-phone> shell am start -W -n com.surprising.surprising_client/.MainActivity",
+    "launchStatus": "ok",
+    "coldLaunchMs": 744,
+    "installedVersionVerified": true,
+    "homepage": "Viewed actual device screenshot showing Surprising home and BTC-USDT/ETH-USDT/SOL-USDT market rows; no sign-in or order submission performed.",
+    "startupFatalErrors": 0,
+    "additionalNavigation": "Before a chart navigation, foreground guard detected the user had switched away from this app; navigation and further capture were skipped."
+  },
+  "publicBackend": {
+    "gateway": "https://ex-api.tokdou.com",
+    "websocket": "wss://ex-api.tokdou.com/ws/v1",
+    "configuredProducts": {
+      "SPOT": 0,
+      "LINEAR_PERPETUAL": 3,
+      "INVERSE_PERPETUAL": 0,
+      "LINEAR_DELIVERY": 0,
+      "INVERSE_DELIVERY": 0,
+      "OPTION": 0
+    },
+    "readonlyProbe": {
+      "symbol": "BTC-USDT",
+      "instrumentId": "604",
+      "bids": 50,
+      "asks": 48,
+      "candles": 300,
+      "recentTrades": 0,
+      "wsAcks": [
+        "depth",
+        "trades",
+        "candles"
+      ],
+      "depthEventsIn10Seconds": 59,
+      "streamErrors": []
+    },
+    "probeBoundary": "This REST/WS probe ran on the host with real deployed endpoints. Physical device evidence establishes installation, startup and the visible home market rows, not all device subscriptions.",
+    "existingSmoke": "The original full public smoke remains non-passing: after correcting its missing catalog binding it stops at an empty recent-trade result; this was not hidden or replaced with fabricated trades."
+  },
+  "buildAttempts": {
+    "firstTwo": "--no-pub retained an Oct9 generated plugin registrant including integration_test; release compilation lacked that dev plugin. The initial concurrent-tool explanation was incomplete: local Flutter source and file mtime established stale generation caused by --no-pub.",
+    "successful": "Removed --no-pub and ran a complete release build; Flutter regenerated the native registrant without dev-only integration_test. No generated Java source was hand-edited.",
+    "jdk": "Microsoft OpenJDK21 for Android build; backend Maven checks separately used HotSpot Corretto27.",
+    "gradleMaxHeapMiB": 1536,
+    "gradleWorkers": 2,
+    "gradleSingleUseDaemon": true,
+    "knownAdvisory": "file_picker still applies KGP; current release compilation succeeded."
+  },
+  "notVerified": [
+    "New algo creation UI and receipt-recovery workflow still need focused tests and a fresh SPOT FUSED live run before module publication.",
+    "Other product native trade/lifecycle scenarios, login/secure-storage, biometrics and full Android interaction matrix are not accepted by this installation alone.",
+    "Only three online linear-perpetual markets are configured; the other five products show genuine empty catalog states.",
+    "No backend deployment, production release or trading action was performed."
+  ],
+  "evidence": {
+    "build-final.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/build-final.log",
+      "bytes": 965,
+      "sha256": "7f53fb6d12773a5501f2d3acb5c225ccfa645f08d20636c1cff8107f7b015314"
+    },
+    "apk-badging.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/apk-badging.log",
+      "bytes": 5289,
+      "sha256": "deeb9a8f74feb523fc22df11d41060973f4920d98da81a6e6f25c1389fe00d7c"
+    },
+    "apk-signature.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/apk-signature.log",
+      "bytes": 307,
+      "sha256": "3f9ae6f74abaa990baeeacd222eb2192b5429e4a0e77f92ed622acd281765db9"
+    },
+    "install.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/install.log",
+      "bytes": 36,
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    "launch.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/launch.log",
+      "bytes": 196,
+      "sha256": "32ee19efdc0ebbd531aee94044108f4a2483f6a5bda1969ee5b7a2fc786d88e3"
+    },
+    "installed-package.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/installed-package.log",
+      "bytes": 150,
+      "sha256": "36a0f75259f3dc9ec356fbaefc1debd6fbadd6b245bc1e0e65728b6a7415fcaf"
+    },
+    "foreground.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/foreground.log",
+      "bytes": 204,
+      "sha256": "216fde4aa59f440d21665ebe6d76301d5ca4ca356088b9fc96129cc6f4bc6281"
+    },
+    "startup-logcat.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/startup-logcat.log",
+      "bytes": 1196,
+      "sha256": "f657c6e1aa5e109c2b9e5a89ec811edeee76c897c9f75c4a7d975d1e56dfe60f"
+    },
+    "home.png": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/home.png",
+      "bytes": 175331,
+      "sha256": "f1a3e6e8f7c66fc1556e040e7d5c8d8e80b1645dcaad4dcd337836e4f06d55f7"
+    },
+    "preview-public-probe.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/preview-public-probe.log",
+      "bytes": 315,
+      "sha256": "7e503bc7483727bd29a599666bd5c9fa75725e50bce82bd9c81fbf176c430bcf"
+    },
+    "public-readonly-smoke-retry.log": {
+      "historicalPath": "/tmp/surprising-android-preview-20261020_120056/public-readonly-smoke-retry.log",
+      "bytes": 420,
+      "sha256": "f47554e68bc7e4389d68aacce6410379434fd1d9888238b17a58ff9bfea1cb29"
+    }
+  }
+}

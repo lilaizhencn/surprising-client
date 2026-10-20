@@ -82,6 +82,7 @@ Future<void> main() async {
 
   try {
     final instruments = await api.instruments();
+    api.instrumentCatalog = instruments;
     stdout.writeln(
       'Products: ${{for (final p in ProductMode.values) p.productLine: instruments.where((i) => i.mode == p).length}}',
     );

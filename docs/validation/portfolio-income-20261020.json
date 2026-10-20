@@ -4,20 +4,20 @@
   "backend_commit": "67eade79f",
   "flutter": {
     "analyze": "No issues found",
-    "passed": 451,
+    "passed": 452,
     "external_environment_skipped": 11,
     "actual_gateway_device_test_passed": 1,
-    "focused_income_and_account_display_passed": 18,
+    "focused_income_and_account_display_passed": 19,
     "device_contract_tests_passed": 4
   },
   "logs": {
     "analyze": {
-      "path": "/tmp/surprising-portfolio-submit-analyze.log",
-      "sha256": "ceb9b216583cf94097804c9a24d85fefc2c2f9ccd92043579483e3bf368149ae"
+      "path": "/tmp/surprising-asset-detail-final-analyze.log",
+      "sha256": "480bef97f7d30c5c35d99d67f516628ce59a970e98bb365d47d437d9730f69c8"
     },
     "full_tests": {
-      "path": "/tmp/surprising-portfolio-complete-tests.log",
-      "sha256": "a8472254873b468eb2a34e96bd962dc36472445e634b5b1f6673a6899b2aaad7"
+      "path": "/tmp/surprising-asset-detail-final-tests.log",
+      "sha256": "c1f62aa1aa8d16e1dcfcdd658900ab41a1ab1d847e90bbfcf8691db93e800bba"
     },
     "uuid_regression_before_fix": {
       "path": "/tmp/surprising-device-uuid-before-fix.log",
@@ -36,7 +36,7 @@
     "isolated_gateway_http": true,
     "controlled_projection_fixture": true,
     "actual_live_core_trade": false,
-    "owner": 9,
+    "owner": 11,
     "no_store": true,
     "income": "-2",
     "equity": "118",
@@ -56,40 +56,40 @@
   "surfaces": "Actual full application; dark/light home and trading-account filter on assets; not standalone component containers",
   "screenshots": [
     {
-      "platform": "android",
-      "scene": "income-assets-filter-os",
-      "path": "/tmp/surprising-portfolio-native-qa/android/income-assets-filter-os.png",
-      "sha256": "16294ca7a4931b5c3b7310cfed92438771cadcc8ac4df563ae0c2b38a0f5b136"
-    },
-    {
-      "platform": "android",
-      "scene": "income-home-dark-os",
-      "path": "/tmp/surprising-portfolio-native-qa/android/income-home-dark-os.png",
-      "sha256": "c1da1939a9f7694ccc1a38bd7bc3ea0f8cd9f99581fc1290391d339ac162a1e4"
-    },
-    {
-      "platform": "android",
-      "scene": "income-home-light-os",
-      "path": "/tmp/surprising-portfolio-native-qa/android/income-home-light-os.png",
-      "sha256": "7db1b59bd3faeac200138b1d83f1fb684848bcc245ec9eca5e6980bac9ee69fd"
-    },
-    {
       "platform": "ios",
       "scene": "income-assets-filter-os",
-      "path": "/tmp/surprising-portfolio-native-qa/ios/income-assets-filter-os.png",
-      "sha256": "099dac1e98ea2a105edc500b2e130c81d6798f8479f5d2fcbfb1c232e4134667"
+      "path": "/tmp/surprising-asset-detail-native-qa/ios/income-assets-filter-os.png",
+      "sha256": "7c2bd83cdbbfeb3c1dba6107d28fbc75cdd4da655c32d9e527d5cdded91c8ee0"
     },
     {
       "platform": "ios",
       "scene": "income-home-dark-os",
-      "path": "/tmp/surprising-portfolio-native-qa/ios/income-home-dark-os.png",
-      "sha256": "dbd6ed0026fca7cd3dee8fd23295948f345b8ef56ddd4336d339c4687597b4d6"
+      "path": "/tmp/surprising-asset-detail-native-qa/ios/income-home-dark-os.png",
+      "sha256": "4e342911fc97cda0dbc8202ce415ffae1aa0be52eebcdd28a4c7e871fdd817b2"
     },
     {
       "platform": "ios",
       "scene": "income-home-light-os",
-      "path": "/tmp/surprising-portfolio-native-qa/ios/income-home-light-os.png",
-      "sha256": "af7a2d15e1b2011e1660a2f88f8a6de4b2a8d138ca790138215523595b70cac4"
+      "path": "/tmp/surprising-asset-detail-native-qa/ios/income-home-light-os.png",
+      "sha256": "c2b4763b6d7f237de89cc9129fdaf17f63e20faa8b73b766e084afbd108cdb57"
+    },
+    {
+      "platform": "android",
+      "scene": "income-assets-filter-os",
+      "path": "/tmp/surprising-asset-detail-native-qa/android/income-assets-filter-os.png",
+      "sha256": "52470eeba24b4a4b1dfdda114cb3a50fc79e4b48d77b86920d10532d8d16aa9a"
+    },
+    {
+      "platform": "android",
+      "scene": "income-home-dark-os",
+      "path": "/tmp/surprising-asset-detail-native-qa/android/income-home-dark-os.png",
+      "sha256": "3977024e4f9d8a120c1ddca2c83a215728d12aaabd9b0c3315b902eb1b2d87ad"
+    },
+    {
+      "platform": "android",
+      "scene": "income-home-light-os",
+      "path": "/tmp/surprising-asset-detail-native-qa/android/income-home-light-os.png",
+      "sha256": "fe09b4af875196a080c43c25fff0b24ccf0ebef6addb796601c123c28d580b50"
     }
   ],
   "cleanup": {
@@ -112,5 +112,13 @@
     "Physical iOS camera/gallery/screen-capture verification; simulator capture protection remains unpassed"
   ],
   "whole_feature_complete": false,
-  "merge_allowed": false
+  "merge_allowed": false,
+  "scoped_asset_details": {
+    "summary_does_not_certify_detail_readiness": true,
+    "unknown_details_never_labelled_empty": true,
+    "readiness_includes_actual_product_balances_and_precision": true,
+    "widget_regression_in_full_suite": true,
+    "final_platform_asset_screens_reviewed": true,
+    "previous_native_evidence": "/tmp/surprising-portfolio-native-qa"
+  }
 }

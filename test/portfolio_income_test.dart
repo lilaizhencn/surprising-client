@@ -6,7 +6,7 @@ import 'package:surprising_client/src/exchange_widgets.dart';
 import 'package:surprising_client/src/asset_overview.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/portfolio_income.dart';
-import 'account_display_test.dart' show session;
+import 'account_display_test.dart' show session, portfolio;
 import 'support/portfolio_income_fixture.dart';
 
 void main() {
@@ -137,6 +137,53 @@ void main() {
       expect(state.portfolioIncome(), isNull);
     },
   );
+  testWidgets(
+    'a known summary cannot certify an empty or complete asset detail list',
+    (tester) async {
+      final state = AppState(apiClient: IncomeApi())..session = session;
+      await state.refreshPortfolioIncome();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: state,
+              builder: (_, _) => SingleChildScrollView(
+                child: AssetOverview(
+                  state: state,
+                  onDeposit: () {},
+                  onWithdraw: () {},
+                  onTools: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('资产明细同步中'), findsOneWidget);
+      expect(find.text('暂无资产'), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
+        '17.00',
+      );
+      state.walletReady = true;
+      state.walletPortfolio = portfolio(12);
+      state.notifyListeners();
+      await tester.tap(find.byKey(const ValueKey('asset-account-funding')));
+      await tester.pumpAndSettle();
+      expect(find.text('资产明细同步中'), findsNothing);
+      expect(find.text('资金账户同步中'), findsNothing);
+      expect(find.text('暂无资产'), findsNothing);
+      expect(find.byKey(const ValueKey('asset-coin-USDT')), findsOneWidget);
+      state.walletReady = false;
+      state.notifyListeners();
+      await tester.pump();
+      expect(find.text('资金账户同步中'), findsOneWidget);
+      expect(find.text('暂无资产'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    },
+  );
+
   for (final brightness in Brightness.values) {
     testWidgets('scoped income, currency and privacy at 320px $brightness', (
       tester,

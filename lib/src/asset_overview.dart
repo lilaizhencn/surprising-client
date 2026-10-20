@@ -79,6 +79,23 @@ class _AssetOverviewState extends State<AssetOverview> {
     final product = ProductMode.values
         .where((p) => p.accountType == account)
         .firstOrNull;
+    final detailProducts = account == 'overview' || account == 'trading'
+        ? ProductMode.values.where((p) => !p.isSpot)
+        : product == null
+        ? <ProductMode>[]
+        : [product];
+    final detailsReady =
+        state.isLoggedIn &&
+        ((account != 'overview' && account != 'funding') ||
+            state.walletReady) &&
+        detailProducts.every(
+          (p) =>
+              state.productAssetsReady(p) &&
+              (state.productBalances[p] ?? <ProductBalance>[]).every(
+                (b) =>
+                    b.equity != null && b.available != null && b.locked != null,
+              ),
+        );
     final income = state.portfolioIncome(account);
     final funding = state.portfolioIncome('funding')?.equityValue;
     final trading = state.portfolioIncome('trading')?.equityValue;
@@ -368,15 +385,15 @@ class _AssetOverviewState extends State<AssetOverview> {
           ],
         ),
         const SizedBox(height: 8),
-        if (state.isLoggedIn && total == null)
+        if (state.isLoggedIn && !detailsReady)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(
-              account == 'funding' ? state.walletError ?? '资金账户同步中' : '部分账户同步中',
+              account == 'funding' ? state.walletError ?? '资金账户同步中' : '资产明细同步中',
               style: TextStyle(color: muted),
             ),
           ),
-        if (state.isLoggedIn && total != null && assets.isEmpty)
+        if (state.isLoggedIn && detailsReady && assets.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
             child: Center(child: Text('暂无资产')),

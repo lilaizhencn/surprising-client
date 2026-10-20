@@ -3716,6 +3716,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Map<String, dynamic> mfaRecovery = const {};
   Map<String, dynamic> mfaRecoveryChallenge = const {};
   Map<String, dynamic> enrollment = const {};
+  PrimaryAuthenticationContext? primaryAuthentication;
   List<Map<String, dynamic>> scenes = const [];
   List<Map<String, dynamic>> keys = const [];
   Map<String, dynamic> kyc = const {};
@@ -3812,6 +3813,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     mfaRecovery = {};
     mfaRecoveryChallenge = {};
     enrollment = {};
+    primaryAuthentication = null;
     scenes = [];
     keys = [];
     kyc = {};
@@ -3883,6 +3885,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     sessionsPage = {};
     historyPage = {};
     mfa = {};
+    primaryAuthentication = null;
     kyc = {};
     kycProviderInfo = {};
     scenes = [];
@@ -3908,6 +3911,11 @@ class _SecuritySheetState extends State<SecuritySheet> {
 
     await Future.wait([
       if (!widget.kycOnly) ...[
+        read(
+          '安全身份',
+          state.api.primaryAuthentication,
+          (value) => primaryAuthentication = value,
+        ),
         read('2FA', state.api.mfaStatus, (value) {
           mfa = value;
           mfaLoaded = true;
@@ -4148,9 +4156,20 @@ class _SecuritySheetState extends State<SecuritySheet> {
     String method,
     bool enabled, {
     bool changeBinding = false,
-  }) async {
+  }) => _run(() async {
     mfaPassword.clear();
     loginMethodDestination.clear();
+    final primary = await state.api.primaryAuthentication();
+    if (!mounted || !operationCurrent) return;
+    setState(() => primaryAuthentication = primary);
+    if (primary.reauthenticationRequired) {
+      throw const FormatException('请重新登录后继续安全设置');
+    }
+    final setting = methods
+        .where((entry) => entry['type'] == method)
+        .firstOrNull;
+    final newDestination =
+        enabled && (changeBinding || setting?['bound'] != true);
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -4158,20 +4177,21 @@ class _SecuritySheetState extends State<SecuritySheet> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
-            TextField(
-              controller: mfaPassword,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '登录密码'),
-            ),
-            if (changeBinding)
+            const Text('绑定或变更安全信息后，24 小时内不能提现。'),
+            if (primary.passwordRequired)
+              TextField(
+                controller: mfaPassword,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '登录密码'),
+              ),
+            if (newDestination)
               TextField(
                 controller: loginMethodDestination,
                 keyboardType: method == 'EMAIL'
                     ? TextInputType.emailAddress
                     : TextInputType.phone,
                 decoration: InputDecoration(
-                  labelText: method == 'EMAIL' ? '新邮箱' : '新手机号（国际区号）',
+                  labelText: method == 'EMAIL' ? '邮箱' : '手机号（国际区号）',
                 ),
               ),
           ],
@@ -4188,19 +4208,26 @@ class _SecuritySheetState extends State<SecuritySheet> {
         ],
       ),
     );
-    if (accepted != true || mfaPassword.text.isEmpty) return;
-    await _run(() async {
-      final next = await state.api.beginLoginMethod(
-        method: method,
-        currentPassword: mfaPassword.text,
-        enabled: enabled,
-        destination: changeBinding ? loginMethodDestination.text : null,
-      );
-      if (operationCurrent) {
-        setState(() => enrollment = {...next, 'loginMethod': method});
-      }
-    }, '验证码已发送，请完成安全验证');
-  }
+    if (!operationCurrent || accepted != true) {
+      _operationCancelled = true;
+      return;
+    }
+    if (primary.passwordRequired && mfaPassword.text.isEmpty) {
+      throw const FormatException('请输入登录密码');
+    }
+    if (newDestination && loginMethodDestination.text.trim().isEmpty) {
+      throw const FormatException('请输入要绑定的邮箱或手机号');
+    }
+    final next = await state.api.beginLoginMethod(
+      method: method,
+      currentPassword: primary.passwordRequired ? mfaPassword.text : '',
+      enabled: enabled,
+      destination: newDestination ? loginMethodDestination.text : null,
+    );
+    if (operationCurrent) {
+      setState(() => enrollment = {...next, 'loginMethod': method});
+    }
+  }, '验证码已发送，请完成安全验证');
 
   @override
   Widget build(BuildContext context) {
@@ -4281,6 +4308,13 @@ class _SecuritySheetState extends State<SecuritySheet> {
               label: const Text('刷新安全状态'),
             ),
             if (!widget.kycOnly) ...[
+              if (primaryAuthentication?.reauthenticationRequired == true ||
+                  error == '请重新登录后继续安全设置')
+                TextButton.icon(
+                  onPressed: busy ? null : () => showAuthSheet(context),
+                  icon: const Icon(Icons.login),
+                  label: const Text('重新登录验证身份'),
+                ),
               const SectionTitle(title: '登录验证方式'),
               for (final method in methods)
                 if (method['type'] == 'TOTP')
@@ -4454,11 +4488,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 ),
               if (!mfaEnabled && enrollment.isEmpty) ...[
                 const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
-                AppTextField(controller: mfaPassword, label: '登录密码'),
+                if (primaryAuthentication?.passwordRequired == true)
+                  AppTextField(controller: mfaPassword, label: '登录密码'),
                 PrimaryAction(
                   label: '生成绑定信息',
                   icon: Icons.qr_code_2,
-                  onPressed: actionsBlocked
+                  onPressed:
+                      actionsBlocked ||
+                          primaryAuthentication == null ||
+                          primaryAuthentication!.reauthenticationRequired
                       ? null
                       : () => _run(() async {
                           final next = await state.api.enrollMfa(
@@ -4472,9 +4510,13 @@ class _SecuritySheetState extends State<SecuritySheet> {
               ],
               if (mfaEnabled && enrollment.isEmpty) ...[
                 const Text('关闭谷歌验证码后将重新生成新密钥；安全信息变更后 24 小时内不能提现。'),
-                AppTextField(controller: mfaPassword, label: '登录密码'),
+                if (primaryAuthentication?.passwordRequired == true)
+                  AppTextField(controller: mfaPassword, label: '登录密码'),
                 TextButton(
-                  onPressed: actionsBlocked
+                  onPressed:
+                      actionsBlocked ||
+                          primaryAuthentication == null ||
+                          primaryAuthentication!.reauthenticationRequired
                       ? null
                       : () => _run(() async {
                           final next = await state.api.beginMfaDisable(
@@ -4530,59 +4572,67 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   icon: Icons.verified_user,
                   onPressed: actionsBlocked || challengeToken.isEmpty
                       ? null
-                      : () => _run(() async {
-                          final args = {
-                            'challengeToken': challengeToken,
-                            'currentPassword': mfaPassword.text,
-                            'emailCode': needsEmailCode
-                                ? mfaEmailCode.text.trim()
-                                : null,
-                            'phoneCode': needsPhoneCode
-                                ? mfaPhoneCode.text.trim()
-                                : null,
-                            'totpCode': totp.text.trim(),
-                          };
-                          final loginMethod = asString(
-                            enrollment['loginMethod'],
-                          );
-                          final next = loginMethod.isNotEmpty
-                              ? await state.api
-                                    .confirmLoginMethod(
-                                      method: loginMethod,
-                                      currentPassword: args['currentPassword']!,
-                                      challengeToken: args['challengeToken']!,
-                                      emailCode: args['emailCode'],
-                                      phoneCode: args['phoneCode'],
-                                      totpCode: args['totpCode'],
-                                    )
-                                    .then((_) => state.api.mfaStatus())
+                      : () => _run(
+                          () async {
+                            final args = {
+                              'challengeToken': challengeToken,
+                              'currentPassword': mfaPassword.text,
+                              'emailCode': needsEmailCode
+                                  ? mfaEmailCode.text.trim()
+                                  : null,
+                              'phoneCode': needsPhoneCode
+                                  ? mfaPhoneCode.text.trim()
+                                  : null,
+                              'totpCode': totp.text.trim(),
+                            };
+                            final loginMethod = asString(
+                              enrollment['loginMethod'],
+                            );
+                            final next = loginMethod.isNotEmpty
+                                ? await state.api
+                                      .confirmLoginMethod(
+                                        method: loginMethod,
+                                        currentPassword:
+                                            args['currentPassword']!,
+                                        challengeToken: args['challengeToken']!,
+                                        emailCode: args['emailCode'],
+                                        phoneCode: args['phoneCode'],
+                                        totpCode: args['totpCode'],
+                                      )
+                                      .then((_) => state.api.mfaStatus())
+                                : disablingMfa
+                                ? await state.api.confirmMfaDisable(
+                                    challengeToken: args['challengeToken']!,
+                                    currentPassword: args['currentPassword']!,
+                                    emailCode: args['emailCode'],
+                                    phoneCode: args['phoneCode'],
+                                    totpCode: args['totpCode']!,
+                                  )
+                                : await state.api.confirmMfa(
+                                    challengeToken: args['challengeToken']!,
+                                    currentPassword: args['currentPassword']!,
+                                    emailCode: args['emailCode'],
+                                    phoneCode: args['phoneCode'],
+                                    totpCode: args['totpCode']!,
+                                  );
+                            if (operationCurrent) {
+                              setState(() {
+                                mfa = next;
+                                enrollment = const {};
+                                totp.clear();
+                                mfaPassword.clear();
+                                mfaEmailCode.clear();
+                                mfaPhoneCode.clear();
+                              });
+                              if (loginMethod.isNotEmpty) unawaited(_load());
+                            }
+                          },
+                          enrollment['loginMethod'] != null
+                              ? '安全验证方式已更新'
                               : disablingMfa
-                              ? await state.api.confirmMfaDisable(
-                                  challengeToken: args['challengeToken']!,
-                                  currentPassword: args['currentPassword']!,
-                                  emailCode: args['emailCode'],
-                                  phoneCode: args['phoneCode'],
-                                  totpCode: args['totpCode']!,
-                                )
-                              : await state.api.confirmMfa(
-                                  challengeToken: args['challengeToken']!,
-                                  currentPassword: args['currentPassword']!,
-                                  emailCode: args['emailCode'],
-                                  phoneCode: args['phoneCode'],
-                                  totpCode: args['totpCode']!,
-                                );
-                          if (operationCurrent) {
-                            setState(() {
-                              mfa = next;
-                              enrollment = const {};
-                              totp.clear();
-                              mfaPassword.clear();
-                              mfaEmailCode.clear();
-                              mfaPhoneCode.clear();
-                            });
-                            if (loginMethod.isNotEmpty) unawaited(_load());
-                          }
-                        }, disablingMfa ? '2FA 已关闭' : '2FA 已启用'),
+                              ? '2FA 已关闭'
+                              : '2FA 已启用',
+                        ),
                 ),
                 TextButton(
                   onPressed: busy
@@ -4591,84 +4641,94 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: const Text('取消'),
                 ),
               ],
-              const SectionTitle(title: '丢失谷歌验证码'),
-              Text(
-                '恢复需要已通过的 KYC、登录密码、邮箱或手机验证码，并由运营人员人工审核。审核通过后会移除旧验证器，提现冻结 24 小时。',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
+              if (primaryAuthentication?.passwordRequired == true) ...[
+                const SectionTitle(title: '丢失谷歌验证码'),
+                Text(
+                  '恢复需要已通过的 KYC、登录密码、邮箱或手机验证码，并由运营人员人工审核。审核通过后会移除旧验证器，提现冻结 24 小时。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
-              ),
-              if (mfaRecovery['status'] == 'PENDING')
-                InfoLine(
-                  label: '恢复申请',
-                  value: '审核中 · ${mfaRecovery['submittedAt'] ?? ''}',
-                )
-              else if (mfaRecovery['status'] == 'APPROVED')
-                const InfoLine(label: '恢复申请', value: '已通过，可以重新绑定新的验证器密钥')
-              else ...[
-                if (mfaRecovery['status'] == 'REJECTED')
-                  Text('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
-                if (mfaRecoveryChallenge.isEmpty) ...[
-                  AppTextField(controller: mfaPassword, label: '登录密码'),
-                  PrimaryAction(
-                    label: '发送恢复验证码',
-                    icon: Icons.mark_email_read_outlined,
-                    onPressed: actionsBlocked || !mfaEnabled
-                        ? null
-                        : () => _run(
-                            () async {
-                              final challenge = await state.api
-                                  .issueMfaRecoveryChallenge(mfaPassword.text);
-                              if (operationCurrent) {
-                                setState(
-                                  () => mfaRecoveryChallenge = challenge,
-                                );
+                if (mfaRecovery['status'] == 'PENDING')
+                  InfoLine(
+                    label: '恢复申请',
+                    value: '审核中 · ${mfaRecovery['submittedAt'] ?? ''}',
+                  )
+                else if (mfaRecovery['status'] == 'APPROVED')
+                  const InfoLine(label: '恢复申请', value: '已通过，可以重新绑定新的验证器密钥')
+                else ...[
+                  if (mfaRecovery['status'] == 'REJECTED')
+                    Text('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
+                  if (mfaRecoveryChallenge.isEmpty) ...[
+                    AppTextField(controller: mfaPassword, label: '登录密码'),
+                    PrimaryAction(
+                      label: '发送恢复验证码',
+                      icon: Icons.mark_email_read_outlined,
+                      onPressed: actionsBlocked || !mfaEnabled
+                          ? null
+                          : () => _run(
+                              () async {
+                                final challenge = await state.api
+                                    .issueMfaRecoveryChallenge(
+                                      mfaPassword.text,
+                                    );
+                                if (operationCurrent) {
+                                  setState(
+                                    () => mfaRecoveryChallenge = challenge,
+                                  );
+                                }
+                              },
+                              '验证码已发送到 ${mfaRecoveryChallenge['destination'] ?? '已绑定联系方式'}',
+                            ),
+                    ),
+                  ] else ...[
+                    Text('验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}'),
+                    AppTextField(controller: mfaRecoveryCode, label: '恢复验证码'),
+                    AppTextField(
+                      controller: mfaRecoveryReason,
+                      label: '丢失原因（至少 8 个字符）',
+                    ),
+                    PrimaryAction(
+                      label: '提交人工审核',
+                      icon: Icons.support_agent,
+                      onPressed: actionsBlocked
+                          ? null
+                          : () => _run(() async {
+                              final id = int.tryParse(
+                                '${mfaRecoveryChallenge['challengeId']}',
+                              );
+                              if (id == null) {
+                                throw StateError('恢复验证码已失效，请重新申请');
                               }
-                            },
-                            '验证码已发送到 ${mfaRecoveryChallenge['destination'] ?? '已绑定联系方式'}',
-                          ),
-                  ),
-                ] else ...[
-                  Text('验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}'),
-                  AppTextField(controller: mfaRecoveryCode, label: '恢复验证码'),
-                  AppTextField(
-                    controller: mfaRecoveryReason,
-                    label: '丢失原因（至少 8 个字符）',
-                  ),
-                  PrimaryAction(
-                    label: '提交人工审核',
-                    icon: Icons.support_agent,
-                    onPressed: actionsBlocked
-                        ? null
-                        : () => _run(() async {
-                            final id = int.tryParse(
-                              '${mfaRecoveryChallenge['challengeId']}',
-                            );
-                            if (id == null) throw StateError('恢复验证码已失效，请重新申请');
-                            final request = await state.api.submitMfaRecovery(
-                              challengeId: id,
-                              currentPassword: mfaPassword.text,
-                              code: mfaRecoveryCode.text.trim(),
-                              reason: mfaRecoveryReason.text.trim(),
-                            );
-                            if (operationCurrent) {
-                              setState(() {
-                                mfaRecovery = request;
-                                mfaRecoveryChallenge = const {};
-                                mfaRecoveryCode.clear();
-                                mfaRecoveryReason.clear();
-                              });
-                            }
-                          }, '已提交，请等待人工审核'),
-                  ),
-                  TextButton(
-                    onPressed: busy
-                        ? null
-                        : () => setState(() => mfaRecoveryChallenge = const {}),
-                    child: const Text('取消'),
-                  ),
+                              final request = await state.api.submitMfaRecovery(
+                                challengeId: id,
+                                currentPassword: mfaPassword.text,
+                                code: mfaRecoveryCode.text.trim(),
+                                reason: mfaRecoveryReason.text.trim(),
+                              );
+                              if (operationCurrent) {
+                                setState(() {
+                                  mfaRecovery = request;
+                                  mfaRecoveryChallenge = const {};
+                                  mfaRecoveryCode.clear();
+                                  mfaRecoveryReason.clear();
+                                });
+                              }
+                            }, '已提交，请等待人工审核'),
+                    ),
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () =>
+                                setState(() => mfaRecoveryChallenge = const {}),
+                      child: const Text('取消'),
+                    ),
+                  ],
                 ],
+              ] else if (mfaEnabled) ...[
+                const SectionTitle(title: '丢失谷歌验证码'),
+                const Text('快捷登录账户丢失验证器时，请联系平台支持申请恢复。'),
               ],
               const SectionTitle(title: '敏感场景'),
               ...scenes.map((scene) {
@@ -4695,73 +4755,75 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 ),
               ),
               AppTextField(controller: securityEmailCode, label: '安全设置邮箱验证码'),
-              const SectionTitle(title: '修改密码'),
-              Text(
-                '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
+              if (primaryAuthentication?.passwordRequired == true) ...[
+                const SectionTitle(title: '修改密码'),
+                Text(
+                  '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              AppTextField(
-                controller: currentPassword,
-                label: '当前密码',
-                obscure: true,
-              ),
-              AppTextField(
-                controller: newPassword,
-                label: '新密码（至少 8 位）',
-                obscure: true,
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppTextField(
-                      controller: changePasswordEmailCode,
-                      label: '邮箱验证码',
+                const SizedBox(height: 8),
+                AppTextField(
+                  controller: currentPassword,
+                  label: '当前密码',
+                  obscure: true,
+                ),
+                AppTextField(
+                  controller: newPassword,
+                  label: '新密码（至少 8 位）',
+                  obscure: true,
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        controller: changePasswordEmailCode,
+                        label: '邮箱验证码',
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: AppTextField(
-                      controller: changePasswordTotpCode,
-                      label: '2FA 验证码',
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: AppTextField(
+                        controller: changePasswordTotpCode,
+                        label: '2FA 验证码',
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton.icon(
-                      onPressed: actionsBlocked
-                          ? null
-                          : () => _run(
-                              () => state.api.issueSecurityChallenge(
-                                'CHANGE_PASSWORD',
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: actionsBlocked
+                            ? null
+                            : () => _run(
+                                () => state.api.issueSecurityChallenge(
+                                  'CHANGE_PASSWORD',
+                                ),
+                                '验证码已发送到邮箱',
                               ),
-                              '验证码已发送到邮箱',
-                            ),
-                      icon: const Icon(Icons.email_outlined),
-                      label: const Text('发送验证码'),
+                        icon: const Icon(Icons.email_outlined),
+                        label: const Text('发送验证码'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: PrimaryAction(
-                      label: '确认修改',
-                      icon: Icons.password,
-                      onPressed: actionsBlocked
-                          ? null
-                          : () => _run(
-                              () => _changePassword(state),
-                              '密码已修改，请重新登录其他设备',
-                            ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: PrimaryAction(
+                        label: '确认修改',
+                        icon: Icons.password,
+                        onPressed: actionsBlocked
+                            ? null
+                            : () => _run(
+                                () => _changePassword(state),
+                                '密码已修改，请重新登录其他设备',
+                              ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
             SectionTitle(
               title:

@@ -342,6 +342,12 @@ class AccountApi extends ApiClient {
   Completer<Map<String, dynamic>>? pendingMfa;
   final walletRequests = <Completer<WalletPortfolio>>[];
   @override
+  Future<PrimaryAuthenticationContext> primaryAuthentication() async =>
+      const PrimaryAuthenticationContext(
+        passwordRequired: true,
+        reauthenticationRequired: false,
+      );
+  @override
   Future<Map<String, dynamic>> mfaStatus() async =>
       pendingMfa == null ? {'enabled': true} : pendingMfa!.future;
   @override

@@ -162,6 +162,11 @@ class ApiClient {
     await _send('GET', '/api/v1/security/login-verification'),
   ).map(asMap).toList();
 
+  Future<PrimaryAuthenticationContext> primaryAuthentication() async =>
+      PrimaryAuthenticationContext.fromJson(
+        await get('/api/v1/security/login-verification/authentication'),
+      );
+
   Future<Map<String, dynamic>> beginLoginMethod({
     required String method,
     required String currentPassword,
@@ -2402,8 +2407,12 @@ class ApiException implements Exception {
       'INVALID_VERIFICATION_CODE': '验证码不正确或已过期',
       'INVALID_CREDENTIALS': '账号或密码不正确',
       'SECURITY_HOLD': '账户处于安全保护期，请稍后重试',
+      'LOGIN_RECENT_AUTHENTICATION_REQUIRED': '请重新登录后继续安全设置',
+      'LOGIN_CONTACT_MISSING': '请先绑定邮箱或手机号，再绑定身份验证器',
+      'LOGIN_PASSWORD_INVALID': '登录密码不正确',
     };
     if (messages.containsKey(code)) return messages[code]!;
+    if (messages.containsKey(detail)) return messages[detail]!;
     if (RegExp(r'[\u4e00-\u9fff]').hasMatch(detail) &&
         !RegExp(
           r'Aeron|Exception|Kafka|SQL|stack|<html',

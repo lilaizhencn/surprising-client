@@ -746,6 +746,37 @@ class Candle {
   }
 }
 
+class PrimaryAuthenticationContext {
+  const PrimaryAuthenticationContext({
+    required this.passwordRequired,
+    required this.reauthenticationRequired,
+    this.authenticatedUntil,
+  });
+  final bool passwordRequired;
+  final bool reauthenticationRequired;
+  final DateTime? authenticatedUntil;
+
+  factory PrimaryAuthenticationContext.fromJson(Map<String, dynamic> value) {
+    if (value['passwordRequired'] is! bool ||
+        value['reauthenticationRequired'] is! bool) {
+      throw const FormatException('安全身份资料暂不可用');
+    }
+    final until = value['authenticatedUntil'];
+    final parsed = until is String ? DateTime.tryParse(until) : null;
+    if ((until != null && parsed == null) ||
+        (value['passwordRequired'] == false &&
+            value['reauthenticationRequired'] == false &&
+            parsed == null)) {
+      throw const FormatException('安全身份资料暂不可用');
+    }
+    return PrimaryAuthenticationContext(
+      passwordRequired: value['passwordRequired'] as bool,
+      reauthenticationRequired: value['reauthenticationRequired'] as bool,
+      authenticatedUntil: parsed,
+    );
+  }
+}
+
 class ProductBalance {
   const ProductBalance({
     required this.accountType,

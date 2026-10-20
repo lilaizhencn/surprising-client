@@ -587,6 +587,39 @@ class AppState extends ChangeNotifier {
   bool openOrdersHasMore = false;
   bool loadingMoreOpenOrders = false;
   List<AlgoOrderModel> openAlgoOrders = const [];
+  bool loadingAlgoOrders = false;
+  String? algoOrdersError;
+  int _algoOrdersRequestVersion = 0;
+  Map<String, Instrument> _algoOrderInstruments = const {};
+  Instrument? algoInstrumentFor(AlgoOrderModel order) =>
+      instruments
+          .where(
+            (i) =>
+                i.mode == order.product && i.instrumentId == order.instrumentId,
+          )
+          .firstOrNull ??
+      (order.product == mode
+          ? _algoOrderInstruments[order.instrumentId]
+          : null);
+  List<AlgoOrderModel> get visibleAlgoOrders => openAlgoOrders
+      .where(
+        (order) =>
+            order.userId == userId &&
+            order.product == mode &&
+            order.isOpen &&
+            (!onlyCurrentTradingPair ||
+                order.instrumentId == selectedInstrument.instrumentId),
+      )
+      .toList();
+
+  void _resetAlgoOrders() {
+    ++_algoOrdersRequestVersion;
+    openAlgoOrders = const [];
+    _algoOrderInstruments = const {};
+    loadingAlgoOrders = false;
+    algoOrdersError = null;
+  }
+
   List<TriggerOrderModel> openTriggerOrders = const [];
   String positionMode = 'ONE_WAY';
   List<PositionRisk> positionRisks = const [];
@@ -635,9 +668,12 @@ class AppState extends ChangeNotifier {
   }
 
   void setTradingPairFilter(bool enabled) {
+    if (onlyCurrentTradingPair == enabled) return;
     onlyCurrentTradingPair = enabled;
+    _resetAlgoOrders();
     _materializePrivate();
     notifyListeners();
+    unawaited(refreshAlgoOrders());
   }
 
   Future<void> refreshPositionRiskDetails() async {
@@ -686,6 +722,7 @@ class AppState extends ChangeNotifier {
   bool valuationLoading = false;
   bool loadingPublic = false;
   bool loadingPrivate = false;
+  int _privateDataRequestVersion = 0;
   bool transferSubmitting = false;
   bool transferOutcomeLocked = false;
   bool transferOutcomeTerminalFailure = false;
@@ -1347,6 +1384,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearWalletData() {
+    _resetAlgoOrders();
     ++_walletSessionVersion;
     submittingOrder = false;
     submittingTriggers = false;
@@ -1547,42 +1585,110 @@ class AppState extends ChangeNotifier {
   Future<void> refreshPrivateData() async {
     final id = userId;
     if (offline || id == null) return;
-    final generation = ++_openOrdersRequestVersion;
+    final generation = ++_privateDataRequestVersion;
     final selectedMode = mode;
+    final epoch = _walletSessionVersion, selection = _selectionVersion;
+    bool current() =>
+        generation == _privateDataRequestVersion &&
+        epoch == _walletSessionVersion &&
+        selection == _selectionVersion &&
+        id == userId &&
+        selectedMode == mode;
     loadingPrivate = true;
     notifyListeners();
     final walletRefresh = refreshWallet();
     final orderTermsRefresh = refreshOrderTerms();
+    final algoRefresh = refreshAlgoOrders();
     try {
-      final results = await Future.wait([
-        selectedMode.isDerivative
-            ? api.openAlgoOrders(
-                id,
-                symbol: selectedSymbol,
-                productLine: selectedMode.productLine,
-              )
-            : Future<List<AlgoOrderModel>>.value(const []),
-        selectedMode.isDerivative
-            ? api.liquidationOrders(id, productLine: selectedMode.productLine)
-            : Future<List<LiquidationOrder>>.value(const []),
-      ]);
-      if (generation != _openOrdersRequestVersion ||
-          id != userId ||
-          selectedMode != mode) {
+      final liquidations = await (selectedMode.isDerivative
+          ? api.liquidationOrders(id, productLine: selectedMode.productLine)
+          : Future<List<LiquidationOrder>>.value(const []));
+      if (!current()) {
         return;
       }
-      openAlgoOrders = results[0] as List<AlgoOrderModel>;
-      liquidationOrders = results[1] as List<LiquidationOrder>;
+      liquidationOrders = liquidations;
       lastError = null;
     } catch (error) {
-      if (generation == _openOrdersRequestVersion) {
+      if (current()) {
         lastError = '加载账户失败：${clientErrorMessage(error)}';
       }
     } finally {
       await walletRefresh;
       await orderTermsRefresh;
-      if (generation == _openOrdersRequestVersion) {
+      await algoRefresh;
+      if (current()) {
         loadingPrivate = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> refreshAlgoOrders() async {
+    final id = userId, product = mode, epoch = _walletSessionVersion;
+    if (offline || id == null) return;
+    final request = ++_algoOrdersRequestVersion;
+    final filter = onlyCurrentTradingPair;
+    final instrument = selectedInstrument;
+    bool current() =>
+        request == _algoOrdersRequestVersion &&
+        epoch == _walletSessionVersion &&
+        userId == id &&
+        mode == product &&
+        onlyCurrentTradingPair == filter &&
+        (!filter || selectedInstrument.instrumentId == instrument.instrumentId);
+    loadingAlgoOrders = true;
+    algoOrdersError = null;
+    notifyListeners();
+    try {
+      if (filter && instrument.instrumentId.isEmpty) {
+        throw const FormatException('算法单交易对资料尚未就绪');
+      }
+      final rows = await api.openAlgoOrders(
+        id,
+        symbol: filter ? instrument.symbol : null,
+        productLine: product.productLine,
+      );
+      if (!current()) return;
+      if (rows.any(
+        (o) =>
+            o.userId != id ||
+            o.product != product ||
+            !o.isOpen ||
+            (filter && o.instrumentId != instrument.instrumentId),
+      )) {
+        throw const FormatException('算法单查询归属不匹配');
+      }
+      openAlgoOrders = rows;
+      final metadata = <String, Instrument>{};
+      bool metadataMissing = false;
+      for (final id in rows.map((o) => o.instrumentId).toSet()) {
+        if (instruments.any((i) => i.mode == product && i.instrumentId == id)) {
+          continue;
+        }
+        try {
+          final value = await api.instrumentLatest(id, product);
+          if (!current()) return;
+          if (value.instrumentId != id || value.mode != product) {
+            throw const FormatException('算法单合约资料归属不匹配');
+          }
+          metadata[id] = value;
+        } catch (_) {
+          if (!current()) return;
+          metadataMissing = true;
+        }
+      }
+      if (!current()) return;
+      _algoOrderInstruments = metadata;
+      if (metadataMissing) algoOrdersError = '部分合约资料未就绪，请刷新策略重试';
+    } catch (error) {
+      if (current()) {
+        openAlgoOrders = const [];
+        _algoOrderInstruments = const {};
+        algoOrdersError = '加载算法单失败：${clientErrorMessage(error)}';
+      }
+    } finally {
+      if (current()) {
+        loadingAlgoOrders = false;
         notifyListeners();
       }
     }
@@ -1899,7 +2005,7 @@ class AppState extends ChangeNotifier {
     _scheduleOptionReference();
     recentTrades = [];
     accountRisk = null;
-    openAlgoOrders = [];
+    _resetAlgoOrders();
     liquidationOrders = [];
     balances = const [];
     positions = const [];
@@ -2642,20 +2748,68 @@ class AppState extends ChangeNotifier {
 
   Future<void> cancelAlgoOrder(AlgoOrderModel order) async {
     final id = userId;
-    if (id == null) return;
+    final product = mode, epoch = _walletSessionVersion;
+    if (id == null || submittingOrder || tradingCommandPending) return;
+    if (order.userId != id ||
+        order.product != product ||
+        !order.isOpen ||
+        !visibleAlgoOrders.any(
+          (o) =>
+              o.algoOrderId == order.algoOrderId &&
+              o.instrumentId == order.instrumentId &&
+              o.clientAlgoOrderId == order.clientAlgoOrderId,
+        )) {
+      lastError = '算法单不属于当前查询，请刷新后重试';
+      notifyListeners();
+      return;
+    }
+    bool current() =>
+        epoch == _walletSessionVersion && userId == id && mode == product;
+    submittingOrder = true;
+    lastError = null;
+    notifyListeners();
     try {
       final cancelled = await api.cancelAlgoOrder(
         id,
         order.algoOrderId,
-        productLine: _productLineForSymbol(order.symbol),
+        productLine: order.product.productLine,
       );
+      if (!current()) return;
+      if (cancelled.userId != id ||
+          cancelled.product != product ||
+          cancelled.algoOrderId != order.algoOrderId ||
+          cancelled.instrumentId != order.instrumentId ||
+          cancelled.clientAlgoOrderId != order.clientAlgoOrderId ||
+          !const [
+            'CANCEL_REQUESTED',
+            'CANCELED',
+            'COMPLETED',
+            'FAILED',
+          ].contains(cancelled.status) ||
+          (cancelled.status != 'CANCEL_REQUESTED' &&
+              cancelled.activeQuantitySteps != 0)) {
+        throw const FormatException('算法单撤销结果不匹配，请刷新原策略');
+      }
+      // A read started before this command may still contain the pre-cancel parent.
+      ++_algoOrdersRequestVersion;
+      loadingAlgoOrders = false;
       _upsertAlgoOrder(cancelled);
-      lastNotice = '算法单撤销已提交 #${order.algoOrderId}';
-      await refreshPrivateData();
+      lastNotice = cancelled.status == 'CANCEL_REQUESTED'
+          ? '算法单取消中，请刷新确认子单状态 #${order.algoOrderId}'
+          : cancelled.status == 'CANCELED'
+          ? '算法单撤销已确认 #${order.algoOrderId}'
+          : '算法单已结束（${cancelled.status}）#${order.algoOrderId}';
     } catch (error) {
-      lastError = '撤销算法单失败：${clientErrorMessage(error)}';
+      if (current()) {
+        lastError = '算法单撤销结果未确认，请刷新原策略：${clientErrorMessage(error)}';
+      }
+    } finally {
+      // The same account may change product while this command is in flight.
+      if (epoch == _walletSessionVersion && userId == id) {
+        submittingOrder = false;
+        notifyListeners();
+      }
     }
-    notifyListeners();
   }
 
   /// 一次原子 OCO 意图：先保存两腿身份，再发送一次；未知结果只查 realtime 回执。
@@ -4383,6 +4537,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _upsertAlgoOrder(AlgoOrderModel order) {
+    if (order.userId != userId || order.product != mode) return;
     final mutable = [...openAlgoOrders];
     final index = mutable.indexWhere(
       (item) => item.algoOrderId == order.algoOrderId,

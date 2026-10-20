@@ -1194,6 +1194,9 @@ class OrderBatchResult {
 class AlgoOrderModel {
   const AlgoOrderModel({
     required this.algoOrderId,
+    required this.userId,
+    required this.instrumentId,
+    required this.product,
     required this.symbol,
     required this.algoType,
     required this.side,
@@ -1217,6 +1220,9 @@ class AlgoOrderModel {
   });
 
   final int algoOrderId;
+  final int userId;
+  final String instrumentId;
+  final ProductMode product;
   final String? clientAlgoOrderId;
   final String symbol;
   final String algoType;
@@ -1238,28 +1244,92 @@ class AlgoOrderModel {
   final int? currentOrderId;
   final String? rejectReason;
 
-  factory AlgoOrderModel.fromJson(Map<String, dynamic> json) {
+  bool get isOpen =>
+      const ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].contains(status);
+
+  factory AlgoOrderModel.fromJson(
+    Map<String, dynamic> json, {
+    required ProductMode product,
+  }) {
+    int integer(String key, {int minimum = 0}) {
+      final raw = json[key];
+      final text = '$raw';
+      final value =
+          (raw is int || raw is String) && RegExp(r'^\d+$').hasMatch(text)
+          ? BigInt.tryParse(text)
+          : null;
+      if (value == null ||
+          value < BigInt.from(minimum) ||
+          value > BigInt.from(9223372036854775807)) {
+        throw FormatException('算法单 $key 无效');
+      }
+      return value.toInt();
+    }
+
+    final instrumentId = asString(json['instrumentId']);
+    final quantity = integer('quantitySteps', minimum: 1);
+    final child = integer('childQuantitySteps', minimum: 1);
+    final executed = integer('executedQuantitySteps');
+    final active = integer('activeQuantitySteps');
+    final type = json['algoType'];
+    final status = json['status'];
+    final price = integer('priceTicks');
+    final interval = integer('intervalSeconds', minimum: 1);
+    final duration = integer('durationSeconds', minimum: 1);
+    if (!RegExp(r'^[1-9]\d*$').hasMatch(instrumentId) ||
+        asString(json['clientAlgoOrderId']).trim().isEmpty ||
+        asString(json['clientAlgoOrderId']).length > 64 ||
+        (json.containsKey('productLine') &&
+            json['productLine'] != product.productLine) ||
+        !const ['TWAP', 'ICEBERG'].contains(type) ||
+        !const ['BUY', 'SELL'].contains(json['side']) ||
+        !const ['CROSS', 'ISOLATED'].contains(json['marginMode']) ||
+        !const ['NET', 'LONG', 'SHORT'].contains(json['positionSide']) ||
+        !const ['GTC', 'GTX', 'IOC'].contains(json['timeInForce']) ||
+        !const [
+          'PENDING',
+          'RUNNING',
+          'CANCEL_REQUESTED',
+          'CANCELED',
+          'COMPLETED',
+          'FAILED',
+        ].contains(status) ||
+        json['reduceOnly'] is! bool ||
+        json['postOnly'] is! bool ||
+        child > quantity ||
+        BigInt.from(executed) + BigInt.from(active) > BigInt.from(quantity) ||
+        (type == 'ICEBERG' && price == 0) ||
+        duration < interval ||
+        (product.isSpot &&
+            (json['positionSide'] != 'NET' || json['reduceOnly'] != false))) {
+      throw const FormatException('算法单身份或进度无效');
+    }
     return AlgoOrderModel(
-      algoOrderId: asInt(json['algoOrderId']),
+      algoOrderId: integer('algoOrderId', minimum: 1),
+      userId: integer('userId', minimum: 1),
+      instrumentId: instrumentId,
+      product: product,
       clientAlgoOrderId: nullableString(json['clientAlgoOrderId']),
       symbol: asString(json['symbol']),
       algoType: asString(json['algoType'], fallback: 'TWAP'),
       side: asString(json['side'], fallback: 'BUY'),
-      priceTicks: asInt(json['priceTicks']),
-      quantitySteps: asInt(json['quantitySteps']),
-      childQuantitySteps: asInt(json['childQuantitySteps']),
-      intervalSeconds: asInt(json['intervalSeconds']),
-      durationSeconds: asInt(json['durationSeconds']),
+      priceTicks: price,
+      quantitySteps: quantity,
+      childQuantitySteps: child,
+      intervalSeconds: interval,
+      durationSeconds: duration,
       marginMode: asString(json['marginMode'], fallback: 'CROSS'),
       positionSide: asString(json['positionSide'], fallback: 'NET'),
       reduceOnly: asBool(json['reduceOnly']),
       postOnly: asBool(json['postOnly']),
       timeInForce: asString(json['timeInForce'], fallback: 'GTC'),
       status: asString(json['status'], fallback: 'PENDING'),
-      executedQuantitySteps: asInt(json['executedQuantitySteps']),
-      activeQuantitySteps: asInt(json['activeQuantitySteps']),
-      childOrderCount: asInt(json['childOrderCount']),
-      currentOrderId: asNullableInt(json['currentOrderId']),
+      executedQuantitySteps: executed,
+      activeQuantitySteps: active,
+      childOrderCount: integer('childOrderCount'),
+      currentOrderId: json['currentOrderId'] == null
+          ? null
+          : integer('currentOrderId', minimum: 1),
       rejectReason: nullableString(json['rejectReason']),
     );
   }
@@ -1278,13 +1348,18 @@ class AlgoOrderBatchItem {
   final String message;
   final AlgoOrderModel? order;
 
-  factory AlgoOrderBatchItem.fromJson(Map<String, dynamic> json) {
+  factory AlgoOrderBatchItem.fromJson(
+    Map<String, dynamic> json, {
+    required ProductMode product,
+  }) {
     final rawOrder = json['algoOrder'];
     return AlgoOrderBatchItem(
       index: asInt(json['index']),
       success: asBool(json['success']),
       message: asString(json['message']),
-      order: rawOrder == null ? null : AlgoOrderModel.fromJson(asMap(rawOrder)),
+      order: rawOrder == null
+          ? null
+          : AlgoOrderModel.fromJson(asMap(rawOrder), product: product),
     );
   }
 }
@@ -1302,14 +1377,20 @@ class AlgoOrderBatchResult {
   final int failed;
   final List<AlgoOrderBatchItem> results;
 
-  factory AlgoOrderBatchResult.fromJson(Map<String, dynamic> json) {
+  factory AlgoOrderBatchResult.fromJson(
+    Map<String, dynamic> json, {
+    required ProductMode product,
+  }) {
     return AlgoOrderBatchResult(
       requested: asInt(json['requested']),
       completed: asInt(json['completed']),
       failed: asInt(json['failed']),
-      results: asList(
-        json['results'],
-      ).map((item) => AlgoOrderBatchItem.fromJson(asMap(item))).toList(),
+      results: asList(json['results'])
+          .map(
+            (item) =>
+                AlgoOrderBatchItem.fromJson(asMap(item), product: product),
+          )
+          .toList(),
     );
   }
 }

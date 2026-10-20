@@ -6558,8 +6558,8 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
       _selectionScope = scope;
       tab = state.mode.isSpot ? 1 : 0;
     }
-    final botCount =
-        state.openAlgoOrders.length + state.openTriggerOrders.length;
+    final algoOrders = state.visibleAlgoOrders;
+    final botCount = algoOrders.length + state.openTriggerOrders.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6658,6 +6658,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                       if (entry.$1 == 0) {
                         unawaited(state.refreshPositionRiskDetails());
                       }
+                      if (entry.$1 == 2) unawaited(state.refreshAlgoOrders());
                     },
                   ),
                 ),
@@ -6827,15 +6828,50 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
               ),
             ),
         ],
-        if (tab == 2 && botCount == 0)
+        if (tab == 2 && state.isLoggedIn) ...[
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '算法委托',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton.icon(
+                key: const ValueKey('refresh-algo-orders'),
+                onPressed: state.loadingAlgoOrders
+                    ? null
+                    : state.refreshAlgoOrders,
+                icon: const Icon(Icons.refresh),
+                label: Text(state.loadingAlgoOrders ? '加载中' : '刷新策略'),
+              ),
+            ],
+          ),
+          if (state.loadingAlgoOrders) const LinearProgressIndicator(),
+          if (state.algoOrdersError != null)
+            Text(
+              state.algoOrdersError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          if (algoOrders.length == 1000)
+            const Text('已显示最近 1000 笔未完成策略，请按交易对筛选'),
+        ],
+        if (tab == 2 &&
+            botCount == 0 &&
+            !state.loadingAlgoOrders &&
+            state.algoOrdersError == null)
           const TradingEmptyState(text: '暂无止盈止损或策略委托'),
-        if (tab == 2 && state.openAlgoOrders.isNotEmpty) ...[
-          const SectionTitle(title: '交易机器人'),
-          ...state.openAlgoOrders.map(
+        if (tab == 2 && algoOrders.isNotEmpty) ...[
+          ...algoOrders.map(
             (order) => AlgoOrderRow(
               order: order,
               state: state,
-              onCancel: () => state.cancelAlgoOrder(order),
+              onCancel:
+                  state.submittingOrder ||
+                      state.tradingCommandPending ||
+                      state.loadingAlgoOrders
+                  ? null
+                  : () => state.cancelAlgoOrder(order),
             ),
           ),
         ],
@@ -10086,63 +10122,90 @@ class AlgoOrderRow extends StatelessWidget {
 
   final AlgoOrderModel order;
   final AppState state;
-  final VoidCallback onCancel;
+  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
-    final instrument = state.instruments.firstWhere(
-      (item) => item.mode == state.mode && item.symbol == order.symbol,
-      orElse: () => state.selectedInstrument,
-    );
+    final instrument = state.algoInstrumentFor(order);
     final priceText = order.priceTicks > 0
-        ? money(
-            instrument.priceFromTicks(order.priceTicks),
-            digits: instrument.pricePrecision,
+        ? formatExecutionPrice(
+            order.priceTicks,
+            instrument?.priceTickUnits,
+            instrument == null
+                ? null
+                : instrument.isSpot
+                ? '${instrument.quoteScaleUnits}'
+                : '100000000',
           )
-        : 'MARKET';
-    final progress = order.executedQuantitySteps + order.activeQuantitySteps;
+        : '市价';
+    String quantity(int steps) =>
+        instrument == null ? '—' : tradingQuantity(instrument, steps);
+    final status =
+        const {
+          'PENDING': '待运行',
+          'RUNNING': '运行中',
+          'CANCEL_REQUESTED': '取消中',
+          'CANCELED': '已撤销',
+          'COMPLETED': '已完成',
+          'FAILED': '失败',
+        }[order.status] ??
+        order.status;
     return Panel(
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${algoTypeLabel(order.algoType)} ${order.side} ${order.symbol}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: order.side == 'BUY'
-                        ? Theme.of(context).colorScheme.tertiary
-                        : Theme.of(context).colorScheme.error,
-                  ),
-                ),
-                Text(
-                  '${order.marginMode} ${positionSideLabel(order.positionSide)} · ${order.timeInForce} · ${order.status}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  '价 $priceText · 进度 $progress/${order.quantitySteps} · 切片 ${order.childQuantitySteps}/${order.intervalSeconds}s',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                if (order.rejectReason != null &&
-                    order.rejectReason!.isNotEmpty)
-                  Text(
-                    order.rejectReason!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 11,
-                    ),
-                  ),
-              ],
+          Text(
+            '${algoTypeLabel(order.algoType)} · ${order.side == 'BUY' ? '买入' : '卖出'} · ${instrument?.symbol ?? '#${order.instrumentId}'}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: order.side == 'BUY'
+                  ? Theme.of(context).colorScheme.tertiary
+                  : Theme.of(context).colorScheme.error,
             ),
           ),
-          IconButton.filledTonal(
-            onPressed: onCancel,
-            icon: const Icon(Icons.close),
+          Text(
+            '#${order.algoOrderId} · $status',
+            style: const TextStyle(fontSize: 12),
+          ),
+          if (instrument == null) const Text('合约资料未就绪，暂不显示价格和数量'),
+          Text(
+            '${order.product.isSpot ? '现货' : '${order.marginMode} ${positionSideLabel(order.positionSide)}'} · ${order.timeInForce}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            '价格：$priceText${instrument == null || order.priceTicks == 0 ? '' : ' ${instrument.quoteAsset}'}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          Text(
+            '已成交：${quantity(order.executedQuantitySteps)} / 总量：${quantity(order.quantitySteps)}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          Text(
+            '挂单中：${quantity(order.activeQuantitySteps)} · 每片：${quantity(order.childQuantitySteps)}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          Text(
+            '间隔 ${order.intervalSeconds} 秒 · 时长 ${order.durationSeconds} 秒 · 已提交 ${order.childOrderCount} 片',
+            style: const TextStyle(fontSize: 12),
+          ),
+          if (order.rejectReason != null && order.rejectReason!.isNotEmpty)
+            Text(
+              order.rejectReason!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 11,
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onCancel,
+              icon: const Icon(Icons.close),
+              label: Text(order.status == 'CANCEL_REQUESTED' ? '继续撤销' : '撤销策略'),
+            ),
           ),
         ],
       ),

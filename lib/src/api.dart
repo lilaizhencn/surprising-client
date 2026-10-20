@@ -1367,17 +1367,54 @@ class ApiClient {
     String? symbol,
     String? productLine,
   }) async {
-    final query = {'userId': '$userId', 'limit': '100'};
-    if (symbol != null) query['symbol'] = symbol;
+    final product = _algoProduct(productLine);
+    final instrument = symbol == null
+        ? null
+        : instrumentCatalog
+              .where(
+                (i) =>
+                    i.mode == product &&
+                    i.symbol == symbol &&
+                    i.instrumentId.isNotEmpty,
+              )
+              .firstOrNull;
+    if (userId <= 0 || (symbol != null && instrument == null)) {
+      throw const FormatException('算法单查询归属未就绪');
+    }
+    final query = {
+      'userId': '$userId',
+      'limit': '1000',
+      if (instrument != null) 'instrumentId': instrument.instrumentId,
+    };
     final json = await get(
       '/api/v1/gateway/trading/algo/open',
       query: query,
+      userId: userId,
       productLine: productLine,
     );
-    return asList(
-      json['orders'],
-    ).map((item) => AlgoOrderModel.fromJson(asMap(item))).toList();
+    if (json['orders'] is! List) throw const FormatException('算法单列表无效');
+    final orders = asList(json['orders'])
+        .map((item) => AlgoOrderModel.fromJson(asMap(item), product: product))
+        .toList();
+    if (int.tryParse('${json['count']}') != orders.length ||
+        orders.length > 1000 ||
+        orders.map((o) => o.algoOrderId).toSet().length != orders.length ||
+        orders.any(
+          (o) =>
+              o.userId != userId ||
+              !o.isOpen ||
+              (instrument != null && o.instrumentId != instrument.instrumentId),
+        )) {
+      throw const FormatException('算法单列表归属或状态无效');
+    }
+    return orders;
   }
+
+  ProductMode _algoProduct(String? productLine) =>
+      ProductMode.values
+          .where((p) => p.productLine == productLine)
+          .firstOrNull ??
+      (throw const FormatException('算法单产品线无效'));
 
   Future<AlgoOrderModel> placeAlgoOrder({
     required int userId,
@@ -1422,7 +1459,12 @@ class ApiClient {
       userId: userId,
       productLine: productLine,
     );
-    return AlgoOrderModel.fromJson(json);
+    final order = AlgoOrderModel.fromJson(
+      json,
+      product: _algoProduct(productLine),
+    );
+    if (order.userId != userId) throw const FormatException('算法单账户不匹配');
+    return order;
   }
 
   Future<AlgoOrderModel> cancelAlgoOrder(
@@ -1436,7 +1478,14 @@ class ApiClient {
       userId: userId,
       productLine: productLine,
     );
-    return AlgoOrderModel.fromJson(json);
+    final order = AlgoOrderModel.fromJson(
+      json,
+      product: _algoProduct(productLine),
+    );
+    if (order.userId != userId || order.algoOrderId != algoOrderId) {
+      throw const FormatException('算法单撤销目标不匹配');
+    }
+    return order;
   }
 
   Future<AlgoOrderBatchResult> cancelOpenAlgoOrders(
@@ -1455,7 +1504,10 @@ class ApiClient {
       userId: userId,
       productLine: productLine,
     );
-    return AlgoOrderBatchResult.fromJson(json);
+    return AlgoOrderBatchResult.fromJson(
+      json,
+      product: _algoProduct(productLine),
+    );
   }
 
   Future<CancelAllAfterResult> cancelAllAfter(

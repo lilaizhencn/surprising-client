@@ -278,12 +278,16 @@ class AuthUser {
   const AuthUser({
     required this.userId,
     required this.username,
+    this.displayName,
     required this.email,
     required this.status,
   });
 
   final int userId;
   final String username;
+  final String? displayName;
+  String get name =>
+      displayName?.trim().isNotEmpty == true ? displayName! : username;
   final String email;
   final String status;
 
@@ -291,6 +295,7 @@ class AuthUser {
     return {
       'userId': userId,
       'username': username,
+      'displayName': displayName,
       'email': email,
       'status': status,
     };
@@ -299,6 +304,7 @@ class AuthUser {
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
       userId: asInt(json['userId']),
+      displayName: nullableString(json['displayName']),
       email: asString(json['email']),
       username: asString(
         json['username'],

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_state.dart';
+import 'telegram_login.dart';
 import 'account_records.dart' show formatExecutionPrice;
 import 'asset_overview.dart';
 import 'biometric_lock.dart';
@@ -402,7 +403,9 @@ class _ClientShellState extends State<ClientShell> {
     shownAnnouncementModals.add(id);
     checkedAnnouncementModal = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !state.isLoggedIn || state.requiresBiometricUnlock) return;
+      if (!mounted || !state.isLoggedIn || state.requiresBiometricUnlock) {
+        return;
+      }
       showDialog<void>(
         context: context,
         barrierDismissible: true,
@@ -1149,7 +1152,7 @@ class HomePage extends StatelessWidget {
           else
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(state.session!.user.username),
+              title: Text(state.session!.user.name),
               subtitle: Text(state.session!.user.email),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context
@@ -3235,7 +3238,7 @@ class ProfilePage extends StatelessWidget {
       children: [
         PageHeader(
           title: '账户',
-          subtitle: state.isLoggedIn ? state.session!.user.email : '未登录',
+          subtitle: state.isLoggedIn ? state.session!.user.name : '未登录',
         ),
         Panel(
           child: Row(
@@ -3247,7 +3250,7 @@ class ProfilePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      state.isLoggedIn ? state.session!.user.email : '游客',
+                      state.isLoggedIn ? state.session!.user.name : '游客',
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 18,
@@ -7009,9 +7012,62 @@ class _AuthSheetState extends State<AuthSheet> {
   bool busy = false;
   bool showPassword = false;
   String? message;
+  bool telegramEnabled = false;
+  bool telegramBusy = false;
+  int telegramAttempt = 0;
+  bool checkedTelegram = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (checkedTelegram) return;
+    checkedTelegram = true;
+    final api = AppScope.of(context).api;
+    unawaited(
+      api
+          .get('/api/v1/auth/telegram/config')
+          .then((config) {
+            if (mounted) {
+              setState(() => telegramEnabled = config['enabled'] == true);
+            }
+          })
+          .catchError((Object _) {}),
+    );
+  }
+
+  Future<void> telegramLogin(AppState state) async {
+    if (busy) return;
+    final attempt = ++telegramAttempt;
+    final initialSession = state.session;
+    setState(() {
+      busy = true;
+      telegramBusy = true;
+      message = null;
+    });
+    await state.loginTelegram(
+      () => signInWithTelegram(
+        api: state.api,
+        openBrowser: (url) =>
+            launchUrl(url, mode: LaunchMode.externalApplication),
+        cancelled: () =>
+            !mounted ||
+            telegramAttempt != attempt ||
+            state.session != initialSession,
+      ),
+    );
+    if (!mounted || telegramAttempt != attempt) return;
+    setState(() {
+      busy = false;
+      telegramBusy = false;
+      message = state.lastError;
+      password.clear();
+    });
+    if (state.isLoggedIn) Navigator.pop(context);
+  }
 
   @override
   void dispose() {
+    ++telegramAttempt;
     identifier.dispose();
     password.dispose();
     code.dispose();
@@ -7261,6 +7317,22 @@ class _AuthSheetState extends State<AuthSheet> {
                 ),
               ),
             ),
+            if (challenge == null && ['login', 'register'].contains(mode)) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: telegramBusy
+                    ? () => setState(() {
+                        ++telegramAttempt;
+                        telegramBusy = false;
+                        busy = false;
+                      })
+                    : !busy && telegramEnabled
+                    ? () => telegramLogin(state)
+                    : null,
+                icon: const Icon(Icons.send_outlined),
+                label: Text(telegramBusy ? '取消 Telegram 登录' : '通过 Telegram 继续'),
+              ),
+            ],
             if (mode == 'verify')
               TextButton(
                 onPressed: busy
@@ -7307,7 +7379,8 @@ class _AuthSheetState extends State<AuthSheet> {
                           if (!context.mounted) return;
                           setState(() {
                             busy = false;
-                            message = state.biometricUnlockError ?? state.lastError;
+                            message =
+                                state.biometricUnlockError ?? state.lastError;
                           });
                           if (ok) Navigator.pop(context);
                         },

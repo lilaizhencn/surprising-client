@@ -11,6 +11,7 @@ import 'realtime_state.dart';
 import 'account_records.dart';
 import 'session_store.dart';
 import 'spot_order.dart';
+import 'telegram_login.dart';
 
 class WithdrawalAssetRule {
   const WithdrawalAssetRule({
@@ -517,6 +518,7 @@ class AppState extends ChangeNotifier {
     biometricUnlockError = null;
     pendingBiometricSession = null;
   }
+
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
@@ -1859,6 +1861,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<AuthSession?> login(String email, String password) async {
+    ++_telegramLoginVersion;
     if (offline) return null;
     loadingPrivate = true;
     lastError = null;
@@ -1882,6 +1885,47 @@ class AppState extends ChangeNotifier {
     } finally {
       loadingPrivate = false;
       notifyListeners();
+    }
+  }
+
+  int _telegramLoginVersion = 0;
+
+  Future<AuthSession?> loginTelegram(
+    Future<AuthSession> Function() authenticate,
+  ) async {
+    if (offline) return null;
+    final version = ++_telegramLoginVersion;
+    final previousSession = session;
+    loadingPrivate = true;
+    lastError = null;
+    lastNotice = null;
+    pendingLoginChallenge = null;
+    notifyListeners();
+    try {
+      final authenticated = await authenticate();
+      if (version != _telegramLoginVersion || session != previousSession) {
+        return null;
+      }
+      await _acceptLogin(authenticated);
+      lastNotice = '登录成功';
+      return authenticated;
+    } on TelegramLoginCancelled {
+      return null;
+    } on LoginChallenge catch (challenge) {
+      if (version == _telegramLoginVersion && session == previousSession) {
+        pendingLoginChallenge = challenge;
+      }
+      return null;
+    } catch (error) {
+      if (version == _telegramLoginVersion) {
+        lastError = 'Telegram 登录失败：${clientErrorMessage(error)}';
+      }
+      return null;
+    } finally {
+      if (version == _telegramLoginVersion) {
+        loadingPrivate = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -2037,6 +2081,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    ++_telegramLoginVersion;
     _resetBiometricUnlock();
     _clearWalletData();
     _realtimeReconnectTimer?.cancel();
@@ -4709,6 +4754,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    ++_telegramLoginVersion;
     _resetBiometricUnlock();
     ++_optionReferenceRequest;
     _optionReferenceTimer?.cancel();

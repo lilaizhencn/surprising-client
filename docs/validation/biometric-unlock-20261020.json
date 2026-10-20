@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-20",
+  "version": "1.0.3-preview.20261020",
+  "buildNumber": 20261023,
+  "flutterAnalyze": "No issues found",
+  "flutterTests": {
+    "passed": 371,
+    "liveOptInSkipped": 10,
+    "biometricScenarios": 18
+  },
+  "scope": [
+    "冷启动自动弹出系统生物验证，成功后恢复保存的登录",
+    "后台返回自动验证，应用未完全恢复前台时遮住所有页面和弹窗",
+    "系统弹窗的 inactive/resumed 切换不重复验证，关闭弹窗时到达的成功结果等待前台显示",
+    "取消、失败、系统异常或网络失败保持锁屏，可重试或切换账号密码",
+    "验证并发去重；退出、登录失效和销毁使旧验证结果失效；后台结果不能直接解锁",
+    "320dp 深浅主题及 1.3 倍字号；沿用已有服务端安全验证与交易意图"
+  ],
+  "regression": {
+    "oldBehavior": "主机回归复现：已恢复待验证会话，但自动调用次数为 0",
+    "newBehavior": "同一回归自动调用次数为 1；其余生命周期/失败场景加入全量测试"
+  },
+  "notClaimed": [
+    "未代替用户本人完成真机指纹或人脸识别",
+    "未运行 iOS 真机；本轮只更新 Android 预览",
+    "未修改或发布服务器；原服务器兼容包仍按用户要求暂缓发布",
+    "C2C 完整开发和现货算法创建工作保留，本次预览仅包含已验证的客户端修复"
+  ],
+  "evidenceSha256": {
+    "regression-red.log": "014cc2c107431342481b557c7a381c340dfeca099287b5019d38d63e63fc13cc",
+    "analyze.log": "ca94c9df8c03e7b599e9124ef6c1eb816815da4a9e95947db056b23578ee1ead",
+    "full-tests.log": "47023d1c7be41f74c824b46fc9e88e42b2a95ae39c53d7a027bc4cf4dd93a1f7",
+    "source-manifest.json": "1038d9e7a82bb776f2673907b7e107dae986f74d0035e12ea5755732443c47f5",
+    "android-build.log": "d2b1608aa48dec2bdf2b7bd0d1be254920a4069280ba8575d0518993ddcbc73b",
+    "apk-signature.txt": "3f9ae6f74abaa990baeeacd222eb2192b5429e4a0e77f92ed622acd281765db9",
+    "installed-version.txt": "e5e02cd7e48e91a7ef127384acb72828e9dd6ae600ad5ffa5a6a2b859f84629e",
+    "install.log": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7",
+    "launch.log": "9d45466d81715839b913530da8d478627454c735f2543ec4a9518d0cceea4766",
+    "cold-launch-result.json": "53d814145fc9069875db049a56e7bb947de0ff3c7f109687ed51633b01c2340c"
+  },
+  "apk": {
+    "version": "1.0.3-preview.20261020",
+    "buildNumber": 20261023,
+    "package": "com.surprising.surprising_client",
+    "bytes": 21062556,
+    "sha256": "7faee88bdcbf29d9bb45dfdff4b0d565743187956b94f8b776e34f786cf83925"
+  },
+  "device": {
+    "platform": "Android 12 / API 31",
+    "installedVersion": "1.0.3-preview.20261020",
+    "install": "install -r Success；保留登录与应用数据",
+    "launch": "am start -W Status: ok，WaitTime 3142ms",
+    "observed": "检查时 mWakefulness=Asleep，系统 Keyguard showing=true，未捕获账户页面或其他应用截图",
+    "biometricPromptOnDevice": "等待用户先解锁手机后确认；未声称已观测系统验证框或成功完成人体生物验证"
+  }
+}

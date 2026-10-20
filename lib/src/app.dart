@@ -12,6 +12,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'app_state.dart';
 import 'account_records.dart' show formatExecutionPrice;
 import 'asset_overview.dart';
+import 'biometric_lock.dart';
 import 'api.dart';
 import 'device_access_panel.dart';
 import 'funding_records_page.dart';
@@ -126,6 +127,7 @@ class SurprisingClientApp extends StatefulWidget {
 
 class _SurprisingClientAppState extends State<SurprisingClientApp> {
   late final AppState state = widget.state ?? AppState();
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -152,6 +154,18 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Surprising',
+            navigatorKey: _navigatorKey,
+            builder: (context, child) => BiometricLockGate(
+              state: state,
+              onUsePassword: () async {
+                await state.logout();
+                if (!mounted) return;
+                _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+                final context = _navigatorKey.currentState?.overlay?.context;
+                if (context != null && context.mounted) showAuthSheet(context);
+              },
+              child: child ?? const SizedBox.shrink(),
+            ),
             locale: Locale(state.language.code),
             theme: ThemeData(
               brightness: isLight ? Brightness.light : Brightness.dark,
@@ -332,8 +346,10 @@ class _ClientShellState extends State<ClientShell> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    _showMessage(context, state);
-    _maybeShowAnnouncementModal(state);
+    if (!state.requiresBiometricUnlock) {
+      _showMessage(context, state);
+      _maybeShowAnnouncementModal(state);
+    }
     final page = announcementsOpen
         ? AnnouncementCenterPage(
             onClose: () => setState(() => announcementsOpen = false),
@@ -386,7 +402,7 @@ class _ClientShellState extends State<ClientShell> {
     shownAnnouncementModals.add(id);
     checkedAnnouncementModal = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !state.isLoggedIn) return;
+      if (!mounted || !state.isLoggedIn || state.requiresBiometricUnlock) return;
       showDialog<void>(
         context: context,
         barrierDismissible: true,
@@ -439,7 +455,7 @@ class _ClientShellState extends State<ClientShell> {
 
   void _showMessage(BuildContext context, AppState state) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || state.requiresBiometricUnlock) return;
       final media = MediaQuery.maybeOf(context);
       final size = media?.size;
       if (size == null || size.width <= 0 || size.height <= 0) return;
@@ -7291,7 +7307,7 @@ class _AuthSheetState extends State<AuthSheet> {
                           if (!context.mounted) return;
                           setState(() {
                             busy = false;
-                            message = state.lastError;
+                            message = state.biometricUnlockError ?? state.lastError;
                           });
                           if (ok) Navigator.pop(context);
                         },

@@ -476,6 +476,47 @@ class AppState extends ChangeNotifier {
   bool biometricLoginAvailable = false;
   bool biometricLoginEnabled = false;
   bool biometricLoginUpdating = false;
+  bool biometricSessionLocked = false;
+  bool biometricUnlocking = false;
+  String? biometricUnlockError;
+  bool _biometricAppForeground = true;
+  bool _biometricAppBackgrounded = false;
+  int _biometricSessionVersion = 0;
+
+  bool get requiresBiometricUnlock =>
+      biometricSessionLocked || pendingBiometricSession != null;
+
+  bool get canUnlockBiometricSession =>
+      requiresBiometricUnlock &&
+      (pendingBiometricSession != null ||
+          (biometricLoginEnabled && session != null));
+
+  // Inactive includes the system biometric dialog. Only a real background
+  // transition locks an already active session; the UI also obscures inactive.
+  void updateBiometricAppVisibility({
+    required bool foreground,
+    bool lockSession = false,
+  }) {
+    _biometricAppForeground = foreground;
+    _biometricAppBackgrounded = lockSession;
+    if (lockSession &&
+        biometricLoginEnabled &&
+        !biometricLoginUpdating &&
+        session != null &&
+        !biometricSessionLocked) {
+      biometricSessionLocked = true;
+      biometricUnlockError = null;
+      notifyListeners();
+    }
+  }
+
+  void _resetBiometricUnlock() {
+    ++_biometricSessionVersion;
+    biometricSessionLocked = false;
+    biometricUnlocking = false;
+    biometricUnlockError = null;
+    pendingBiometricSession = null;
+  }
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
@@ -1272,14 +1313,20 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _restoreSession() async {
-    biometricLoginAvailable = await sessionStore.canUseBiometrics();
+    try {
+      biometricLoginAvailable = await sessionStore.canUseBiometrics();
+    } catch (_) {
+      // A capability check failure must not bypass an enabled local lock.
+      biometricLoginAvailable = false;
+    }
     final stored = await sessionStore.readSession();
     if (stored == null) return;
     await _matchWithdrawalIntentOwner(stored.user.userId);
     biometricLoginEnabled = await sessionStore.biometricEnabled();
     if (biometricLoginEnabled) {
       pendingBiometricSession = stored;
-      lastNotice = '请使用生物识别解锁交易账户';
+      biometricSessionLocked = true;
+      biometricUnlockError = null;
       notifyListeners();
       return;
     }
@@ -1293,6 +1340,7 @@ class AppState extends ChangeNotifier {
         epoch == _walletSessionVersion && identical(previous, session);
     if (stored.refreshTokenExpired) {
       await sessionStore.clear();
+      lastError = '登录状态已失效，请使用账号登录';
       return;
     }
     try {
@@ -1331,24 +1379,50 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> unlockBiometricSession() async {
+    if (!canUnlockBiometricSession ||
+        biometricUnlocking ||
+        !_biometricAppForeground) {
+      return false;
+    }
+    final version = _biometricSessionVersion;
     final pending = pendingBiometricSession;
-    if (pending == null) return false;
+    bool current() => version == _biometricSessionVersion;
+    biometricUnlocking = true;
+    biometricUnlockError = null;
+    notifyListeners();
     try {
-      if (!await sessionStore.authenticateBiometric()) {
-        lastError = '生物识别未通过';
-        notifyListeners();
+      final accepted = await sessionStore.authenticateBiometric();
+      if (!current()) return false;
+      if (!accepted) {
+        biometricUnlockError = '验证已取消或未通过，请重试';
         return false;
       }
-      await _refreshStoredSession(pending);
-      if (session == null) return false;
+      if (_biometricAppBackgrounded) return false;
+      if (pending != null) await _refreshStoredSession(pending);
+      if (!current()) return false;
+      if (session == null) {
+        biometricUnlockError = lastError ?? lastNotice ?? '登录状态无法恢复，请重试或使用账号登录';
+        return false;
+      }
+      // Native success may arrive during the dialog's inactive->resumed
+      // transition. The gate stays obscured until resumed. Actual background
+      // delivery, including a token refresh, must keep the account locked.
+      if (_biometricAppBackgrounded) return false;
+      biometricSessionLocked = false;
+      biometricUnlockError = null;
       lastError = null;
-      lastNotice = '生物识别解锁成功';
       notifyListeners();
       return true;
     } catch (error) {
-      lastError = '生物识别解锁失败：${clientErrorMessage(error)}';
-      notifyListeners();
+      if (current()) {
+        biometricUnlockError = '生物识别暂不可用，请重试或使用账号登录';
+      }
       return false;
+    } finally {
+      if (current()) {
+        biometricUnlocking = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1385,7 +1459,7 @@ class AppState extends ChangeNotifier {
       await sessionStore.clear();
       await sessionStore.saveSession(active);
       biometricLoginEnabled = false;
-      pendingBiometricSession = null;
+      _resetBiometricUnlock();
       lastError = null;
       lastNotice = '已关闭生物识别登录';
       notifyListeners();
@@ -1435,6 +1509,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _clearExpiredSession() async {
+    final wasLocked = requiresBiometricUnlock;
+    _resetBiometricUnlock();
+    biometricSessionLocked = wasLocked;
+    if (wasLocked) biometricUnlockError = '登录状态已失效，请使用账号登录';
     _clearWalletData();
     ++_openOrdersRequestVersion;
     _realtimeReconnectTimer?.cancel();
@@ -1959,6 +2037,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _resetBiometricUnlock();
     _clearWalletData();
     _realtimeReconnectTimer?.cancel();
     _realtimeReconnectTimer = null;
@@ -4630,6 +4709,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _resetBiometricUnlock();
     ++_optionReferenceRequest;
     _optionReferenceTimer?.cancel();
     ++_orderTermsRequest;

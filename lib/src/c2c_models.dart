@@ -182,3 +182,8 @@ List<C2cTimelineItem> c2cTimeline(
   }
   return result;
 }
+
+/// Display only: keep every nonzero fractional digit without using floating point.
+String c2cDecimal(String value) => value.contains('.')
+    ? value.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')
+    : value;

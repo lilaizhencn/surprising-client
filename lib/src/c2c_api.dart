@@ -30,6 +30,17 @@ extension C2cApi on ApiClient {
     return value;
   }
 
+  Future<Map<String, dynamic>> c2cBusinessGet(
+    int owner,
+    String path, {
+    Map<String, String>? query,
+  }) => _c2cGet(owner, path, query: query);
+  Future<Map<String, dynamic>> c2cBusinessPost(
+    int owner,
+    String path,
+    Map<String, dynamic> body,
+  ) => _c2cPost(owner, path, body);
+
   Future<Map<String, dynamic>> c2cStatus() => get('/api/v1/c2c/status');
   Future<({List<C2cConversation> items, bool hasMore})> c2cConversations(
     int owner, {

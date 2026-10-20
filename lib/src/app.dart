@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_state.dart';
-import 'c2c_chat_page.dart';
+import 'c2c_trading_page.dart';
 import 'account_records.dart' show formatExecutionPrice;
 import 'asset_overview.dart';
 import 'biometric_lock.dart';
@@ -3193,7 +3193,7 @@ class C2cPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const C2cMessagingPage();
+    return const C2cTradingPage();
   }
 }
 

@@ -1,0 +1,192 @@
+{
+  "date": "2026-10-21",
+  "scope": {
+    "productLine": "SPOT",
+    "executionMode": "FUSED",
+    "real": [
+      "registered trading JWT",
+      "PostgreSQL",
+      "Kafka",
+      "Redis",
+      "Core transfers",
+      "realtime account queries",
+      "maker orders",
+      "shared market/chat WebSocket",
+      "admin permissions/audit/two-person approvals"
+    ],
+    "simulated": [
+      "KYC fixture",
+      "OTP fixture",
+      "off-platform fiat payment confirmation",
+      "market-price input"
+    ],
+    "notPerformed": [
+      "remote server release",
+      "APK installation",
+      "real bank payment",
+      "other product live stacks",
+      "live R2 upload this round"
+    ]
+  },
+  "tests": {
+    "backendUniquePassed": 102,
+    "backendConditionalSkipped": 3,
+    "backendFinalCandidatePassed": 32,
+    "webPassed": 324,
+    "adminPassed": 16,
+    "flutterPassed": 398,
+    "flutterConditionalSkipped": 11,
+    "nativeLivePassed": 2,
+    "browserStepsPassed": 8,
+    "webAndAdminLintBuild": "passed",
+    "flutterAnalyze": "passed"
+  },
+  "businessEvidence": {
+    "scope": "Flutter real HTTP/Core widgets at 320 and 390; synthetic KYC/OTP; injected lost response only",
+    "steps": [
+      "320px native buyer recovers real committed 0.5 USDT order, exact fee/net, no second POST, cancels it",
+      "390px native merchant submits real 100 USDT bond, waits for Core confirmation, exits and receives the same bond back"
+    ],
+    "passed": true,
+    "mobileOrderId": "13199bbb-187e-4cf0-bbb9-1d7749df9997",
+    "orderPostCount": 1
+  },
+  "finalFunds": {
+    "passed": true,
+    "scope": "Local SPOT FUSED Core, real JWT, PostgreSQL, realtime and maker; synthetic KYC, OTP and off-platform fiat",
+    "suspensionBlocksNewOrdersAndWithdrawal": true,
+    "existingPaidOrderCompleted": "0a744cc7-75bc-4a19-b706-b88488cbea1a",
+    "merchantBondOriginalOwnerAndAmountReturned": true,
+    "allC2cObjectsTerminal": true,
+    "merchantEscrowSummaryAfterRefund": "0",
+    "allLockedUnits": "0",
+    "initialTotals": {
+      "USDT": 100300000000000,
+      "BTC": 1000000000
+    },
+    "finalTotals": {
+      "USDT": 100300000000000,
+      "BTC": 1000000000
+    },
+    "fundsDifference": {
+      "USDT": 0,
+      "BTC": 0
+    },
+    "accounts": {
+      "5": [
+        {
+          "userId": 5,
+          "asset": "USDT",
+          "availableUnits": 99299600000,
+          "lockedUnits": 0,
+          "equityUnits": 99299600000,
+          "updatedAt": "2026-10-20T16:00:28.295454Z"
+        }
+      ],
+      "6": [
+        {
+          "userId": 6,
+          "asset": "USDT",
+          "availableUnits": 101098900000,
+          "lockedUnits": 0,
+          "equityUnits": 101098900000,
+          "updatedAt": "2026-10-20T16:00:28.333291Z"
+        }
+      ],
+      "7": [
+        {
+          "userId": 7,
+          "asset": "USDT",
+          "availableUnits": 99600000000,
+          "lockedUnits": 0,
+          "equityUnits": 99600000000,
+          "updatedAt": "2026-10-20T16:00:28.342068Z"
+        }
+      ],
+      "8": [
+        {
+          "userId": 8,
+          "asset": "BTC",
+          "availableUnits": 1000000000,
+          "lockedUnits": 0,
+          "equityUnits": 1000000000,
+          "updatedAt": "2026-10-20T16:00:28.348831Z"
+        },
+        {
+          "userId": 8,
+          "asset": "USDT",
+          "availableUnits": 100000000000000,
+          "lockedUnits": 0,
+          "equityUnits": 100000000000000,
+          "updatedAt": "2026-10-20T16:00:28.348833Z"
+        }
+      ],
+      "1": [
+        {
+          "userId": 1,
+          "asset": "USDT",
+          "availableUnits": 0,
+          "lockedUnits": 0,
+          "equityUnits": 0,
+          "updatedAt": "2026-10-20T16:00:28.356730Z"
+        }
+      ],
+      "2": [
+        {
+          "userId": 2,
+          "asset": "USDT",
+          "availableUnits": 1500000,
+          "lockedUnits": 0,
+          "equityUnits": 1500000,
+          "updatedAt": "2026-10-20T16:00:28.379148Z"
+        }
+      ]
+    },
+    "reconciliation": {
+      "status": "MATCHED",
+      "assets": [
+        {
+          "actualEscrowUnits": "0",
+          "feeLockedUnits": "0",
+          "asset": "USDT",
+          "escrowLockedUnits": "0",
+          "expectedEscrowUnits": "0",
+          "expectedFeeUnits": "1500000",
+          "matches": true,
+          "actualFeeUnits": "1500000"
+        }
+      ],
+      "pendingIntentCount": "0"
+    }
+  },
+  "serverReleased": false,
+  "phoneInstalled": false,
+  "cleanup": {
+    "status": "complete",
+    "ownedProcessesStopped": true,
+    "ownedDatabaseDropped": "surprising_c2c_20261020_222008",
+    "temporaryIntegrationSchemasRemaining": 0,
+    "ownedPortsReleased": [
+      9094,
+      9095,
+      9096,
+      16379,
+      19092,
+      19093,
+      5173,
+      5174
+    ],
+    "sharedPostgresRunning": true,
+    "sharedServicesAndOtherWorkPreserved": true,
+    "ownedRuntimeRemoved": true,
+    "rawLogsRemovedAfterHashing": true,
+    "privateFixtureRemoved": true
+  },
+  "adminFinalRead": {
+    "passed": true,
+    "escrow": "0",
+    "fees": "1500000",
+    "actualRowStatus": "一致",
+    "desktopOverflow": false
+  }
+}

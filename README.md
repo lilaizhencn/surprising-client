@@ -290,3 +290,10 @@ DELIVERY_PROTECTION_PRODUCT=INVERSE_DELIVERY（或 LINEAR_DELIVERY），一次�
 `AppState._writeSettings` 沿用现有串行设置写入，将已确认的原请求排除出本次持久记录，写入成功后才解除内存锁定。下单、撤单、改单、原结果查询与已完成的批量撤单统一遵循此顺序；成功或明确拒绝后若保存失败，保留原身份并提示查询，不再 POST。保存期间的主题写入不会重新写回已清除的请求；其他用户的记录保留。已完成批量计划在重建后只完成资料清除，不重复撤销任何一批。
 
 本轮只调试现货恢复与交互，共享设置路径另由全量 Flutter 测试覆盖。320px 深浅主题通过实际滚动和点击验证，离屏点击会使测试失败。未启动后端、wallet 或原生设备，未重新进行 FUSED 成交/资金守恒验收；此前实栈记录不能替代本轮新增边界。命令、复现和清理见 [验证记录](docs/validation/spot-confirmation-storage-20261020.json)。
+
+
+### 现货历史委托与本人成交（2026-10-20）
+
+现货交易页直接进入已有记录页的历史委托或成交记录，并按“仅当前交易对”带入永久 instrumentId。`ApiClient.accountRecords` 的 trade 类别改用 `/api/v1/gateway/trading/trades`，校验本人账户/产品、完整执行和分页，传递时间边界及原游标。记录页按真实 base/quote scale 解释 step/tick，展示本人订单号、成交号、方向、Maker/Taker 及当时费率，不展示对手资料；未知资产精度显示缺失，不造数。价格和数量不再固定 8 位精度，成交类别不显示不适用的币种/状态筛选。
+
+配套 gateway 新路由以及已有 realtime 成交投影须先就绪；验证记录为 docs/validation/spot-private-fills-20261020.json。可选 test/spot_trade_history_fused_live_test.dart 需要显式 SPOT_FILLS_LIVE_FIXTURE（隔离 FUSED 用例生成、位于 `/tmp/surprising-spot-fused-fills-` 下）及 SPOT_FILLS_CORE_PID；只暂停一次已加载的查询并恢复本轮 Core，默认回归跳过实栈连接，不能指向其他运行环境。

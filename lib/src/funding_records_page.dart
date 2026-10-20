@@ -8,10 +8,12 @@ class FundingRecordsPage extends StatefulWidget {
   const FundingRecordsPage({
     required this.state,
     this.initialCategory = 'funding-ledger',
+    this.initialInstrumentId = '',
     super.key,
   });
   final AppState state;
   final String initialCategory;
+  final String initialInstrumentId;
   @override
   State<FundingRecordsPage> createState() => _FundingRecordsPageState();
 }
@@ -45,6 +47,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
   void initState() {
     super.initState();
     category = widget.initialCategory;
+    instrument.text = widget.initialInstrumentId;
     product = widget.state.mode;
     if (category == 'option-exercise') product = ProductMode.option;
     if (category == 'delivery-ledger' &&
@@ -200,6 +203,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
               i.mode == product,
         )
         .firstOrNull;
+    if (category == 'trade') return _tradeRecord(row, contract);
     final currency = asString(
       row['asset'] ??
           row['assetSymbol'] ??
@@ -252,12 +256,12 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                 contract == null
                     ? '数量：—'
                     : contract.isSpot
-                    ? '数量：${formatAccountUnits(BigInt.from(asInt(row['quantitySteps'])) * BigInt.from(contract.quantityStepUnits), '100000000')} ${contract.baseAsset}'
+                    ? '数量：${formatAccountUnits(BigInt.from(asInt(row['quantitySteps'])) * BigInt.from(contract.quantityStepUnits), scales[contract.baseAsset])} ${contract.baseAsset}'
                     : '数量：${row['quantitySteps']} 张',
               ),
             if (row['priceTicks'] != null)
               Text(
-                '价格：${contract == null ? '—' : formatAccountUnits(BigInt.from(asInt(row['priceTicks'])) * BigInt.from(contract.priceTickUnits), '100000000')}',
+                '价格：${contract == null ? '—' : formatAccountUnits(BigInt.from(asInt(row['priceTicks'])) * BigInt.from(contract.priceTickUnits), scales[contract.quoteAsset])}',
               ),
             for (final pair in {
               'availableDeltaUnits': '可用余额变动',
@@ -278,6 +282,49 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
             }.entries)
               if (row[pair.key] != null)
                 SelectableText('${pair.value}：${row[pair.key]}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tradeRecord(Map<String, dynamic> row, Instrument? contract) {
+    String amount(String field, int? step, String? asset) {
+      final count = BigInt.tryParse('${row[field]}');
+      if (count == null || step == null || step <= 0) return '—';
+      return formatAccountUnits(count * BigInt.from(step), scales[asset]);
+    }
+
+    final price = amount(
+      'priceTicks',
+      contract?.priceTickUnits,
+      contract?.quoteAsset,
+    );
+    final quantity = contract == null
+        ? '—'
+        : contract.isSpot
+        ? '${amount('quantitySteps', contract.quantityStepUnits, contract.baseAsset)} ${contract.baseAsset}'
+        : '${row['quantitySteps']} 张';
+    final role = row['liquidityRole'] == 'MAKER' ? 'Maker' : 'Taker';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              contract?.symbol ?? '合约 ${row['instrumentId']}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            Text('${row['side'] == 'BUY' ? '买入' : '卖出'} · $role'),
+            Text(
+              '成交价：$price${contract == null ? '' : ' ${contract.quoteAsset}'}',
+            ),
+            Text('成交数量：$quantity'),
+            Text('成交费率：${formatAccountUnits(row['feeRatePpm'], '10000')}%'),
+            Text(asString(row['eventTime'], fallback: '—')),
+            SelectableText('订单号：${row['orderId']}'),
+            SelectableText('成交号：${row['tradeId']}'),
           ],
         ),
       ),
@@ -322,6 +369,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                       category = v;
                       if (v == 'option-exercise') product = ProductMode.option;
                       reference.clear();
+                      asset.clear();
                       status.clear();
                       instrument.clear();
                       if (v == 'delivery-ledger' &&
@@ -371,10 +419,11 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                       }
                     },
                   ),
-                TextField(
-                  controller: asset,
-                  decoration: const InputDecoration(labelText: '币种（可留空）'),
-                ),
+                if (category != 'trade')
+                  TextField(
+                    controller: asset,
+                    decoration: const InputDecoration(labelText: '币种（可留空）'),
+                  ),
                 if (category.endsWith('ledger'))
                   TextField(
                     controller: reference,
@@ -385,10 +434,11 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     controller: instrument,
                     decoration: const InputDecoration(labelText: '合约 ID（可留空）'),
                   ),
-                TextField(
-                  controller: status,
-                  decoration: const InputDecoration(labelText: '状态（可留空）'),
-                ),
+                if (category != 'trade')
+                  TextField(
+                    controller: status,
+                    decoration: const InputDecoration(labelText: '状态（可留空）'),
+                  ),
                 Wrap(
                   spacing: 8,
                   children: [

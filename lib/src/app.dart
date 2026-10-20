@@ -6555,6 +6555,32 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (state.mode.isSpot && state.isLoggedIn)
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final item in const {
+                'order': '历史委托',
+                'trade': '成交记录',
+              }.entries)
+                TextButton.icon(
+                  key: ValueKey('spot-history-${item.key}'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => FundingRecordsPage(
+                        state: state,
+                        initialCategory: item.key,
+                        initialInstrumentId: state.onlyCurrentTradingPair
+                            ? state.selectedInstrument.instrumentId
+                            : '',
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.history),
+                  label: Text(item.value),
+                ),
+            ],
+          ),
         if (state.pendingTradingCommand?.cancelOrderId != null ||
             state.pendingTradingCommand?.amendRequestId != null ||
             state.pendingTradingCommand?.cancelPlan != null) ...[

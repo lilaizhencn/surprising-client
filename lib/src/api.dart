@@ -384,11 +384,13 @@ class ApiClient {
         line = product.productLine;
         if (instrumentId.isNotEmpty) query['instrumentId'] = instrumentId;
       case 'trade':
-        path = '/api/v1/gateway/trading-trades/trades';
+        path = '/api/v1/gateway/trading/trades';
         key = 'trades';
         query['userId'] = '$userId';
         line = product.productLine;
         if (instrumentId.isNotEmpty) query['instrumentId'] = instrumentId;
+        if (from != null) query['startTime'] = '${from.millisecondsSinceEpoch}';
+        if (to != null) query['endTime'] = '${to.millisecondsSinceEpoch}';
       case 'order':
         path = '/api/v1/gateway/trading/history';
         key = 'orders';
@@ -400,10 +402,46 @@ class ApiClient {
       default:
         throw const FormatException('暂不支持该记录类型');
     }
-    return AccountRecordPage.fromJson(
-      await _send('GET', path, query: query, userId: userId, productLine: line),
-      key,
+    final response = await _send(
+      'GET',
+      path,
+      query: query,
+      userId: userId,
+      productLine: line,
     );
+    if (category == 'trade') {
+      final page = asMap(response);
+      final trades = asList(page['trades']);
+      final next = asString(page['nextCursor']).trim();
+      bool positive(Object? value) => (int.tryParse('$value') ?? 0) > 0;
+      if (int.tryParse('${page['userId']}') != userId ||
+          page['productLine'] != line ||
+          page['trades'] is! List ||
+          page['count'] != trades.length ||
+          page['hasMore'] is! bool ||
+          (page['hasMore'] == true && (next.isEmpty || next == cursor)) ||
+          trades.any((raw) {
+            final fill = asMap(raw);
+            final fee = int.tryParse('${fill['feeRatePpm']}');
+            return !asString(fill['tradeId']).startsWith('$line:') ||
+                fill['productLine'] != line ||
+                !positive(fill['instrumentId']) ||
+                (instrumentId.isNotEmpty &&
+                    asString(fill['instrumentId']) != instrumentId) ||
+                !positive(fill['orderId']) ||
+                !positive(fill['priceTicks']) ||
+                !positive(fill['quantitySteps']) ||
+                !['BUY', 'SELL'].contains(fill['side']) ||
+                !['MAKER', 'TAKER'].contains(fill['liquidityRole']) ||
+                !['NET', 'LONG', 'SHORT'].contains(fill['positionSide']) ||
+                fee == null ||
+                fee.abs() > 1000000 ||
+                DateTime.tryParse(asString(fill['eventTime'])) == null;
+          })) {
+        throw const FormatException('成交记录身份、内容或分页资料不匹配');
+      }
+    }
+    return AccountRecordPage.fromJson(response, key);
   }
 
   Future<List<Map<String, dynamic>>> kycCountries() async => asList(

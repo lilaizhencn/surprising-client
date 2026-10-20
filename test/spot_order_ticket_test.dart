@@ -66,6 +66,24 @@ OrderModel cancelTarget({int id = 91, String status = 'ACCEPTED'}) =>
 
 Future<void> amendSpot(AppState state) =>
     state.amendSpotOrder(cancelTarget(), spot(), '1.10', '0.0003');
+
+Future<void> tapTradeControl(WidgetTester tester, Finder target) async {
+  final scroll = find
+      .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+      .first;
+  for (var i = 0; target.hitTestable().evaluate().isEmpty && i < 12; i++) {
+    final bounds = tester.getRect(scroll);
+    await tester.dragFrom(
+      Offset(bounds.left + 2, bounds.center.dy),
+      Offset(0, tester.getCenter(target).dy < 80 ? 160 : -160),
+    );
+    await tester.pumpAndSettle();
+  }
+  expect(target.hitTestable(), findsOneWidget);
+  await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
 AmendOrderResult amendmentResult() => AmendOrderResult(
   originalOrder: cancelTarget(status: 'CANCELED'),
   replacementOrder: cancelTarget(id: 9007199254740993),
@@ -474,13 +492,9 @@ void main() {
           ),
         );
         final orders = find.text('当前委托 (1)');
-        await tester.ensureVisible(orders);
-        await tester.tap(orders);
-        await tester.pumpAndSettle();
+        await tapTradeControl(tester, orders);
         final edit = find.widgetWithText(TextButton, '改单');
-        await tester.ensureVisible(edit);
-        await tester.tap(edit);
-        await tester.pumpAndSettle();
+        await tapTradeControl(tester, edit);
         final price = find
             .descendant(
               of: find.byType(SpotAmendOrderSheet),
@@ -496,14 +510,10 @@ void main() {
           of: find.byType(PrivateTradingPanel),
           matching: find.text('查询改单结果'),
         );
-        await tester.ensureVisible(check);
-        await tester.pumpAndSettle();
-        await tester.tap(check);
-        await tester.pumpAndSettle();
+        await tapTradeControl(tester, check);
         expect(state.tradingCommandPending, isTrue);
         api.terminal = true;
-        await tester.tap(check);
-        await tester.pumpAndSettle();
+        await tapTradeControl(tester, check);
         expect(state.tradingCommandPending, isFalse);
         expect(api.amendments, 1);
         expect(tester.takeException(), isNull);
@@ -604,13 +614,9 @@ void main() {
           ),
         );
         final ordersTab = find.text('当前委托 (1)');
-        await tester.ensureVisible(ordersTab);
-        await tester.tap(ordersTab);
-        await tester.pumpAndSettle();
+        await tapTradeControl(tester, ordersTab);
         final cancel = find.widgetWithText(TextButton, '撤单');
-        await tester.ensureVisible(cancel);
-        await tester.tap(cancel);
-        await tester.pumpAndSettle();
+        await tapTradeControl(tester, cancel);
         expect(api.cancellations, 1);
         expect(state.tradingCommandPending, isTrue);
         // Pending cancellation removes the active action from every visible order row.
@@ -632,7 +638,11 @@ void main() {
             i++
           ) {
             final y = tester.getCenter(check).dy;
-            await tester.drag(scroll, Offset(0, y < 80 ? 160 : -160));
+            final bounds = tester.getRect(scroll);
+            await tester.dragFrom(
+              Offset(bounds.left + 2, bounds.center.dy),
+              Offset(0, y < 80 ? 160 : -160),
+            );
             await tester.pumpAndSettle();
           }
           expect(check.hitTestable(), findsOneWidget);

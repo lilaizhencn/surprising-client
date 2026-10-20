@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-20",
+  "flutter": "3.44.4",
+  "dart": "3.12.2",
+  "checks": {
+    "worktree": {
+      "analyzeIssues": 0,
+      "testsPassed": 391,
+      "testsSkipped": 10,
+      "testsFailed": 0
+    },
+    "independentStagedSnapshot": {
+      "baseHead": "c7e22ca2bf05a675f788fd067a131d99b503e599",
+      "analyzeIssues": 0,
+      "testsPassed": 391,
+      "testsSkipped": 10,
+      "testsFailed": 0,
+      "existingAlgorithmWorktreeExcluded": true
+    }
+  },
+  "focused": {
+    "apiCases": 7,
+    "realtimeCases": 5,
+    "widgetCases": 8,
+    "scope": [
+      "one existing market websocket, auth gating and independent channels",
+      "exact int64 cursors, reconnect, switch conversation and trading account",
+      "recent and older query routes, authenticated multipart and bytes download",
+      "uncertain send receipt, fixed UUID and secure storage before mutation",
+      "320/390 logical pixels, light/dark, 280 pixel keyboard, long nickname and messages",
+      "disabled runtime without conversation queries; wrong user hides prior content",
+      "committed identity order despite inverted transaction timestamps"
+    ]
+  },
+  "limits": {
+    "physicalAndroidInstalled": false,
+    "serverDeployed": false,
+    "realR2": false,
+    "nativeFilePickerManuallyVerified": false,
+    "browserGatewayValidation": "surprising-ex-web/docs/validation/c2c-chat-20261020/evidence.json",
+    "runtimeProtocolValidation": "Dart real local HttpServer and WebSocket; widget presentation uses explicit synthetic API responses"
+  },
+  "files": [
+    {
+      "path": "lib/src/api.dart",
+      "sha256": "07da5f0b8bf170ff66cd1fbeabfcfe10d46633dc94a4096d9d5b035fa32eca4c"
+    },
+    {
+      "path": "lib/src/app.dart",
+      "sha256": "bfe127f173282f9fa153e3794ea97234949e8a739ba900bf7f78d3e6a1762e53"
+    },
+    {
+      "path": "lib/src/c2c_api.dart",
+      "sha256": "c84dc6f2cd94bd3b4e418f6f62710765f8121b8dbc2c66610d9fdec041e15b04"
+    },
+    {
+      "path": "lib/src/c2c_chat_page.dart",
+      "sha256": "314d6fdd68e329ff34ea26acab6886b0ac1004b318df1850a0730852643b058d"
+    },
+    {
+      "path": "lib/src/c2c_models.dart",
+      "sha256": "eca9d223b0dca9829fe525df42d6250c688bd112cbbe72ff462f0be5f07796e9"
+    },
+    {
+      "path": "test/c2c_api_test.dart",
+      "sha256": "ed835f3b6f86e6f611ccde9f72c2c9e2915b004736ca5a204a7520b46208c7ae"
+    },
+    {
+      "path": "test/c2c_chat_page_test.dart",
+      "sha256": "3272d1833f20965f561c12d4c89ffb280c52c941e46a66329ae7352a46dc2016"
+    },
+    {
+      "path": "test/c2c_realtime_test.dart",
+      "sha256": "c9faa3ccee135573723762f718842d6e5a5ad52360326da9d6fb12a3c1c0c2d1"
+    }
+  ],
+  "logs": [
+    {
+      "originalPath": "/tmp/surprising-c2c-client-staged-analyze-20261020.log",
+      "sha256": "a6ce0f475cdead05af99faf98f1d0371efda6e4f1a887666dd7c8c414ee230a7"
+    },
+    {
+      "originalPath": "/tmp/surprising-c2c-client-staged-tests-20261020.log",
+      "sha256": "db893147c5b2167ba64fd0284a3fb3d937cad819bac7cf8f504aef98baeb216f"
+    },
+    {
+      "originalPath": "/tmp/surprising-c2c-client-analyze-final-20261020.log",
+      "sha256": "81f6bfbbf7240c0138f8cabecb4af2b501b5cd91bce514dea40fcfd55d4b3515"
+    },
+    {
+      "originalPath": "/tmp/surprising-c2c-client-all-tests-20261020.log",
+      "sha256": "f1d28dd4543da308cb54c99b72481a95d31f924c61dcf56025db5ecfbb95e6bb"
+    },
+    {
+      "originalPath": "/tmp/surprising-c2c-client-realtime-20261020.log",
+      "sha256": "12c4214b9427eed002158daf2571986066dcf7b7f48ba91eec72087e56598efd"
+    },
+    {
+      "originalPath": "/tmp/surprising-c2c-client-api-tests-20261020.log",
+      "sha256": "bf9ed691086ff956576c8c533008d64bc3472a004fa13f50c06a085bcbb61eba"
+    },
+    {
+      "originalPath": "/tmp/surprising-c2c-client-ui-tests-20261020.log",
+      "sha256": "f52d1e141283854fbd5a3227e16778ac2b900afce5879faa211f33d49154a50e"
+    }
+  ],
+  "goalComplete": false
+}

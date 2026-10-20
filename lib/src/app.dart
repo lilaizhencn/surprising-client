@@ -11,6 +11,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_state.dart';
 import 'telegram_login.dart';
+import 'c2c_chat_page.dart';
 import 'account_records.dart' show formatExecutionPrice;
 import 'asset_overview.dart';
 import 'biometric_lock.dart';
@@ -3190,40 +3191,12 @@ String chainSymbol(String chain) {
   return upper.isEmpty ? '?' : upper.substring(0, 1);
 }
 
-/// C2C has a separate destination; offers and payment actions require a C2C service.
 class C2cPage extends StatelessWidget {
   const C2cPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final language = AppScope.of(context).language;
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const PageHeader(title: 'C2C', subtitle: '买卖数字资产'),
-        const SizedBox(height: 64),
-        Icon(
-          Icons.handshake_outlined,
-          size: 56,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        const SizedBox(height: 20),
-        Text(
-          clientText(language, 'C2C 暂未开放', 'C2C is not available yet'),
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          clientText(
-            language,
-            '开放后可在这里查看买卖报价。',
-            'Buy and sell offers will appear here when C2C opens.',
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
+    return const C2cMessagingPage();
   }
 }
 

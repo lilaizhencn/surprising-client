@@ -517,6 +517,7 @@ class AppState extends ChangeNotifier {
     biometricUnlockError = null;
     pendingBiometricSession = null;
   }
+
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
@@ -2186,13 +2187,8 @@ class AppState extends ChangeNotifier {
       positionMode: positionMode,
       positionSide: positionSide,
     );
-    final exactSpotPrice =
-        instrument.isSpot && orderType != 'MARKET' && bboPriceMode == null
-        ? decimalIncrement(
-            priceText ?? '$price',
-            instrument.priceTickUnits,
-            scaleUnits: instrument.quoteScaleUnits ?? 0,
-          )
+    final exactPrice = orderType != 'MARKET' && bboPriceMode == null
+        ? instrument.priceTicksFromText(priceText ?? '$price')
         : null;
     try {
       validateOrderPolicy(orderType, timeInForce, postOnly, bboPriceMode);
@@ -2215,15 +2211,7 @@ class AppState extends ChangeNotifier {
         quantitySteps <= 0 ||
         (orderType != 'MARKET' &&
             bboPriceMode == null &&
-            (!price.isFinite ||
-                price <= 0 ||
-                (instrument.isSpot
-                        ? exactSpotPrice
-                        : decimalIncrement(
-                            price.toStringAsFixed(8),
-                            instrument.priceTickUnits,
-                          )) ==
-                    null))) {
+            (!price.isFinite || price <= 0 || exactPrice == null))) {
       lastError = '请输入有效的价格和数量';
       notifyListeners();
       return;
@@ -2300,9 +2288,7 @@ class AppState extends ChangeNotifier {
         timeInForce: timeInForce,
         priceTicks: orderType == 'MARKET' || bboPriceMode != null
             ? 0
-            : instrument.isSpot
-            ? exactSpotPrice!
-            : instrument.ticksFromPrice(price),
+            : exactPrice!,
         quantitySteps: quantitySteps,
         marginMode: instrument.isSpot ? 'CROSS' : marginMode,
         positionSide: effectivePositionSide,
@@ -2945,7 +2931,7 @@ class AppState extends ChangeNotifier {
     final tp = drafts.where((d) => d.triggerType == 'TAKE_PROFIT').firstOrNull;
     final sl = drafts.where((d) => d.triggerType == 'STOP_LOSS').firstOrNull;
     if (id == null ||
-        !instrument.mode.tracksTriggerIntent ||
+        !instrument.mode.isDerivative ||
         !instrument.canPlaceTrigger() ||
         drafts.length != 2 ||
         tp == null ||

@@ -1413,16 +1413,11 @@ class _TradePageState extends State<TradePage> {
     final latestPrice = state.latestPriceFor(instrument);
     if (state.orderBook.bids.isNotEmpty && !priceInitialized) {
       priceInitialized = true;
-      priceController.text = instrument.isSpot
-          ? scaledAmount(
-              BigInt.from(state.orderBook.bids.first.priceTicks) *
-                  BigInt.from(instrument.priceTickUnits),
-              instrument.quoteScaleUnits,
-            )
-          : money(
-              instrument.priceFromTicks(state.orderBook.bids.first.priceTicks),
-              digits: instrument.pricePrecision,
-            );
+      priceController.text = scaledAmount(
+        BigInt.from(state.orderBook.bids.first.priceTicks) *
+            BigInt.from(instrument.priceTickUnits),
+        instrument.quoteScaleUnits,
+      );
     }
     return Column(
       children: [
@@ -5117,27 +5112,17 @@ class OrderTicket extends StatelessWidget {
     );
     void stepPrice(int direction) {
       if (orderType == 'MARKET') return;
-      if (instrument.isSpot) {
-        final scale = instrument.quoteScaleUnits;
-        if (scale == null || instrument.priceTickUnits <= 0) return;
-        final current =
-            decimalIncrement(
-              priceController.text,
-              instrument.priceTickUnits,
-              scaleUnits: scale,
-            ) ??
-            0;
-        priceController.text = scaledAmount(
-          BigInt.from(math.max(0, current + direction)) *
-              BigInt.from(instrument.priceTickUnits),
-          scale,
-        );
-        return;
-      }
-      final current = double.tryParse(priceController.text) ?? 0;
-      final tick = instrument.priceFromTicks(1).abs();
-      final next = math.max(0.0, current + tick * direction);
-      priceController.text = money(next, digits: instrument.pricePrecision);
+      final scale = instrument.quoteScaleUnits;
+      if (scale == null || scale <= 0 || instrument.priceTickUnits <= 0) return;
+      final current = instrument.priceTicksFromText(priceController.text);
+      if (current == null && priceController.text.trim().isNotEmpty) return;
+      final next = BigInt.from(current ?? 0) + BigInt.from(direction);
+      if (next > BigInt.parse('9223372036854775807')) return;
+      priceController.text = scaledAmount(
+        (next.isNegative ? BigInt.zero : next) *
+            BigInt.from(instrument.priceTickUnits),
+        scale,
+      );
     }
 
     void stepQuantity(int direction) {
@@ -5237,18 +5222,12 @@ class OrderTicket extends StatelessWidget {
                         final book = AppScope.of(context).orderBook;
                         final levels = buy ? book.asks : book.bids;
                         if (levels.isEmpty) return;
-                        priceController.text = instrument.isSpot
-                            ? scaledAmount(
-                                BigInt.from(levels.first.priceTicks) *
-                                    BigInt.from(instrument.priceTickUnits),
-                                instrument.quoteScaleUnits,
-                              )
-                            : money(
-                                instrument.priceFromTicks(
-                                  levels.first.priceTicks,
-                                ),
-                                digits: instrument.pricePrecision,
-                              );
+                        if (book.symbol != instrument.symbol) return;
+                        priceController.text = scaledAmount(
+                          BigInt.from(levels.first.priceTicks) *
+                              BigInt.from(instrument.priceTickUnits),
+                          instrument.quoteScaleUnits,
+                        );
                       },
                     ),
                 ],
@@ -5353,7 +5332,7 @@ class OrderTicket extends StatelessWidget {
               ),
             const SizedBox(height: 6),
             Text(
-              '最小价格变动 ${instrument.isSpot ? scaledAmount(BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits) : instrument.priceFromTicks(1)} ${instrument.quoteAsset}',
+              '最小价格变动 ${scaledAmount(BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits)} ${instrument.quoteAsset}',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 10,
@@ -5996,7 +5975,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 ),
             ],
           ),
-          if (widget.state.selectedInstrument.mode.tracksTriggerIntent) ...[
+          if (widget.state.selectedInstrument.mode.isDerivative) ...[
             const SizedBox(height: 8),
             SmallDropdown(
               value: oco ? 'OCO' : 'SINGLE',
@@ -7280,7 +7259,8 @@ class _AuthSheetState extends State<AuthSheet> {
                           if (!context.mounted) return;
                           setState(() {
                             busy = false;
-                            message = state.biometricUnlockError ?? state.lastError;
+                            message =
+                                state.biometricUnlockError ?? state.lastError;
                           });
                           if (ok) Navigator.pop(context);
                         },
@@ -9206,16 +9186,10 @@ class BookLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price = instrument.isSpot
-        ? scaledAmount(
-            BigInt.from(level.priceTicks) *
-                BigInt.from(instrument.priceTickUnits),
-            instrument.quoteScaleUnits,
-          )
-        : money(
-            instrument.priceFromTicks(level.priceTicks),
-            digits: instrument.pricePrecision,
-          );
+    final price = scaledAmount(
+      BigInt.from(level.priceTicks) * BigInt.from(instrument.priceTickUnits),
+      instrument.quoteScaleUnits,
+    );
     final depth = maxQuantity <= 0
         ? 0.0
         : (level.quantitySteps / maxQuantity).clamp(0.0, 1.0);

@@ -5,6 +5,7 @@ import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
+import 'package:surprising_client/src/session_store.dart';
 
 void main() {
   testWidgets('long position symbols fit compact screens', (tester) async {
@@ -197,9 +198,11 @@ void main() {
       final first = state.placeTriggerOrders([draft(), draft()]);
       expect(state.submittingTriggers, isTrue);
       expect(await state.placeTriggerOrders([draft()]), 0);
+      await Future<void>.delayed(Duration.zero);
       expect(api.calls, 1);
       api.first.complete(
         TriggerOrderModel.fromJson({
+          ...api.firstRequest,
           'triggerOrderId': 99,
           'symbol': state.selectedSymbol,
           'status': 'PENDING',
@@ -220,9 +223,12 @@ void main() {
       final state = TriggerState(api);
       addTearDown(state.dispose);
       final pending = state.placeTriggerOrders([draft(), draft()]);
+      await Future<void>.delayed(Duration.zero);
+      expect(api.calls, 1);
       state.session = null;
       api.first.complete(
         TriggerOrderModel.fromJson({
+          ...api.firstRequest,
           'triggerOrderId': 99,
           'symbol': state.selectedSymbol,
           'status': 'PENDING',
@@ -304,7 +310,8 @@ class DelayedSelectionState extends AppState {
 }
 
 class TriggerState extends AppState {
-  TriggerState(ApiClient api) : super(offline: true, apiClient: api) {
+  TriggerState(ApiClient api)
+    : super(offline: true, apiClient: api, settingsStore: _RecoverySettings()) {
     mode = ProductMode.linear;
     selectedSymbol = visibleInstruments.first.symbol;
     session = const AuthSession(
@@ -319,6 +326,7 @@ class TriggerState extends AppState {
     );
     positions = [
       Position(
+        instrumentId: selectedInstrument.instrumentId,
         symbol: selectedSymbol,
         marginMode: 'CROSS',
         positionSide: 'NET',
@@ -336,6 +344,7 @@ class TriggerApi extends ApiClient {
   TriggerApi() : super(const AppConfig());
   final first = Completer<TriggerOrderModel>();
   int calls = 0;
+  Map<String, dynamic> firstRequest = {};
   @override
   Future<TriggerOrderModel> placeTriggerOrder({
     required int userId,
@@ -355,8 +364,18 @@ class TriggerApi extends ApiClient {
     int priceTicks = 0,
   }) {
     calls++;
-    if (calls == 1) return first.future;
-    return Future.error(StateError('second request rejected'));
+    if (calls == 1) {
+      firstRequest = {
+        'userId': userId,
+        'instrumentId': instrumentId,
+        'clientTriggerOrderId': clientTriggerOrderId,
+        'side': side,
+        'triggerType': triggerType,
+        'quantitySteps': quantitySteps,
+      };
+      return first.future;
+    }
+    return Future.error(ApiException(400, 'second request rejected'));
   }
 }
 
@@ -383,4 +402,14 @@ class InstrumentApi extends ApiClient {
   @override
   Future<List<Instrument>> expiringInstruments(ProductMode product) async =>
       rows.where((row) => row.mode == product).toList();
+}
+
+class _RecoverySettings implements ClientSettingsStore {
+  Map<String, String> values = {};
+  @override
+  Future<Map<String, String>> read() async => {...values};
+  @override
+  Future<void> write(Map<String, String> next) async {
+    values = {...next};
+  }
 }

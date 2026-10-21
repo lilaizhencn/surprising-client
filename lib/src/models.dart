@@ -14,8 +14,9 @@ enum ProductMode {
   final String contractType;
 
   bool get isSpot => this == ProductMode.spot;
-  bool get tracksSingleOrderIntent => isSpot || isExpiring;
-  bool get tracksTriggerIntent => isExpiring;
+  // All six products expose owner-bound committed order and trigger receipts.
+  bool get tracksSingleOrderIntent => true;
+  bool get tracksTriggerIntent => true;
   bool get isPerpetual =>
       this == ProductMode.linear || this == ProductMode.inverse;
   bool get isDelivery =>
@@ -529,26 +530,34 @@ class Instrument {
   }
 
   double priceFromTicks(int ticks) {
-    final scale = isSpot ? quoteScaleUnits : 100000000;
+    final scale = quoteScaleUnits;
     return scale == null || scale <= 0
         ? double.nan
-        : ticks * priceTickUnits / scale;
+        : (BigInt.from(ticks) * BigInt.from(priceTickUnits)).toDouble() / scale;
   }
+
+  /// A submitted price must match the declared quote scale and tick exactly.
+  int? priceTicksFromText(String price) =>
+      decimalIncrement(price, priceTickUnits, scaleUnits: quoteScaleUnits ?? 0);
 
   int ticksFromPrice(double price) {
     if (isSpot) {
-      final ticks = decimalIncrement(
-        '$price',
-        priceTickUnits,
-        scaleUnits: quoteScaleUnits ?? 0,
-      );
+      final ticks = priceTicksFromText('$price');
       if (ticks == null || ticks <= 0) {
         throw const FormatException('价格精度未就绪或价格不符合步长');
       }
       return ticks;
     }
-    if (priceTickUnits <= 0) return price.round();
-    return (price * 100000000.0 / priceTickUnits).round();
+    // Display/reference conversion only. Submitted orders use priceTicksFromText.
+    final scale = quoteScaleUnits;
+    if (scale == null ||
+        scale <= 0 ||
+        priceTickUnits <= 0 ||
+        !price.isFinite ||
+        price <= 0) {
+      return 0;
+    }
+    return (price * scale / priceTickUnits).round();
   }
 
   factory Instrument.fromJson(Map<String, dynamic> json) {
@@ -2162,6 +2171,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'BTC-USDT',
       instrumentType: 'PERPETUAL',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_PERPETUAL',
       baseAsset: 'BTC',
       quoteAsset: 'USDT',
@@ -2176,6 +2186,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'ETH-USDT',
       instrumentType: 'PERPETUAL',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_PERPETUAL',
       baseAsset: 'ETH',
       quoteAsset: 'USDT',
@@ -2190,6 +2201,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'BTC-USDC',
       instrumentType: 'PERPETUAL',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_PERPETUAL',
       baseAsset: 'BTC',
       quoteAsset: 'USDC',
@@ -2204,6 +2216,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'SOL-USDT',
       instrumentType: 'PERPETUAL',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_PERPETUAL',
       baseAsset: 'SOL',
       quoteAsset: 'USDT',
@@ -2218,6 +2231,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'ETH-USDC',
       instrumentType: 'PERPETUAL',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_PERPETUAL',
       baseAsset: 'ETH',
       quoteAsset: 'USDC',
@@ -2232,6 +2246,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'XAUT-USDT',
       instrumentType: 'PERPETUAL',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_PERPETUAL',
       baseAsset: 'XAUT',
       quoteAsset: 'USDT',
@@ -2294,6 +2309,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'BTC-USDT-260925',
       instrumentType: 'DELIVERY',
+      quoteScaleUnits: 100000000,
       contractType: 'LINEAR_DELIVERY',
       baseAsset: 'BTC',
       quoteAsset: 'USDT',
@@ -2310,6 +2326,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'BTC-USD-260925',
       instrumentType: 'DELIVERY',
+      quoteScaleUnits: 100000000,
       contractType: 'INVERSE_DELIVERY',
       baseAsset: 'BTC',
       quoteAsset: 'USD',
@@ -2326,6 +2343,7 @@ List<Instrument> fallbackInstruments() {
     Instrument(
       symbol: 'BTC-USDT-260925-70000-C',
       instrumentType: 'OPTION',
+      quoteScaleUnits: 100000000,
       contractType: 'VANILLA_OPTION',
       baseAsset: 'BTC',
       quoteAsset: 'USDT',

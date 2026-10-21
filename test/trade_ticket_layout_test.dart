@@ -11,6 +11,7 @@ Instrument _instrument() => Instrument.fromJson({
   'contractType': 'LINEAR_PERPETUAL',
   'baseAsset': 'BTC',
   'quoteAsset': 'USDT',
+  'quoteScaleUnits': 100000000,
   'priceTickUnits': 10000000,
   'quantityStepUnits': 100000,
   'pricePrecision': 1,

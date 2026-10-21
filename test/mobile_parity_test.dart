@@ -16,6 +16,7 @@ Instrument market({String id = '42', String symbol = 'BTC-USDT-PERP'}) =>
       'contractType': 'LINEAR_PERPETUAL',
       'baseAsset': 'BTC',
       'quoteAsset': 'USDT',
+      'quoteScaleUnits': 100000000,
       'priceTickUnits': 1000000,
       'quantityStepUnits': 100000,
       'lastPrice': '60000',

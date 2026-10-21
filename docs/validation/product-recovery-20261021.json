@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-21",
+  "scope": "Original financial request recovery and exact six-product price conversion, HTTP submission and narrow-screen BBO/step controls",
+  "products": [
+    "SPOT",
+    "LINEAR_PERPETUAL",
+    "INVERSE_PERPETUAL",
+    "LINEAR_DELIVERY",
+    "INVERSE_DELIVERY",
+    "OPTION"
+  ],
+  "unitTestsPassed": 447,
+  "conditionalSkipped": 11,
+  "staticChecks": "passed",
+  "sourceSha256": {
+    "lib/src/app.dart": "e3ed2fbd47dedaf8ccbe27cc495bce0046cabe0306c03a8750af38b22dbeda0c",
+    "lib/src/app_state.dart": "1a2b4731019fb923e95c82364d77233454f9d65c5d53632d84a04d52c0e4d363",
+    "lib/src/models.dart": "ab6790280f4fe7cbbc9ca2d78ae602bf99caa21b0a3d4c97fa90048a594b1543",
+    "test/delivery_protection_test.dart": "dbfd0b24be8d3b636ccff32b9e7d753efc20b79a630d894358ff912096c366b7",
+    "test/linear_delivery_trading_test.dart": "a7688d0b63a9c74701b870c7cd7b72d51043fa1b8f613e108b376497c039367e",
+    "test/product_realtime_audit_test.dart": "1649b5b84cc222362b484d2d1602d18c60008ddc4edb31a8f105f55f1bf9b097",
+    "test/mobile_audit_test.dart": "d70f4901df291fae806b03e90719a2b9f0d9e7324acfcc0af691e5c18ce7cab9",
+    "test/mobile_parity_test.dart": "dd79823deb980c34f2b50847d945724d42d938504dde9eb21a73c620c29d322c",
+    "test/trade_ticket_layout_test.dart": "3b9a2944b0d63eb2f5f8a3e7cfff24f63622b6bfb69d4f73aefcc083b8823c21"
+  },
+  "logSha256": {
+    "client-clean-analyze.log": "a6b8eb7885545136f3c775e0349b0a1dafdffc98edd984128792111f69252182",
+    "client-clean-tests.log": "a66b4eb6b9518ef17007ca7750a68aa3ad90efff67d66e39d09daabc440a84f4",
+    "client-workspace-analyze.log": "d9199b2b6c11692381420b59027d3064a767a12ad903476dacc3ec9df3c82063",
+    "client-workspace-tests.log": "6f349c229af6d37231374239e19ed3c0168b63f30ca84dbd70ea8740faed5476",
+    "client-final-red.log": "d5c85837f34269fea4eda67ec1de771188c17083f94c92572bfd336deaf683fc",
+    "client-price-red.log": "47db3ce611c03fa4eebedbe7ea13866350723ec3f775702b8b5d6420c807a873",
+    "client-price-ui-red.log": "56276f929b63293531005e5df1388b82e43b19f4838c2bf08024b8291b3942be",
+    "client-reference-overflow-red.log": "76de22926dcc223986563ffa67c79e84ecead4f1678cbbc8fbdefc3ab546207e",
+    "client-price-http-green.log": "9886dcec037f5d033f6f8214799e59a439107e543f718726a03acbc9150afce0",
+    "client-price-ui-green.log": "15b48b55b9fbcb57a8ec20ab89e494f85c0db0ec3ab103a6071b7956e1bef3e8"
+  },
+  "sourceIsolation": "Clean committed baseline with this recovery patch; algorithm-order WIP excluded",
+  "notClaimed": [
+    "complete platform readiness",
+    "native device installation",
+    "remote deployment",
+    "real bank payment",
+    "standalone full six-product service-stack acceptance"
+  ],
+  "cleanup": {
+    "ownedVitePidsStopped": [
+      5430
+    ],
+    "port5173Listening": false,
+    "databasesCreated": 0,
+    "unrelatedServicesStopped": false,
+    "status": "completed",
+    "temporaryQaRootRemoved": true,
+    "rawLogsAndBuildsRemoved": true,
+    "sanitizedEvidenceRetainedInRepository": true,
+    "verifiedBackendArtifactsRetained": "/tmp/surprising-product-recovery-verified-20261021",
+    "remoteDeployment": false,
+    "apkInstallation": false
+  },
+  "ui": "320px light/dark OCO inputs, exact ticks/quantity, pending original request and form cleanup; all five derivative products have protection widget coverage",
+  "workspaceTestsPassed": 447,
+  "skipReason": "Explicit live service fixtures/environment variables were not configured in this run",
+  "pricePrecision": {
+    "isolatedTestsPassed": 447,
+    "workspaceTestsPassed": 447,
+    "conditionalSkipped": 11,
+    "skipReason": "Explicit live service fixtures/environment variables were not configured in this run",
+    "analyze": "No issues in both isolated source and workspace",
+    "realHttpContractCases": 6,
+    "httpScope": "Actual Dart HttpClient to a loopback controlled server, verifies exact 9007199254740993 integer price, product header and request identity; not Core acceptance",
+    "priceUiCases": 12,
+    "priceUiScope": "Six products at 320px in light/dark themes: exact BBO fill, plus/minus final decimal, invalid text preserved",
+    "additionalAssertions": [
+      "Declared quoteScaleUnits used for all products",
+      "Missing precision and off-tick input send no POST and create no pending intent",
+      "BigInt tick multiplication prevents int64 overflow in reference prices",
+      "All five derivatives retain TP/SL OCO widget coverage",
+      "Original request retained after unknown result, account/product identity preserved"
+    ],
+    "redEvidence": {
+      "precisionConversionFailuresBeforeFix": 15,
+      "priceUiDerivativeFailuresBeforeFix": 10,
+      "referenceOverflowFailuresBeforeFix": 6
+    }
+  }
+}

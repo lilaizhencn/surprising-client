@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
+import 'package:surprising_client/src/session_store.dart';
 import 'package:surprising_client/src/realtime_state.dart';
 
 String version(int n) => '${n.toString().padLeft(19, '0')}:0000000000';
@@ -226,43 +227,56 @@ void main() {
     },
   );
 
-  test(
-    'late cancellation responses cannot remove same IDs in another product',
-    () async {
-      final api = DeferredCancelApi();
-      final state = SelectionState(api: api)..session = session;
-      addTearDown(state.dispose);
-      for (final p in [ProductMode.linear, ProductMode.option]) {
-        final frame = snapshot(p);
-        final data = asMap(frame['data']);
-        asMap(asList(data['openOrders']).single)['orderId'] = 1;
-        asMap(asList(data['triggerOrders']).single)['triggerOrderId'] = 2;
-        state.handleRealtimeMessage(frame);
-      }
-      await state.selectMode(ProductMode.linear);
-      final order = state.cancelOrder(state.openOrders.single);
-      final trigger = state.cancelTriggerOrder(state.openTriggerOrders.single);
-      await state.selectMode(ProductMode.option);
-      api.order.complete(
-        OrderModel.fromJson({
-          'orderId': 1,
-          'symbol': 'BTC-USDT',
-          'status': 'CANCELLED',
-        }),
-      );
-      api.trigger.complete(
-        TriggerOrderModel.fromJson({
-          'triggerOrderId': 2,
-          'symbol': 'BTC-USDT',
-          'status': 'CANCELLED',
-        }),
-      );
-      await Future.wait([order, trigger]);
-      expect(api.products, ['LINEAR_PERPETUAL', 'LINEAR_PERPETUAL']);
-      expect(state.openOrders.single.orderId, 1);
-      expect(state.openTriggerOrders.single.triggerOrderId, 2);
-    },
-  );
+  for (final cancelTrigger in [false, true]) {
+    test(
+      'late ${cancelTrigger ? "trigger" : "order"} cancellation cannot remove same IDs in another product',
+      () async {
+        final api = DeferredCancelApi();
+        final state = SelectionState(api: api)..session = session;
+        addTearDown(state.dispose);
+        for (final p in [ProductMode.linear, ProductMode.option]) {
+          final frame = snapshot(p);
+          asMap(asList(asMap(frame['data'])['openOrders']).single)['orderId'] =
+              1;
+          asMap(
+            asList(asMap(frame['data'])['triggerOrders']).single,
+          )['triggerOrderId'] = 2;
+          state.handleRealtimeMessage(frame);
+        }
+        await state.selectMode(ProductMode.linear);
+        final pending = cancelTrigger
+            ? state.cancelTriggerOrder(state.openTriggerOrders.single)
+            : state.cancelOrder(state.openOrders.single);
+        await Future<void>.delayed(Duration.zero);
+        expect(api.products, ['LINEAR_PERPETUAL']);
+        await state.selectMode(ProductMode.option);
+        if (cancelTrigger) {
+          api.trigger.complete(
+            TriggerOrderModel.fromJson({
+              'userId': session.user.userId,
+              'instrumentId': '101',
+              'triggerOrderId': 2,
+              'symbol': 'BTC-USDT',
+              'status': 'CANCELED',
+            }),
+          );
+        } else {
+          api.order.complete(
+            OrderModel.fromJson({
+              'orderId': 1,
+              'symbol': 'BTC-USDT',
+              'status': 'CANCELED',
+            }),
+          );
+        }
+        await pending;
+        expect(state.tradingCommandPending, false);
+        expect(api.products, ['LINEAR_PERPETUAL']);
+        expect(state.openOrders.single.orderId, 1);
+        expect(state.openTriggerOrders.single.triggerOrderId, 2);
+      },
+    );
+  }
   test(
     'all product pages isolate identical symbols, positions, orders, triggers and risk pushes',
     () async {
@@ -410,6 +424,7 @@ class SelectionState extends AppState {
         seedInstruments: catalog,
         apiClient: api,
         realtimeClient: realtime,
+        settingsStore: _RecoverySettings(),
       );
   @override
   Future<void> refreshInstruments({bool silent = false}) async {}
@@ -446,7 +461,7 @@ class CloseApi extends ApiClient {
     return OrderModel.fromJson({
       'orderId': 1,
       'symbol': symbol,
-      'status': 'NEW',
+      'status': 'ACCEPTED',
     });
   }
 }
@@ -515,4 +530,14 @@ class UnavailableBookApi extends ApiClient {
   }) async => [
     {'tradeId': 'LINEAR_PERPETUAL:1:1:1:0', 'sequence': 1, 'price': 2},
   ];
+}
+
+class _RecoverySettings implements ClientSettingsStore {
+  Map<String, String> values = {};
+  @override
+  Future<Map<String, String>> read() async => {...values};
+  @override
+  Future<void> write(Map<String, String> next) async {
+    values = {...next};
+  }
 }

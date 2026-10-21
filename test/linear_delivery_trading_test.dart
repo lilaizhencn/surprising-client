@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,11 +15,14 @@ Instrument delivery({
 }) => Instrument.fromJson({
   'instrumentId': '73',
   'symbol': 'BTC-USDT-261225',
-  'instrumentType': 'DELIVERY',
+  'instrumentType': mode.isPerpetual ? 'PERPETUAL' : 'DELIVERY',
   'contractType': mode.contractType,
   'baseAsset': 'BTC',
   'quoteAsset': 'USDT',
-  'settleAsset': mode == ProductMode.inverseDelivery ? 'BTC' : 'USDT',
+  'settleAsset':
+      mode == ProductMode.inverseDelivery || mode == ProductMode.inverse
+      ? 'BTC'
+      : 'USDT',
   'priceTickUnits': 10000000,
   'quantityStepUnits': 100000,
   'pricePrecision': 1,
@@ -45,9 +50,341 @@ Position position({ProductMode mode = ProductMode.linearDelivery}) =>
       'positionSide': 'LONG',
       'marginMode': 'ISOLATED',
       'entryPriceTicks': 500000,
-      'marginAsset': mode == ProductMode.inverseDelivery ? 'BTC' : 'USDT',
+      'marginAsset':
+          mode == ProductMode.inverseDelivery || mode == ProductMode.inverse
+          ? 'BTC'
+          : 'USDT',
     });
 void main() {
+  for (final product in ProductMode.values) {
+    Instrument precisionContract({
+      int? scale = 1000000000000000000,
+      int tick = 1,
+    }) => Instrument.fromJson({
+      'instrumentId': '73',
+      'symbol': 'QA-${product.productLine}',
+      'productLine': product.productLine,
+      'contractType': product.contractType,
+      'instrumentType': product.isSpot
+          ? 'SPOT'
+          : product.isOption
+          ? 'OPTION'
+          : product.isDelivery
+          ? 'DELIVERY'
+          : 'PERPETUAL',
+      'baseAsset': 'BTC',
+      'quoteAsset':
+          product == ProductMode.inverse ||
+              product == ProductMode.inverseDelivery
+          ? 'USD'
+          : 'USDT',
+      'settleAsset':
+          product == ProductMode.inverse ||
+              product == ProductMode.inverseDelivery
+          ? 'BTC'
+          : 'USDT',
+      'priceTickUnits': tick,
+      'quoteScaleUnits': scale,
+      'settleScaleUnits':
+          product == ProductMode.inverse ||
+              product == ProductMode.inverseDelivery
+          ? 100000000
+          : scale,
+      'baseScaleUnits': 100000000,
+      'notionalMultiplierUnits': 1,
+      'quantityStepUnits': 1,
+      'status': 'TRADING',
+      if (product.isExpiring) 'expiryTime': '2035-01-01T00:00:00Z',
+    });
+    test(
+      '${product.productLine} order price keeps original text beyond floating point precision',
+      () async {
+        final api = _Api(mode: product);
+        final active = _State(
+          api,
+          mode: product,
+          instrument: precisionContract(),
+        )..session = actor;
+        addTearDown(active.dispose);
+        await active.placeOrder(
+          side: 'BUY',
+          orderType: 'LIMIT',
+          timeInForce: 'GTC',
+          price: 0.009007199254740993,
+          priceText: '0.009007199254740993',
+          quantitySteps: 1,
+          marginMode: 'CROSS',
+          positionSide: 'NET',
+          reduceOnly: false,
+          postOnly: false,
+        );
+        expect(api.calls, 1);
+        expect(api.sent?['priceTicks'], 9007199254740993);
+        expect(active.tradingCommandPending, false);
+      },
+    );
+    test(
+      '${product.productLine} missing quote scale and off-tick prices send no order and save no pending request',
+      () async {
+        for (final instrument in [
+          precisionContract(scale: null),
+          precisionContract(scale: 1000, tick: 5),
+        ]) {
+          final api = _Api(mode: product);
+          final state = _State(api, mode: product, instrument: instrument)
+            ..session = actor;
+          await state.placeOrder(
+            side: 'BUY',
+            orderType: 'LIMIT',
+            timeInForce: 'GTC',
+            price: 0.001,
+            priceText: '0.001',
+            quantitySteps: 1,
+            marginMode: 'CROSS',
+            positionSide: 'NET',
+            reduceOnly: false,
+            postOnly: false,
+          );
+          expect(api.calls, 0);
+          expect(state.tradingCommandPending, false);
+          expect(state.lastError, isNotNull);
+          state.dispose();
+        }
+      },
+    );
+    test(
+      '${product.productLine} real HTTP body preserves the exact eighteen-decimal price',
+      () async {
+        final instrument = precisionContract(),
+            received = Completer<Map<String, dynamic>>();
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((request) async {
+          final raw = await utf8.decoder.bind(request).join();
+          final body = asMap(jsonDecode(raw));
+          expect(request.method, 'POST');
+          expect(request.uri.path, '/api/v1/gateway/trading');
+          expect(request.headers.value('X-Product-Line'), product.productLine);
+          expect(request.headers.value('Authorization'), 'Bearer test');
+          expect(raw, contains('"priceTicks":9007199254740993'));
+          expect(body['instrumentId'], '73');
+          expect(body['priceTicks'], 9007199254740993);
+          received.complete(body);
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              ...body,
+              'orderId': 9007199254740993,
+              'status': 'ACCEPTED',
+            }),
+          );
+          await request.response.close();
+        });
+        final http = HttpOverrides.runWithHttpOverrides(
+          () => HttpClient(),
+          _RealHttp(),
+        );
+        final api =
+            ApiClient(
+                AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
+                httpClient: http,
+              )
+              ..setSession(actor)
+              ..instrumentCatalog = [instrument];
+        final state = _State(api, mode: product, instrument: instrument)
+          ..session = actor;
+        addTearDown(() async {
+          state.dispose();
+          http.close(force: true);
+          await server.close(force: true);
+        });
+        await state.placeOrder(
+          side: 'BUY',
+          orderType: 'LIMIT',
+          timeInForce: 'GTC',
+          price: 0.009007199254740993,
+          priceText: '0.009007199254740993',
+          quantitySteps: 1,
+          marginMode: 'CROSS',
+          positionSide: 'NET',
+          reduceOnly: false,
+          postOnly: false,
+        );
+        final body = await received.future.timeout(const Duration(seconds: 5));
+        expect(body['clientOrderId'], isNotEmpty);
+        expect(state.tradingCommandPending, false);
+        expect(state.lastError, isNull);
+      },
+    );
+    for (final brightness in Brightness.values) {
+      testWidgets(
+        '${product.productLine} 320px $brightness BBO and price steps preserve eighteen decimals',
+        (tester) async {
+          tester.view.physicalSize = const Size(320, 1500);
+          tester.view.devicePixelRatio = 1;
+          final instrument = precisionContract(), api = _Api(mode: product);
+          final state = _State(api, mode: product, instrument: instrument)
+            ..session = actor;
+          state.orderBook = OrderBook(
+            symbol: instrument.symbol,
+            sequence: 1,
+            asks: const [
+              OrderBookLevel(
+                priceTicks: 9007199254740993,
+                quantitySteps: 1,
+                orderCount: 1,
+              ),
+            ],
+            bids: const [],
+          );
+          final price = TextEditingController(),
+              quantity = TextEditingController(text: '1');
+          addTearDown(() {
+            state.dispose();
+            price.dispose();
+            quantity.dispose();
+            tester.view.resetPhysicalSize();
+            tester.view.resetDevicePixelRatio();
+          });
+          await tester.pumpWidget(
+            AppScope(
+              notifier: state,
+              child: MaterialApp(
+                theme: ThemeData(brightness: brightness),
+                home: Scaffold(
+                  body: SingleChildScrollView(
+                    child: OrderTicket(
+                      side: 'BUY',
+                      orderType: 'LIMIT',
+                      timeInForce: 'GTC',
+                      marginMode: 'CROSS',
+                      positionMode: 'ONE_WAY',
+                      positionSide: 'NET',
+                      reduceOnly: false,
+                      postOnly: false,
+                      bboEnabled: false,
+                      bboPriceMode: 'OPPONENT_1',
+                      onBboEnabled: (_) {},
+                      onBboPriceMode: (_) {},
+                      priceController: price,
+                      quantityController: quantity,
+                      instrument: instrument,
+                      loggedIn: true,
+                      onSide: (_) {},
+                      onOrderType: (_) {},
+                      onTimeInForce: (_) {},
+                      onMarginMode: (_) {},
+                      onPositionSide: (_) {},
+                      onReduceOnly: (_) {},
+                      onPostOnly: (_) {},
+                      onSubmit: () {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.ensureVisible(find.text('最优价').first);
+          await tester.tap(find.text('最优价').first);
+          await tester.pump();
+          expect(price.text, '0.009007199254740993');
+          final field = find.byWidgetPredicate(
+            (w) => w is TradeNumericField && identical(w.controller, price),
+          );
+          final plus = find.descendant(
+            of: field,
+            matching: find.byIcon(Icons.add),
+          );
+          final minus = find.descendant(
+            of: field,
+            matching: find.byIcon(Icons.remove),
+          );
+          await tester.ensureVisible(plus);
+          await tester.tap(plus);
+          await tester.pump();
+          expect(price.text, '0.009007199254740994');
+          await tester.tap(minus);
+          await tester.pump();
+          expect(price.text, '0.009007199254740993');
+          price.text = 'invalid';
+          await tester.tap(plus);
+          await tester.pump();
+          expect(price.text, 'invalid');
+          expect(api.calls, 0);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+    test('${product.productLine} reference prices use actual quote scale', () {
+      final instrument = precisionContract(scale: 1000, tick: 5);
+      expect(instrument.priceFromTicks(24690), closeTo(123.45, 1e-12));
+      expect(instrument.ticksFromPrice(123.45), 24690);
+      expect(
+        precisionContract(
+          scale: 1000000,
+          tick: 1000000,
+        ).priceFromTicks(9007199254740993),
+        closeTo(9007199254740993.toDouble(), 2),
+      );
+      expect(precisionContract(scale: null).priceFromTicks(100).isNaN, true);
+    });
+  }
+  for (final product in [ProductMode.linear, ProductMode.inverse]) {
+    test(
+      '${product.productLine} placement and cancellation survive restart with their original identity',
+      () async {
+        final api = _Api(mode: product)..lost = true, settings = _Settings();
+        var state = _State(
+          api,
+          mode: product,
+          status: 'TRADING',
+          store: settings,
+        )..session = actor;
+        await state.placeOrder(
+          side: 'BUY',
+          orderType: 'LIMIT',
+          timeInForce: 'GTC',
+          price: 50000,
+          quantitySteps: 1,
+          marginMode: 'CROSS',
+          positionSide: 'NET',
+          reduceOnly: false,
+          postOnly: false,
+        );
+        final original = state.pendingTradingCommand?.clientOrderId;
+        expect(original, isNotNull);
+        expect(api.calls, 1);
+        state.dispose();
+        state = _State(api, mode: product, status: 'TRADING', store: settings);
+        await state.bootstrap();
+        state.session = actor;
+        expect(state.pendingTradingCommand?.clientOrderId, original);
+        await state.checkPendingTradingCommand();
+        expect(state.tradingCommandPending, true);
+        api.terminal = true;
+        await state.checkPendingTradingCommand();
+        expect(state.tradingCommandPending, false);
+        expect(api.calls, 1);
+        api.terminal = false;
+        await state.cancelOrder(
+          OrderModel.fromJson({
+            'orderId': 9007199254740993,
+            'status': 'ACCEPTED',
+          }),
+        );
+        expect(state.pendingTradingCommand?.cancelOrderId, 9007199254740993);
+        state.dispose();
+        state = _State(api, mode: product, status: 'TRADING', store: settings);
+        addTearDown(state.dispose);
+        await state.bootstrap();
+        state.session = actor;
+        api.terminal = true;
+        await state.checkPendingTradingCommand();
+        expect(state.tradingCommandPending, false);
+        expect(api.calls, 2);
+      },
+    );
+  }
   for (final product in [
     ProductMode.linearDelivery,
     ProductMode.inverseDelivery,
@@ -414,6 +751,8 @@ void main() {
   }
 }
 
+class _RealHttp extends HttpOverrides {}
+
 class _Api extends ApiClient {
   _Api({required this.mode}) : super(const AppConfig());
   final ProductMode mode;
@@ -460,6 +799,7 @@ class _Api extends ApiClient {
       'positionSide': positionSide,
       'side': side,
       'quantitySteps': quantitySteps,
+      'priceTicks': priceTicks,
     };
     if (lost) throw const SocketException('response lost');
     return OrderModel.fromJson({
@@ -509,11 +849,12 @@ class _State extends AppState {
     ClientSettingsStore? store,
     String status = 'SETTLING',
     ProductMode mode = ProductMode.linearDelivery,
+    Instrument? instrument,
   }) : super(
          apiClient: api,
          settingsStore: store ?? _Settings(),
          sessionStore: _Sessions(),
-         seedInstruments: [delivery(status: status, mode: mode)],
+         seedInstruments: [instrument ?? delivery(status: status, mode: mode)],
          config: const AppConfig(websocketUrl: ''),
        ) {
     this.mode = mode;

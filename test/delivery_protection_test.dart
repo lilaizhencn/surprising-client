@@ -23,7 +23,11 @@ Instrument contract({
   'symbol': product == ProductMode.inverseDelivery
       ? 'BTC-USD-351225'
       : 'BTC-USDT-351225',
-  'instrumentType': 'DELIVERY',
+  'instrumentType': product.isSpot
+      ? 'SPOT'
+      : product.isPerpetual
+      ? 'PERPETUAL'
+      : 'DELIVERY',
   'contractType': product.contractType,
   'productLine': product.productLine,
   'baseAsset': 'BTC',
@@ -59,6 +63,100 @@ List<TriggerOrderDraft> pair() => [
   leg('STOP_LOSS', 19100),
 ];
 void main() {
+  for (final product in [
+    ProductMode.spot,
+    ProductMode.linear,
+    ProductMode.inverse,
+  ]) {
+    test(
+      '${product.productLine} trigger receipts survive restart without enabling spot position protection',
+      () async {
+        final settings = _Settings(), api = _Api(product)..lose = true;
+        var state = _State(api, settings)..session = actor;
+        final draft = TriggerOrderDraft(
+          side: 'SELL',
+          triggerType: 'TAKE_PROFIT',
+          triggerPriceTicks: 24690,
+          quantitySteps: 1,
+          marginMode: product.isSpot ? 'CROSS' : 'ISOLATED',
+          positionSide: product.isSpot ? 'NET' : 'LONG',
+          priceSource: 'LAST',
+          orderType: 'LIMIT',
+          priceTicks: 24680,
+        );
+        String? original;
+        if (product.isDerivative) {
+          expect(await state.placeTriggerOrders([draft]), 0);
+          original = state.pendingTradingCommand?.clientTriggerOrderId;
+          expect(original, isNotNull);
+          expect(api.posts.length, 1);
+          await state.placeTriggerOrders([draft]);
+          expect(api.posts.length, 1);
+          state.dispose();
+          state = _State(api, settings);
+          await state.bootstrap();
+          state.session = actor;
+          expect(state.pendingTradingCommand?.clientTriggerOrderId, original);
+          await state.checkPendingTradingCommand();
+          expect(state.tradingCommandPending, true);
+          api.terminal = true;
+          await state.checkPendingTradingCommand();
+          expect(state.tradingCommandPending, false);
+          expect(api.reads.last['query'], {
+            'userId': '1',
+            'clientTriggerOrderId': original,
+          });
+        } else {
+          // Recovery support does not enable a position TP/SL form for spot balances.
+          expect(await state.placeTriggerOrders([draft]), 0);
+          expect(api.posts, isEmpty);
+        }
+        final order = TriggerOrderModel.fromJson(
+          api.order({'clientTriggerOrderId': original}, id: 9007199254740993),
+        );
+        api.terminal = false;
+        await state.cancelTriggerOrder(order);
+        expect(
+          state.pendingTradingCommand?.cancelTriggerOrderId,
+          9007199254740993,
+        );
+        state.dispose();
+        state = _State(api, settings);
+        addTearDown(state.dispose);
+        await state.bootstrap();
+        state.session = actor;
+        await state.checkPendingTradingCommand();
+        expect(state.tradingCommandPending, true);
+        api.terminal = true;
+        await state.checkPendingTradingCommand();
+        expect(state.tradingCommandPending, false);
+        expect(api.posts.length, product.isSpot ? 1 : 2);
+        expect(
+          api.reads.last['path'],
+          '/api/v1/gateway/trading-trigger/cancellations/9007199254740993',
+        );
+      },
+    );
+    test(
+      '${product.productLine} storage failure prevents trigger creation and cancellation',
+      () async {
+        final api = _Api(product), settings = _Settings()..fail = true;
+        final state = _State(api, settings)..session = actor;
+        addTearDown(state.dispose);
+        await state.placeTriggerOrders([leg('TAKE_PROFIT', 24690)]);
+        await state.cancelTriggerOrder(
+          TriggerOrderModel.fromJson(api.order({})),
+        );
+        expect(api.posts, isEmpty);
+        expect(state.tradingCommandPending, false);
+      },
+    );
+  }
+  for (final product in [ProductMode.linear, ProductMode.inverse]) {
+    for (final brightness in Brightness.values) {
+      _testOcoLayout(product, brightness);
+    }
+  }
   for (final product in [
     ProductMode.linearDelivery,
     ProductMode.inverseDelivery,
@@ -311,70 +409,7 @@ void main() {
         },
       );
       for (final brightness in Brightness.values) {
-        testWidgets(
-          '320px $brightness delivery OCO uses actual scale and moves unknown legs out of draft',
-          (tester) async {
-            final api = _Api(product)..lose = true;
-            final state = _State(api, _Settings())..session = actor;
-            tester.view.physicalSize = const Size(320, 1800);
-            tester.view.devicePixelRatio = 1;
-            addTearDown(() {
-              state.dispose();
-              tester.view.resetPhysicalSize();
-              tester.view.resetDevicePixelRatio();
-            });
-            await tester.pumpWidget(
-              AppScope(
-                notifier: state,
-                child: MaterialApp(
-                  theme: ThemeData(brightness: brightness),
-                  home: Scaffold(
-                    body: SingleChildScrollView(
-                      child: TriggerOrderPanel(
-                        state: state,
-                        marginMode: 'ISOLATED',
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-            await tester.tap(find.text('独立条件单'));
-            await tester.pumpAndSettle();
-            await tester.tap(find.text('TP/SL 双腿 OCO').last);
-            await tester.pumpAndSettle();
-            final prices = find.byWidgetPredicate(
-              (w) => w is AppTextField && w.label.startsWith('触发价'),
-            );
-            await tester.enterText(
-              find.descendant(
-                of: prices.first,
-                matching: find.byType(TextField),
-              ),
-              '123.45',
-            );
-            await tester.enterText(
-              find.descendant(
-                of: prices.last,
-                matching: find.byType(TextField),
-              ),
-              '95.5',
-            );
-            await tester.pump();
-            await tester.tap(find.text('一起提交 TP/SL'));
-            await tester.pumpAndSettle();
-            expect(api.posts.length, 1);
-            final orders = asList(api.posts.single['orders']);
-            expect(asMap(orders.first)['triggerPriceTicks'], 24690);
-            expect(asMap(orders.last)['triggerPriceTicks'], 19100);
-            expect(asMap(orders.first)['positionSide'], 'LONG');
-            expect(asMap(orders.first)['marginMode'], 'ISOLATED');
-            expect(state.tradingCommandPending, true);
-            expect(find.text('暂无待提交档位'), findsOneWidget);
-            expect(tester.takeException(), isNull);
-            await tester.pumpWidget(const SizedBox.shrink());
-          },
-        );
+        _testOcoLayout(product, brightness);
         testWidgets(
           '320px $brightness settling condition form is disabled while direct reductions remain allowed',
           (tester) async {
@@ -449,6 +484,64 @@ void main() {
       }
     });
   }
+}
+
+void _testOcoLayout(ProductMode product, Brightness brightness) {
+  testWidgets(
+    '${product.productLine} 320px $brightness OCO keeps exact scales and unknown requests',
+    (tester) async {
+      final api = _Api(product)..lose = true;
+      final state = _State(api, _Settings())..session = actor;
+      tester.view.physicalSize = const Size(320, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        state.dispose();
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(
+        AppScope(
+          notifier: state,
+          child: MaterialApp(
+            theme: ThemeData(brightness: brightness),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: TriggerOrderPanel(state: state, marginMode: 'ISOLATED'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('独立条件单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('TP/SL 双腿 OCO').last);
+      await tester.pumpAndSettle();
+      final prices = find.byWidgetPredicate(
+        (w) => w is AppTextField && w.label.startsWith('触发价'),
+      );
+      await tester.enterText(
+        find.descendant(of: prices.first, matching: find.byType(TextField)),
+        '123.45',
+      );
+      await tester.enterText(
+        find.descendant(of: prices.last, matching: find.byType(TextField)),
+        '95.5',
+      );
+      await tester.pump();
+      await tester.tap(find.text('一起提交 TP/SL'));
+      await tester.pumpAndSettle();
+      expect(api.posts.length, 1);
+      final orders = asList(api.posts.single['orders']);
+      expect(asMap(orders.first)['triggerPriceTicks'], 24690);
+      expect(asMap(orders.last)['triggerPriceTicks'], 19100);
+      expect(asMap(orders.first)['positionSide'], 'LONG');
+      expect(asMap(orders.first)['marginMode'], 'ISOLATED');
+      expect(state.tradingCommandPending, true);
+      expect(find.text('暂无待提交档位'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
 
 class _Api extends ApiClient {

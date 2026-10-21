@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'models.dart';
@@ -9,6 +10,18 @@ import 'account_records.dart';
 import 'c2c_models.dart';
 
 part 'c2c_api.dart';
+
+int? _fundingPrecision(String? scale, Object? chainDecimals) {
+  if (scale == null ||
+      !RegExp(r'^10*$').hasMatch(scale) ||
+      scale.length > 37 ||
+      chainDecimals is! int ||
+      chainDecimals < 0 ||
+      chainDecimals > 36) {
+    return null;
+  }
+  return math.min(scale.length - 1, chainDecimals);
+}
 
 class ApiClient {
   ApiClient(this.config, {HttpClient? httpClient})
@@ -23,6 +36,37 @@ class ApiClient {
   int? _sessionUserId;
   String? _refreshToken;
   Future<AuthSession?>? _refreshInFlight;
+
+  Future<String> Function()? deviceIdLoader;
+  Future<String>? _deviceId;
+
+  static String newDeviceId() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  static bool isDeviceId(String value) => RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  ).hasMatch(value);
+
+  Future<String> resolveDeviceId() => _deviceId ??=
+      Future<String>.sync(() => deviceIdLoader?.call() ?? newDeviceId())
+          .then((value) {
+            if (!isDeviceId(value)) {
+              throw const FormatException('设备标识不可用');
+            }
+            return value.toLowerCase();
+          })
+          .catchError((Object error, StackTrace stack) {
+            _deviceId = null;
+            Error.throwWithStackTrace(error, stack);
+          });
 
   Future<void> Function(AuthSession session)? onSessionRefreshed;
   Future<void> Function()? onSessionExpired;
@@ -127,6 +171,11 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> loginVerificationMethods() async => asList(
     await _send('GET', '/api/v1/security/login-verification'),
   ).map(asMap).toList();
+
+  Future<PrimaryAuthenticationContext> primaryAuthentication() async =>
+      PrimaryAuthenticationContext.fromJson(
+        await get('/api/v1/security/login-verification/authentication'),
+      );
 
   Future<Map<String, dynamic>> beginLoginMethod({
     required String method,
@@ -1051,14 +1100,21 @@ class ApiClient {
   }) async {
     final query = {'userId': '$userId'};
     if (accountType != null) query['accountType'] = accountType;
+    final scales = await assetScales();
     final json = await get(
       '/api/v1/gateway/account/product-balances',
       query: query,
       productLine: productLine,
     );
-    return asList(
-      json['balances'],
-    ).map((item) => ProductBalance.fromJson(asMap(item))).toList();
+    return asList(json['balances']).map((item) {
+      final row = asMap(item);
+      return ProductBalance.fromJson(
+        row,
+        scaleUnits: int.tryParse(
+          scales[asString(row['asset']).toUpperCase()] ?? '',
+        ),
+      );
+    }).toList();
   }
 
   Future<Map<String, dynamic>> leverageSetting(
@@ -1796,15 +1852,16 @@ class ApiClient {
           {
             'chain': network['networkCode'],
             'network': network['displayName'],
+            'family': network['family'],
             'withdrawalEnabled': true,
             'tokens': [
               {
                 'symbol': asset['asset'],
                 'platformEnabled': true,
-                'decimals':
-                    RegExp(r'^10*$').hasMatch(scales[asset['asset']] ?? '')
-                    ? scales[asset['asset']]!.length - 1
-                    : null,
+                'decimals': _fundingPrecision(
+                  scales[asset['asset']],
+                  network['chainDecimals'],
+                ),
                 'minWithdraw': network['minWithdrawal'],
                 'withdrawalFee': network['withdrawalFee'],
               },
@@ -1845,6 +1902,7 @@ class ApiClient {
           return WalletAssetSummary(
             symbol: asset,
             availableBalance: units(available),
+            availableBalanceText: formatAccountUnits(available, scales[asset]),
             lockedBalance: units(locked),
             totalBalance: units(available + locked),
             chains: const [],
@@ -2029,6 +2087,10 @@ class ApiClient {
     };
   }
 
+  Future<List<Map<String, dynamic>>> notifications() async => asList(
+    await _send('GET', '/api/v1/notifications', query: const {'limit': '100'}),
+  ).map(asMap).toList();
+
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, String>? query,
@@ -2211,6 +2273,7 @@ class ApiClient {
       path: path,
       queryParameters: query == null || query.isEmpty ? null : query,
     );
+    final deviceId = await resolveDeviceId();
     final request = await _httpClient
         .openUrl(method, uri)
         .timeout(const Duration(seconds: 6));
@@ -2219,6 +2282,7 @@ class ApiClient {
       throw ApiException(401, '登录账户已变化，未发送请求');
     }
     request.headers.contentType = ContentType.json;
+    request.headers.set('X-Device-Id', deviceId);
     request.headers.set(
       'X-Trace-Id',
       'mobile-${DateTime.now().microsecondsSinceEpoch}',
@@ -2353,8 +2417,12 @@ class ApiException implements Exception {
       'INVALID_VERIFICATION_CODE': '验证码不正确或已过期',
       'INVALID_CREDENTIALS': '账号或密码不正确',
       'SECURITY_HOLD': '账户处于安全保护期，请稍后重试',
+      'LOGIN_RECENT_AUTHENTICATION_REQUIRED': '请重新登录后继续安全设置',
+      'LOGIN_CONTACT_MISSING': '请先绑定邮箱或手机号，再绑定身份验证器',
+      'LOGIN_PASSWORD_INVALID': '登录密码不正确',
     };
     if (messages.containsKey(code)) return messages[code]!;
+    if (messages.containsKey(detail)) return messages[detail]!;
     if (RegExp(r'[\u4e00-\u9fff]').hasMatch(detail) &&
         !RegExp(
           r'Aeron|Exception|Kafka|SQL|stack|<html',

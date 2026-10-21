@@ -255,6 +255,12 @@ void main() {
               'changeId': 1,
               'notionalMultiplierUnits': 10,
               'priceTickUnits': 1,
+              'baseAsset': 'BTC',
+              'quoteAsset': 'USDT',
+              'settleAsset': 'USDT',
+              'baseScaleUnits': 100000000,
+              'quoteScaleUnits': 100000000,
+              'settleScaleUnits': 100000000,
             }),
         ];
       addTearDown(state.dispose);

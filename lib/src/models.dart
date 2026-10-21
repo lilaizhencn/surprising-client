@@ -279,12 +279,16 @@ class AuthUser {
   const AuthUser({
     required this.userId,
     required this.username,
+    this.displayName,
     required this.email,
     required this.status,
   });
 
   final int userId;
   final String username;
+  final String? displayName;
+  String get name =>
+      displayName?.trim().isNotEmpty == true ? displayName! : username;
   final String email;
   final String status;
 
@@ -292,6 +296,7 @@ class AuthUser {
     return {
       'userId': userId,
       'username': username,
+      'displayName': displayName,
       'email': email,
       'status': status,
     };
@@ -300,6 +305,7 @@ class AuthUser {
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
       userId: asInt(json['userId']),
+      displayName: nullableString(json['displayName']),
       email: asString(json['email']),
       username: asString(
         json['username'],
@@ -749,6 +755,37 @@ class Candle {
   }
 }
 
+class PrimaryAuthenticationContext {
+  const PrimaryAuthenticationContext({
+    required this.passwordRequired,
+    required this.reauthenticationRequired,
+    this.authenticatedUntil,
+  });
+  final bool passwordRequired;
+  final bool reauthenticationRequired;
+  final DateTime? authenticatedUntil;
+
+  factory PrimaryAuthenticationContext.fromJson(Map<String, dynamic> value) {
+    if (value['passwordRequired'] is! bool ||
+        value['reauthenticationRequired'] is! bool) {
+      throw const FormatException('安全身份资料暂不可用');
+    }
+    final until = value['authenticatedUntil'];
+    final parsed = until is String ? DateTime.tryParse(until) : null;
+    if ((until != null && parsed == null) ||
+        (value['passwordRequired'] == false &&
+            value['reauthenticationRequired'] == false &&
+            parsed == null)) {
+      throw const FormatException('安全身份资料暂不可用');
+    }
+    return PrimaryAuthenticationContext(
+      passwordRequired: value['passwordRequired'] as bool,
+      reauthenticationRequired: value['reauthenticationRequired'] as bool,
+      authenticatedUntil: parsed,
+    );
+  }
+}
+
 class ProductBalance {
   const ProductBalance({
     required this.accountType,
@@ -756,6 +793,7 @@ class ProductBalance {
     required this.availableUnits,
     required this.lockedUnits,
     required this.equityUnits,
+    this.scaleUnits,
   });
 
   final String accountType;
@@ -763,18 +801,30 @@ class ProductBalance {
   final int availableUnits;
   final int lockedUnits;
   final int equityUnits;
+  final int? scaleUnits;
 
-  double get available => unitsToDecimal(availableUnits);
-  double get locked => unitsToDecimal(lockedUnits);
-  double get equity => unitsToDecimal(equityUnits);
+  bool get hasScale =>
+      scaleUnits != null && RegExp(r'^10*$').hasMatch('$scaleUnits');
+  double? _amount(int units) => units == 0
+      ? 0
+      : hasScale
+      ? units / scaleUnits!
+      : null;
+  double? get available => _amount(availableUnits);
+  double? get locked => _amount(lockedUnits);
+  double? get equity => _amount(equityUnits);
 
-  factory ProductBalance.fromJson(Map<String, dynamic> json) {
+  factory ProductBalance.fromJson(
+    Map<String, dynamic> json, {
+    int? scaleUnits,
+  }) {
     return ProductBalance(
       accountType: asString(json['accountType'], fallback: 'SPOT'),
       asset: asString(json['asset'], fallback: 'USDT'),
       availableUnits: asInt(json['availableUnits']),
       lockedUnits: asInt(json['lockedUnits']),
       equityUnits: asInt(json['equityUnits']),
+      scaleUnits: scaleUnits,
     );
   }
 }
@@ -1899,6 +1949,7 @@ class WalletAssetSummary {
     required this.lockedBalance,
     required this.totalBalance,
     required this.chains,
+    this.availableBalanceText,
   });
 
   final String symbol;
@@ -1907,10 +1958,17 @@ class WalletAssetSummary {
   final double totalBalance;
   final List<WalletChainAsset> chains;
 
+  /// Exact decimal from the server; doubles are used only for approximate valuation.
+  final String? availableBalanceText;
+  String? get availableAmount => plainNonnegativeDecimal(
+    availableBalanceText ?? availableBalance.toString(),
+  );
+
   factory WalletAssetSummary.fromJson(Map<String, dynamic> json) {
     return WalletAssetSummary(
       symbol: asString(json['symbol']),
       availableBalance: asDouble(json['availableBalance']),
+      availableBalanceText: asString(json['availableBalance']),
       lockedBalance: asDouble(json['lockedBalance']),
       totalBalance: asDouble(json['totalBalance']),
       chains: asList(
@@ -2543,3 +2601,28 @@ String triggerPriceSourceLabel(String source) => switch (source) {
   'INDEX' => '指数价格',
   _ => '--',
 };
+
+// BigDecimal JSON strings may use an exponent. Normalize metadata with integer
+// string operations, keeping tiny fees exact and bounding malformed exponents.
+String? plainNonnegativeDecimal(String raw) {
+  if (raw.length > 256) return null;
+  final match = RegExp(
+    r'^\+?(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$',
+  ).firstMatch(raw.trim());
+  if (match == null) return null;
+  final exponent = int.tryParse(match.group(3) ?? '0');
+  if (exponent == null || exponent.abs() > 36) return null;
+  final integer = match.group(1)!;
+  var digits = integer + (match.group(2) ?? '');
+  var point = integer.length + exponent;
+  if (point <= 0) {
+    digits = '${'0' * (1 - point)}$digits';
+    point = 1;
+  }
+  if (point >= digits.length) digits += '0' * (point - digits.length + 1);
+  final whole = digits
+      .substring(0, point)
+      .replaceFirst(RegExp(r'^0+(?=\d)'), '');
+  final fraction = digits.substring(point).replaceFirst(RegExp(r'0+$'), '');
+  return fraction.isEmpty ? whole : '$whole.$fraction';
+}

@@ -5,12 +5,20 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:kline_chart/kline_chart.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_state.dart';
 import 'c2c_trading_page.dart';
+import 'telegram_login.dart';
+import 'exchange_widgets.dart';
+import 'user_scanner_page.dart';
+import 'notifications_page.dart';
+import 'sensitive_screen.dart';
+import 'withdrawal_selection_page.dart';
+import 'transfer_page.dart';
+export 'transfer_page.dart' show TransferPage;
+import 'price_chart.dart';
 import 'account_records.dart' show formatExecutionPrice;
 import 'asset_overview.dart';
 import 'biometric_lock.dart';
@@ -403,7 +411,9 @@ class _ClientShellState extends State<ClientShell> {
     shownAnnouncementModals.add(id);
     checkedAnnouncementModal = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !state.isLoggedIn || state.requiresBiometricUnlock) return;
+      if (!mounted || !state.isLoggedIn || state.requiresBiometricUnlock) {
+        return;
+      }
       showDialog<void>(
         context: context,
         barrierDismissible: true,
@@ -740,6 +750,7 @@ class ExchangeBottomNav extends StatelessWidget {
                 child: _ExchangeNavButton(
                   item: exchangeItems[i],
                   selected: selectedIndex == i,
+                  central: i == 2,
                 ),
               ),
             ),
@@ -758,14 +769,62 @@ class _ExchangeNavItem {
 }
 
 class _ExchangeNavButton extends StatelessWidget {
-  const _ExchangeNavButton({required this.item, required this.selected});
+  const _ExchangeNavButton({
+    required this.item,
+    required this.selected,
+    this.central = false,
+  });
 
   final _ExchangeNavItem item;
   final bool selected;
+  final bool central;
 
   @override
   Widget build(BuildContext context) {
     final selectedColor = Theme.of(context).colorScheme.primary;
+    if (central) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: -13,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                ),
+                child: const Icon(
+                  Icons.sync_alt,
+                  color: Colors.black,
+                  size: 31,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 4,
+            left: 0,
+            right: 0,
+            child: Text(
+              item.label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 10,
+                color: selected
+                    ? selectedColor
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -1019,177 +1078,317 @@ class _ExchangeNavGlyphPainter extends CustomPainter {
   }
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  String query = '';
+  void authenticated(AppState state, VoidCallback open) {
+    if (!state.isLoggedIn) {
+      showAuthSheet(context);
+      return;
+    }
+    open();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    return RefreshIndicator(
-      onRefresh: () async {
-        await Future.wait([
-          state.refreshInstruments(),
-          state.refreshAnnouncements(),
-        ]);
-      },
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Surprising',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+    final colors = Theme.of(context).colorScheme;
+    final items = state.instruments
+        .where(
+          (item) =>
+              item.mode == state.mode &&
+              item.symbol.toLowerCase().contains(query.toLowerCase()),
+        )
+        .toList();
+    return Material(
+      color: exchangeBackground(context),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await Future.wait([
+            state.refreshInstruments(),
+            state.refreshAnnouncements(),
+            if (state.isLoggedIn) state.refreshPrivateData(),
+            state.refreshValuation(),
+          ]);
+        },
+        child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '交易所',
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
                   ),
                 ),
-              ),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    tooltip: clientText(
-                      state.language,
-                      '公告中心',
-                      'Announcements',
-                    ),
-                    onPressed: () => context
-                        .findAncestorStateOfType<_ClientShellState>()
-                        ?.openAnnouncements(),
-                    icon: const Icon(Icons.campaign_outlined),
+                IconButton(
+                  tooltip: '通知',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide.none,
+                    shape: const CircleBorder(),
                   ),
-                  if (state.unreadAnnouncementCount > 0)
-                    Positioned(
-                      right: 5,
-                      top: 4,
-                      child: Container(
-                        constraints: const BoxConstraints(minWidth: 16),
-                        height: 16,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE5484D),
-                          borderRadius: BorderRadius.all(Radius.circular(8)),
-                        ),
-                        child: Center(
-                          child: Text(
-                            state.unreadAnnouncementCount > 99
-                                ? '99+'
-                                : '${state.unreadAnnouncementCount}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
+                  icon: const Icon(Icons.notifications_none_outlined),
+                  onPressed: () => authenticated(
+                    state,
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => NotificationsPage(state: state),
                       ),
                     ),
-                ],
-              ),
-              IconButton(
-                tooltip: '个人设置',
-                onPressed: () {
-                  if (state.isLoggedIn) {
-                    Navigator.of(context).push(
+                  ),
+                ),
+                IconButton(
+                  tooltip: '个人设置',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide.none,
+                    shape: const CircleBorder(),
+                  ),
+                  icon: const Icon(Icons.account_circle_outlined),
+                  onPressed: () => authenticated(
+                    state,
+                    () => Navigator.push(
+                      context,
                       MaterialPageRoute<void>(
                         builder: (_) => Scaffold(
                           appBar: AppBar(title: const Text('个人设置')),
                           body: const SafeArea(child: ProfilePage()),
                         ),
                       ),
-                    );
-                  } else {
-                    showAuthSheet(context);
-                  }
-                },
-                icon: const Icon(Icons.account_circle_outlined),
-              ),
-            ],
-          ),
-          for (final announcement in state.announcementBanners.take(1))
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.campaign_outlined),
-                title: Text(
-                  '${announcement['title'] ?? clientText(state.language, '平台公告', 'Exchange announcement')}',
+                    ),
+                  ),
                 ),
-                subtitle: Text(
-                  '${announcement['summary'] ?? ''}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              ],
+            ),
+            const SizedBox(height: 12),
+            ExchangeSearchField(
+              onChanged: (value) => setState(() => query = value),
+              onScan: () => authenticated(
+                state,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => UserScannerPage(state: state),
+                  ),
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context
-                    .findAncestorStateOfType<_ClientShellState>()
-                    ?.openAnnouncements(),
               ),
             ),
-          const SizedBox(height: 24),
-          Text(
-            '交易，从这里开始',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 12),
-          const Text('现货 · 永续 · 交割 · 期权'),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: () =>
-                context.findAncestorStateOfType<_ClientShellState>()?.setTab(2),
-            child: const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('开始永续交易'),
+            const SizedBox(height: 20),
+            InkWell(
+              onTap: state.isLoggedIn ? null : () => showAuthSheet(context),
+              child: AccountValueHeader(state: state),
             ),
-          ),
-          if (!state.isLoggedIn)
-            OutlinedButton(
-              onPressed: () => showAuthSheet(context),
-              child: const Text('登录 / 创建账户'),
-            )
-          else
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(state.session!.user.username),
-              subtitle: Text(state.session!.user.email),
-              trailing: const Icon(Icons.chevron_right),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: exchangeAccent,
+                      foregroundColor: Colors.black,
+                      shape: const StadiumBorder(),
+                      minimumSize: const Size(0, 48),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    onPressed: () => authenticated(
+                      state,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => MobileDepositPage(state: state),
+                        ),
+                      ),
+                    ),
+                    child: const Text('链上充币'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: exchangeAccent,
+                      foregroundColor: Colors.black,
+                      shape: const StadiumBorder(),
+                      minimumSize: const Size(0, 48),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    onPressed: () => context
+                        .findAncestorStateOfType<_ClientShellState>()
+                        ?.setTab(3),
+                    child: const Text('C2C 买币'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            InkWell(
+              borderRadius: BorderRadius.circular(18),
               onTap: () => context
                   .findAncestorStateOfType<_ClientShellState>()
-                  ?.setTab(4),
-            ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '市场概览',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  ?.openAnnouncements(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 20,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF202020)
+                      : const Color(0xFFF3F3F3),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.campaign_outlined,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        asString(
+                          state.announcementBanners.firstOrNull?['title'],
+                          fallback: asString(
+                            state.announcements.firstOrNull?['title'],
+                            fallback: '公告',
+                          ),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
               ),
-              TextButton(
-                onPressed: () => context
-                    .findAncestorStateOfType<_ClientShellState>()
-                    ?.setTab(1),
-                child: const Text('全部行情'),
-              ),
-            ],
-          ),
-          if (state.instruments
-              .where((i) => i.mode == ProductMode.linear)
-              .isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('暂无行情，下拉刷新'),
             ),
-          for (final instrument
-              in state.instruments
-                  .where((i) => i.mode == ProductMode.linear)
-                  .take(8))
-            PublicMarketRow(instrument: instrument),
+            const SizedBox(height: 22),
+            const MarketProductStrip(),
+            const SizedBox(height: 12),
+            const MarketListHeading(),
+            if (items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 36),
+                child: Center(child: Text('暂无行情')),
+              ),
+            for (final instrument in items.take(20))
+              PublicMarketRow(instrument: instrument),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MarketProductStrip extends StatelessWidget {
+  const MarketProductStrip({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    return SingleChildScrollView(
+      key: const ValueKey('market-product-tabs'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final product in ProductMode.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: ChoiceChip(
+                key: ValueKey('market-product-${product.name}'),
+                label: Text(product.label),
+                selected: state.mode == product,
+                selectedColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF262626)
+                    : const Color(0xFFECECEC),
+                backgroundColor: Colors.transparent,
+                labelStyle: TextStyle(
+                  color: state.mode == product
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: state.mode == product
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                showCheckmark: false,
+                side: BorderSide.none,
+                shape: const StadiumBorder(),
+                onSelected: (_) => unawaited(state.selectMode(product)),
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+class MarketListHeading extends StatelessWidget {
+  const MarketListHeading({this.sortByChange, this.onSort, super.key});
+  final bool? sortByChange;
+  final VoidCallback? onSort;
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        flex: 4,
+        child: Text(
+          '币对 / 交易量',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 11,
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        flex: 3,
+        child: Text(
+          '最新价格',
+          textAlign: TextAlign.end,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 11,
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      SizedBox(
+        width: 76,
+        child: InkWell(
+          onTap: onSort,
+          child: Text(
+            '涨跌幅${sortByChange == true ? ' ↓' : ''}',
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 class MarketsPage extends StatefulWidget {
@@ -1200,7 +1399,6 @@ class MarketsPage extends StatefulWidget {
 
 class _MarketsPageState extends State<MarketsPage> {
   String query = '';
-  ProductMode product = ProductMode.linear;
   bool sortByChange = false;
   @override
   Widget build(BuildContext context) {
@@ -1208,7 +1406,7 @@ class _MarketsPageState extends State<MarketsPage> {
     final items = state.instruments
         .where(
           (i) =>
-              i.mode == product &&
+              i.mode == state.mode &&
               i.symbol.toLowerCase().contains(query.toLowerCase()),
         )
         .toList();
@@ -1219,53 +1417,49 @@ class _MarketsPageState extends State<MarketsPage> {
         ),
       );
     }
-    return RefreshIndicator(
-      onRefresh: state.refreshInstruments,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        physics: const AlwaysScrollableScrollPhysics(),
+    return Material(
+      color: exchangeBackground(context),
+      child: Column(
         children: [
-          Text('行情', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 16),
-          TextField(
-            key: const ValueKey('market-search'),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: '搜索交易对',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (v) => setState(() => query = v),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
+            child: MarketProductStrip(),
           ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final mode in ProductMode.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(mode.label),
-                      selected: product == mode,
-                      onSelected: (_) => setState(() => product = mode),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ExchangeSearchField(
+              key: const ValueKey('market-search'),
+              onChanged: (value) => setState(() => query = value),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: MarketListHeading(
+              sortByChange: sortByChange,
+              onSort: () => setState(() => sortByChange = !sortByChange),
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: state.refreshInstruments,
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  if (items.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: Text('暂无匹配的交易对')),
                     ),
-                  ),
-              ],
+                  for (final instrument in items)
+                    PublicMarketRow(instrument: instrument),
+                ],
+              ),
             ),
           ),
-          Row(
-            children: [
-              const Expanded(child: Text('交易对 / 最新价')),
-              TextButton(
-                onPressed: () => setState(() => sortByChange = !sortByChange),
-                child: Text(sortByChange ? '24h 涨跌幅 ↓' : '24h 涨跌幅'),
-              ),
-            ],
-          ),
-          if (items.isEmpty)
-            const Padding(padding: EdgeInsets.all(24), child: Text('暂无匹配的交易对')),
-          for (final instrument in items)
-            PublicMarketRow(instrument: instrument),
         ],
       ),
     );
@@ -1281,62 +1475,145 @@ class PublicMarketRow extends StatelessWidget {
     final price = state.latestPriceFor(instrument) ?? instrument.lastPrice;
     final change = instrument.change24h;
     final colors = Theme.of(context).colorScheme;
+    final fiatCurrency = state.valuationCurrency == ValuationCurrency.usdt
+        ? ValuationCurrency.cny
+        : state.valuationCurrency;
+    final usdRate = state.valuationRates[ValuationCurrency.usd];
+    final quoteRate = switch (instrument.quoteAsset.toUpperCase()) {
+      'USDT' => 1.0,
+      'USD' =>
+        usdRate != null && usdRate.isFinite && usdRate > 0 ? 1 / usdRate : null,
+      final asset => state.walletAssetPricesUsdt[asset],
+    };
+    final fiatRate = state.valuationRates[fiatCurrency];
+    final fiat = price == null || quoteRate == null || fiatRate == null
+        ? null
+        : price * quoteRate * fiatRate;
+    String volume(double? value) => value == null
+        ? '—'
+        : value >= 100000000
+        ? '${(value / 100000000).toStringAsFixed(2)}亿'
+        : value >= 10000
+        ? '${(value / 10000).toStringAsFixed(2)}万'
+        : money(value, digits: 2);
     return InkWell(
       onTap: () async {
-        final shell = context.findAncestorStateOfType<_ClientShellState>();
-        unawaited(state.selectInstrument(instrument));
-        shell?.openInstrument(instrument);
+        await state.selectInstrument(instrument);
+        if (!context.mounted ||
+            state.selectedInstrument.instrumentId != instrument.instrumentId ||
+            ModalRoute.of(context)?.isCurrent == false) {
+          return;
+        }
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const MarketChartPage()),
+        );
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 17),
         child: Row(
           children: [
             Expanded(
               flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    instrument.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  Text(
-                    instrument.mode.label,
-                    style: TextStyle(
-                      color: colors.onSurfaceVariant,
-                      fontSize: 12,
+                  CoinIcon(instrument.baseAsset, size: 30),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          instrument.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          volume(instrument.volume24h),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Expanded(
               flex: 3,
-              child: Text(
-                price == null
-                    ? '--'
-                    : money(price, digits: instrument.pricePrecision),
-                textAlign: TextAlign.end,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    price == null
+                        ? '—'
+                        : groupedMoney(
+                            price,
+                            digits: instrument.pricePrecision,
+                          ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: exchangeNumberFeatures,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    fiat == null
+                        ? '—'
+                        : '${fiatCurrency.code} ${groupedMoney(fiat, digits: 2)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 12),
-            SizedBox(
+            Container(
               width: 76,
-              child: Text(
-                change == null
-                    ? '--'
-                    : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
-                textAlign: TextAlign.end,
-                style: TextStyle(
-                  color: change == null
-                      ? colors.onSurfaceVariant
-                      : change >= 0
-                      ? Theme.of(context).colorScheme.tertiary
-                      : Theme.of(context).colorScheme.error,
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: change == null
+                    ? exchangePanel(context)
+                    : change >= 0
+                    ? const Color(0xFF15803D)
+                    : const Color(0xFFC83E65),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    change == null
+                        ? '—'
+                        : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      color: change == null
+                          ? colors.onSurfaceVariant
+                          : Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: exchangeNumberFeatures,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1700,7 +1977,7 @@ class WalletPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     return Material(
-      color: Colors.transparent,
+      color: exchangeBackground(context),
       child: RefreshIndicator(
         onRefresh: () async {
           await Future.wait([
@@ -1714,6 +1991,7 @@ class WalletPage extends StatelessWidget {
           children: [
             AssetOverview(
               state: state,
+              onSecurity: () => showSecuritySheet(context),
               onDeposit: () => _openRechargeFlow(context, state),
               onWithdraw: () => _openWithdrawalFlow(context, state),
               onTools: () {
@@ -1752,8 +2030,58 @@ class WalletPage extends StatelessWidget {
       showAuthSheet(context);
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => MobileDepositPage(state: state)),
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 26,
+                  vertical: 16,
+                ),
+                leading: const Icon(Icons.south, size: 30),
+                title: const Text(
+                  '充币',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text('从链上钱包或交易所转入数字货币'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => MobileDepositPage(state: state),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 26,
+                  vertical: 16,
+                ),
+                leading: const Icon(Icons.handshake_outlined, size: 30),
+                title: const Text(
+                  'C2C 交易',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  context.findAncestorStateOfType<_ClientShellState>()?.setTab(
+                    3,
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1763,179 +2091,26 @@ class WalletPage extends StatelessWidget {
       return;
     }
     unawaited(() async {
+      final identity = state.session?.accessToken;
       await state.refreshWithdrawalRules();
-      if (!context.mounted) return;
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const WithdrawalPage()));
+      if (!context.mounted ||
+          identity != state.session?.accessToken ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              const SensitiveScreen(child: WithdrawalSelectionPage()),
+        ),
+      );
     }());
   }
 }
 
-class TransferPage extends StatefulWidget {
-  const TransferPage({super.key});
-  @override
-  State<TransferPage> createState() => _TransferPageState();
-}
-
-class _TransferPageState extends State<TransferPage> {
-  final amountController = TextEditingController();
-  final transferEmailCodeController = TextEditingController();
-  final transferTotpCodeController = TextEditingController();
-  String source = 'FUNDING', target = 'SPOT', asset = 'USDT';
-
-  @override
-  void dispose() {
-    amountController.dispose();
-    transferEmailCodeController.dispose();
-    transferTotpCodeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('划转')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Panel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SectionTitle(title: '账户划转'),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SmallDropdown(
-                        value: source,
-                        values: productAccountTypes,
-                        labelBuilder: productAccountLabel,
-                        enabled: !state.transferOutcomeLocked,
-                        onChanged: (value) => setState(() => source = value),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6),
-                      child: Icon(Icons.arrow_forward, size: 18),
-                    ),
-                    Expanded(
-                      child: SmallDropdown(
-                        value: target,
-                        values: productAccountTypes,
-                        labelBuilder: productAccountLabel,
-                        enabled: !state.transferOutcomeLocked,
-                        onChanged: (value) => setState(() => target = value),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: AppTextField(
-                        controller: amountController,
-                        label: '数量',
-                        enabled: !state.transferOutcomeLocked,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 86,
-                      child: AppTextField(
-                        initialValue: asset,
-                        label: '资产',
-                        enabled: !state.transferOutcomeLocked,
-                        onChanged: (value) => asset = value.toUpperCase(),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '小额划转无需额外验证；大额划转按 USDT 估值验证，绑定 2FA 后还需动态验证码。',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                ),
-                if (state.transferVerificationRequired) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppTextField(
-                          controller: transferEmailCodeController,
-                          label: '邮箱验证码',
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: AppTextField(
-                          controller: transferTotpCodeController,
-                          label: '2FA 验证码（未绑定可留空）',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 10),
-                PrimaryAction(
-                  label: state.transferSubmitting
-                      ? '提交中…'
-                      : state.transferOutcomeLocked
-                      ? '等待结果确认'
-                      : '确认划转',
-                  icon: Icons.swap_horiz,
-                  onPressed:
-                      state.transferSubmitting || state.transferOutcomeLocked
-                      ? null
-                      : () => unawaited(
-                          state.transfer(
-                            sourceAccountType: source,
-                            targetAccountType: target,
-                            asset: asset,
-                            amount: double.tryParse(amountController.text) ?? 0,
-                            amountText: amountController.text,
-                            emailCode: transferEmailCodeController.text,
-                            totpCode: transferTotpCodeController.text,
-                          ),
-                        ),
-                ),
-                if (state.transferOutcomeLocked)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      state.transferOutcomeTerminalFailure
-                          ? '本次划转已失败，可以重新填写后再试。'
-                          : '划转结果待确认，请勿重复提交。',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                if (state.transferOutcomeTerminalFailure)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: state.resetTransferIntent,
-                      child: const Text('重新填写'),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class WithdrawalPage extends StatefulWidget {
-  const WithdrawalPage({super.key});
+  const WithdrawalPage({this.initialSymbol, this.initialChain, super.key});
+  final String? initialSymbol, initialChain;
 
   @override
   State<WithdrawalPage> createState() => _WithdrawalPageState();
@@ -1949,6 +2124,44 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
   String? selectedSymbol;
   String? selectedChain;
   String? localError;
+  int? owner;
+  bool ownerCaptured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedSymbol = widget.initialSymbol;
+    selectedChain = widget.initialChain;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!ownerCaptured) {
+      ownerCaptured = true;
+      owner = AppScope.of(context).userId;
+    }
+  }
+
+  Widget _unavailable(AppState state, String message) => Scaffold(
+    backgroundColor: exchangeBackground(context),
+    appBar: AppBar(title: const Text('提币')),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            TextButton(
+              onPressed: () => unawaited(state.refreshWallet()),
+              child: const Text('刷新资产'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   @override
   void dispose() {
@@ -1962,6 +2175,12 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    if (!state.isLoggedIn || owner != state.userId) {
+      return _unavailable(state, '账户已变化，请重新打开提币');
+    }
+    if (!state.walletReady) {
+      return _unavailable(state, state.walletError ?? '可提币余额暂不可用，请刷新');
+    }
     if (!state.withdrawalRulesReady) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -2013,24 +2232,25 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     }
 
     final symbolValues = assets.map((item) => item.symbol).toList();
+    if (selectedSymbol != null && !symbolValues.contains(selectedSymbol)) {
+      return _unavailable(state, '所选币种已不可用，请返回重新选择');
+    }
     final symbol = symbolValues.contains(selectedSymbol)
         ? selectedSymbol!
         : symbolValues.first;
     final asset = assets.firstWhere((item) => item.symbol == symbol);
-    final chainAssets = asset.chains.where((item) {
-      final rule = state.withdrawalRuleFor(item.chain, symbol);
-      return rule != null && rule.withdrawalEnabled;
-    }).toList();
+    final chainAssets = state.withdrawalRules
+        .where((rule) => rule.symbol == symbol && rule.withdrawalEnabled)
+        .toList();
     final chainValues = chainAssets.map((item) => item.chain).toList();
+    if (selectedChain != null && !chainValues.contains(selectedChain)) {
+      return _unavailable(state, '所选网络已不可用，请返回重新选择');
+    }
     final chain = chainValues.contains(selectedChain)
         ? selectedChain!
         : chainValues.isEmpty
         ? ''
         : chainValues.first;
-    final chainAsset = chainAssets.cast<WalletChainAsset?>().firstWhere(
-      (item) => item?.chain == chain,
-      orElse: () => null,
-    );
     final rule = state.withdrawalRuleFor(chain, symbol);
     final locked = state.withdrawalSubmitting || state.withdrawalOutcomeLocked;
     final minimum = rule?.minimumAmount;
@@ -2066,58 +2286,83 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionTitle(title: '资产与网络'),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SmallDropdown(
-                          value: symbol,
-                          values: symbolValues,
-                          enabled: !locked,
-                          onChanged: (next) => setState(() {
-                            selectedSymbol = next;
-                            selectedChain = null;
-                            localError = null;
-                          }),
+                  if (widget.initialSymbol != null)
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CoinIcon(symbol),
+                        title: Text(symbol),
+                        subtitle: Text(
+                          state.withdrawalRuleFor(chain, symbol)?.network ??
+                              chain,
                         ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: locked
+                            ? null
+                            : () => Navigator.maybePop(context),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: chainValues.isEmpty
-                            ? Text(
-                                '无可用网络',
-                                style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                    )
+                  else ...[
+                    const SectionTitle(title: '资产与网络'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SmallDropdown(
+                            value: symbol,
+                            values: symbolValues,
+                            enabled: !locked,
+                            onChanged: (next) => setState(() {
+                              selectedSymbol = next;
+                              selectedChain = null;
+                              addressController.clear();
+                              amountController.clear();
+                              emailCodeController.clear();
+                              totpCodeController.clear();
+                              localError = null;
+                            }),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: chainValues.isEmpty
+                              ? Text(
+                                  '无可用网络',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                )
+                              : SmallDropdown(
+                                  value: chain,
+                                  values: chainValues,
+                                  enabled: !locked,
+                                  labelBuilder: (value) {
+                                    final selected = chainAssets.firstWhere(
+                                      (item) => item.chain == value,
+                                    );
+                                    return selected.network.isEmpty
+                                        ? value
+                                        : '$value · ${selected.network}';
+                                  },
+                                  onChanged: (next) => setState(() {
+                                    selectedChain = next;
+                                    addressController.clear();
+                                    amountController.clear();
+                                    localError = null;
+                                  }),
                                 ),
-                              )
-                            : SmallDropdown(
-                                value: chain,
-                                values: chainValues,
-                                enabled: !locked,
-                                labelBuilder: (value) {
-                                  final selected = chainAssets.firstWhere(
-                                    (item) => item.chain == value,
-                                  );
-                                  return selected.network.isEmpty
-                                      ? value
-                                      : '$value · ${selected.network}';
-                                },
-                                onChanged: (next) => setState(() {
-                                  selectedChain = next;
-                                  localError = null;
-                                }),
-                              ),
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   InfoLine(
                     label: '可用余额',
-                    value: chainAsset == null
+                    value: chain.isEmpty
                         ? '--'
-                        : '${_plainAssetAmount(chainAsset.availableBalance)} $symbol',
+                        : '${asset.availableAmount ?? '—'} $symbol',
                   ),
                   if (minimum != null)
                     InfoLine(
@@ -2186,26 +2431,26 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       ),
                       const SizedBox(width: 8),
                       TextButton(
-                        onPressed: locked || chainAsset == null
+                        onPressed: locked || chain.isEmpty
                             ? null
                             : () => setState(() {
-                                amountController.text = _plainAssetAmount(
-                                  chainAsset.availableBalance,
-                                );
+                                amountController.text =
+                                    state.withdrawalMaximum(chain, symbol) ??
+                                    '';
                                 localError = null;
                               }),
                         child: const Text('全部'),
                       ),
                     ],
                   ),
-                  if (rule?.fee != null)
-                    InfoLine(label: '手续费', value: '${rule!.fee} $symbol'),
+                  if (rule?.feeAmount != null)
+                    InfoLine(label: '手续费', value: '${rule!.feeAmount} $symbol'),
                   if (previewReceived != null &&
                       !previewReceived.startsWith('-'))
                     InfoLine(label: '预计到账', value: '$previewReceived $symbol'),
                   const SizedBox(height: 8),
                   Text(
-                    '客户端校验用于提前发现输入问题，最终以钱包和风控服务校验为准。网络选错或地址错误可能导致资产无法找回。',
+                    '请确认网络与收款地址一致，转出后无法撤回。',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
@@ -2330,7 +2575,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       return;
     }
     final amount = amountController.text.trim();
-    final fee = rule?.fee;
+    final fee = rule?.feeAmount;
     final received = rule?.receivedAmount(amount);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2434,11 +2679,6 @@ class WithdrawalConfirmationPanel extends StatelessWidget {
       ),
     );
   }
-}
-
-String _plainAssetAmount(double value) {
-  final fixed = value.toStringAsFixed(18);
-  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }
 
 class RechargeCoinPage extends StatefulWidget {
@@ -3203,7 +3443,7 @@ class ProfilePage extends StatelessWidget {
       children: [
         PageHeader(
           title: '账户',
-          subtitle: state.isLoggedIn ? state.session!.user.email : '未登录',
+          subtitle: state.isLoggedIn ? state.session!.user.name : '未登录',
         ),
         Panel(
           child: Row(
@@ -3215,7 +3455,7 @@ class ProfilePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      state.isLoggedIn ? state.session!.user.email : '游客',
+                      state.isLoggedIn ? state.session!.user.name : '游客',
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 18,
@@ -3501,6 +3741,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Map<String, dynamic> mfaRecovery = const {};
   Map<String, dynamic> mfaRecoveryChallenge = const {};
   Map<String, dynamic> enrollment = const {};
+  PrimaryAuthenticationContext? primaryAuthentication;
   List<Map<String, dynamic>> scenes = const [];
   List<Map<String, dynamic>> keys = const [];
   Map<String, dynamic> kyc = const {};
@@ -3597,6 +3838,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     mfaRecovery = {};
     mfaRecoveryChallenge = {};
     enrollment = {};
+    primaryAuthentication = null;
     scenes = [];
     keys = [];
     kyc = {};
@@ -3668,6 +3910,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     sessionsPage = {};
     historyPage = {};
     mfa = {};
+    primaryAuthentication = null;
     kyc = {};
     kycProviderInfo = {};
     scenes = [];
@@ -3693,6 +3936,11 @@ class _SecuritySheetState extends State<SecuritySheet> {
 
     await Future.wait([
       if (!widget.kycOnly) ...[
+        read(
+          '安全身份',
+          state.api.primaryAuthentication,
+          (value) => primaryAuthentication = value,
+        ),
         read('2FA', state.api.mfaStatus, (value) {
           mfa = value;
           mfaLoaded = true;
@@ -3933,9 +4181,20 @@ class _SecuritySheetState extends State<SecuritySheet> {
     String method,
     bool enabled, {
     bool changeBinding = false,
-  }) async {
+  }) => _run(() async {
     mfaPassword.clear();
     loginMethodDestination.clear();
+    final primary = await state.api.primaryAuthentication();
+    if (!mounted || !operationCurrent) return;
+    setState(() => primaryAuthentication = primary);
+    if (primary.reauthenticationRequired) {
+      throw const FormatException('请重新登录后继续安全设置');
+    }
+    final setting = methods
+        .where((entry) => entry['type'] == method)
+        .firstOrNull;
+    final newDestination =
+        enabled && (changeBinding || setting?['bound'] != true);
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -3943,20 +4202,21 @@ class _SecuritySheetState extends State<SecuritySheet> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
-            TextField(
-              controller: mfaPassword,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '登录密码'),
-            ),
-            if (changeBinding)
+            const Text('绑定或变更安全信息后，24 小时内不能提现。'),
+            if (primary.passwordRequired)
+              TextField(
+                controller: mfaPassword,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '登录密码'),
+              ),
+            if (newDestination)
               TextField(
                 controller: loginMethodDestination,
                 keyboardType: method == 'EMAIL'
                     ? TextInputType.emailAddress
                     : TextInputType.phone,
                 decoration: InputDecoration(
-                  labelText: method == 'EMAIL' ? '新邮箱' : '新手机号（国际区号）',
+                  labelText: method == 'EMAIL' ? '邮箱' : '手机号（国际区号）',
                 ),
               ),
           ],
@@ -3973,19 +4233,26 @@ class _SecuritySheetState extends State<SecuritySheet> {
         ],
       ),
     );
-    if (accepted != true || mfaPassword.text.isEmpty) return;
-    await _run(() async {
-      final next = await state.api.beginLoginMethod(
-        method: method,
-        currentPassword: mfaPassword.text,
-        enabled: enabled,
-        destination: changeBinding ? loginMethodDestination.text : null,
-      );
-      if (operationCurrent) {
-        setState(() => enrollment = {...next, 'loginMethod': method});
-      }
-    }, '验证码已发送，请完成安全验证');
-  }
+    if (!operationCurrent || accepted != true) {
+      _operationCancelled = true;
+      return;
+    }
+    if (primary.passwordRequired && mfaPassword.text.isEmpty) {
+      throw const FormatException('请输入登录密码');
+    }
+    if (newDestination && loginMethodDestination.text.trim().isEmpty) {
+      throw const FormatException('请输入要绑定的邮箱或手机号');
+    }
+    final next = await state.api.beginLoginMethod(
+      method: method,
+      currentPassword: primary.passwordRequired ? mfaPassword.text : '',
+      enabled: enabled,
+      destination: newDestination ? loginMethodDestination.text : null,
+    );
+    if (operationCurrent) {
+      setState(() => enrollment = {...next, 'loginMethod': method});
+    }
+  }, '验证码已发送，请完成安全验证');
 
   @override
   Widget build(BuildContext context) {
@@ -4066,6 +4333,13 @@ class _SecuritySheetState extends State<SecuritySheet> {
               label: const Text('刷新安全状态'),
             ),
             if (!widget.kycOnly) ...[
+              if (primaryAuthentication?.reauthenticationRequired == true ||
+                  error == '请重新登录后继续安全设置')
+                TextButton.icon(
+                  onPressed: busy ? null : () => showAuthSheet(context),
+                  icon: const Icon(Icons.login),
+                  label: const Text('重新登录验证身份'),
+                ),
               const SectionTitle(title: '登录验证方式'),
               for (final method in methods)
                 if (method['type'] == 'TOTP')
@@ -4239,11 +4513,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 ),
               if (!mfaEnabled && enrollment.isEmpty) ...[
                 const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
-                AppTextField(controller: mfaPassword, label: '登录密码'),
+                if (primaryAuthentication?.passwordRequired == true)
+                  AppTextField(controller: mfaPassword, label: '登录密码'),
                 PrimaryAction(
                   label: '生成绑定信息',
                   icon: Icons.qr_code_2,
-                  onPressed: actionsBlocked
+                  onPressed:
+                      actionsBlocked ||
+                          primaryAuthentication == null ||
+                          primaryAuthentication!.reauthenticationRequired
                       ? null
                       : () => _run(() async {
                           final next = await state.api.enrollMfa(
@@ -4257,9 +4535,13 @@ class _SecuritySheetState extends State<SecuritySheet> {
               ],
               if (mfaEnabled && enrollment.isEmpty) ...[
                 const Text('关闭谷歌验证码后将重新生成新密钥；安全信息变更后 24 小时内不能提现。'),
-                AppTextField(controller: mfaPassword, label: '登录密码'),
+                if (primaryAuthentication?.passwordRequired == true)
+                  AppTextField(controller: mfaPassword, label: '登录密码'),
                 TextButton(
-                  onPressed: actionsBlocked
+                  onPressed:
+                      actionsBlocked ||
+                          primaryAuthentication == null ||
+                          primaryAuthentication!.reauthenticationRequired
                       ? null
                       : () => _run(() async {
                           final next = await state.api.beginMfaDisable(
@@ -4315,59 +4597,67 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   icon: Icons.verified_user,
                   onPressed: actionsBlocked || challengeToken.isEmpty
                       ? null
-                      : () => _run(() async {
-                          final args = {
-                            'challengeToken': challengeToken,
-                            'currentPassword': mfaPassword.text,
-                            'emailCode': needsEmailCode
-                                ? mfaEmailCode.text.trim()
-                                : null,
-                            'phoneCode': needsPhoneCode
-                                ? mfaPhoneCode.text.trim()
-                                : null,
-                            'totpCode': totp.text.trim(),
-                          };
-                          final loginMethod = asString(
-                            enrollment['loginMethod'],
-                          );
-                          final next = loginMethod.isNotEmpty
-                              ? await state.api
-                                    .confirmLoginMethod(
-                                      method: loginMethod,
-                                      currentPassword: args['currentPassword']!,
-                                      challengeToken: args['challengeToken']!,
-                                      emailCode: args['emailCode'],
-                                      phoneCode: args['phoneCode'],
-                                      totpCode: args['totpCode'],
-                                    )
-                                    .then((_) => state.api.mfaStatus())
+                      : () => _run(
+                          () async {
+                            final args = {
+                              'challengeToken': challengeToken,
+                              'currentPassword': mfaPassword.text,
+                              'emailCode': needsEmailCode
+                                  ? mfaEmailCode.text.trim()
+                                  : null,
+                              'phoneCode': needsPhoneCode
+                                  ? mfaPhoneCode.text.trim()
+                                  : null,
+                              'totpCode': totp.text.trim(),
+                            };
+                            final loginMethod = asString(
+                              enrollment['loginMethod'],
+                            );
+                            final next = loginMethod.isNotEmpty
+                                ? await state.api
+                                      .confirmLoginMethod(
+                                        method: loginMethod,
+                                        currentPassword:
+                                            args['currentPassword']!,
+                                        challengeToken: args['challengeToken']!,
+                                        emailCode: args['emailCode'],
+                                        phoneCode: args['phoneCode'],
+                                        totpCode: args['totpCode'],
+                                      )
+                                      .then((_) => state.api.mfaStatus())
+                                : disablingMfa
+                                ? await state.api.confirmMfaDisable(
+                                    challengeToken: args['challengeToken']!,
+                                    currentPassword: args['currentPassword']!,
+                                    emailCode: args['emailCode'],
+                                    phoneCode: args['phoneCode'],
+                                    totpCode: args['totpCode']!,
+                                  )
+                                : await state.api.confirmMfa(
+                                    challengeToken: args['challengeToken']!,
+                                    currentPassword: args['currentPassword']!,
+                                    emailCode: args['emailCode'],
+                                    phoneCode: args['phoneCode'],
+                                    totpCode: args['totpCode']!,
+                                  );
+                            if (operationCurrent) {
+                              setState(() {
+                                mfa = next;
+                                enrollment = const {};
+                                totp.clear();
+                                mfaPassword.clear();
+                                mfaEmailCode.clear();
+                                mfaPhoneCode.clear();
+                              });
+                              if (loginMethod.isNotEmpty) unawaited(_load());
+                            }
+                          },
+                          enrollment['loginMethod'] != null
+                              ? '安全验证方式已更新'
                               : disablingMfa
-                              ? await state.api.confirmMfaDisable(
-                                  challengeToken: args['challengeToken']!,
-                                  currentPassword: args['currentPassword']!,
-                                  emailCode: args['emailCode'],
-                                  phoneCode: args['phoneCode'],
-                                  totpCode: args['totpCode']!,
-                                )
-                              : await state.api.confirmMfa(
-                                  challengeToken: args['challengeToken']!,
-                                  currentPassword: args['currentPassword']!,
-                                  emailCode: args['emailCode'],
-                                  phoneCode: args['phoneCode'],
-                                  totpCode: args['totpCode']!,
-                                );
-                          if (operationCurrent) {
-                            setState(() {
-                              mfa = next;
-                              enrollment = const {};
-                              totp.clear();
-                              mfaPassword.clear();
-                              mfaEmailCode.clear();
-                              mfaPhoneCode.clear();
-                            });
-                            if (loginMethod.isNotEmpty) unawaited(_load());
-                          }
-                        }, disablingMfa ? '2FA 已关闭' : '2FA 已启用'),
+                              ? '2FA 已关闭'
+                              : '2FA 已启用',
+                        ),
                 ),
                 TextButton(
                   onPressed: busy
@@ -4376,84 +4666,94 @@ class _SecuritySheetState extends State<SecuritySheet> {
                   child: const Text('取消'),
                 ),
               ],
-              const SectionTitle(title: '丢失谷歌验证码'),
-              Text(
-                '恢复需要已通过的 KYC、登录密码、邮箱或手机验证码，并由运营人员人工审核。审核通过后会移除旧验证器，提现冻结 24 小时。',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
+              if (primaryAuthentication?.passwordRequired == true) ...[
+                const SectionTitle(title: '丢失谷歌验证码'),
+                Text(
+                  '恢复需要已通过的 KYC、登录密码、邮箱或手机验证码，并由运营人员人工审核。审核通过后会移除旧验证器，提现冻结 24 小时。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
-              ),
-              if (mfaRecovery['status'] == 'PENDING')
-                InfoLine(
-                  label: '恢复申请',
-                  value: '审核中 · ${mfaRecovery['submittedAt'] ?? ''}',
-                )
-              else if (mfaRecovery['status'] == 'APPROVED')
-                const InfoLine(label: '恢复申请', value: '已通过，可以重新绑定新的验证器密钥')
-              else ...[
-                if (mfaRecovery['status'] == 'REJECTED')
-                  Text('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
-                if (mfaRecoveryChallenge.isEmpty) ...[
-                  AppTextField(controller: mfaPassword, label: '登录密码'),
-                  PrimaryAction(
-                    label: '发送恢复验证码',
-                    icon: Icons.mark_email_read_outlined,
-                    onPressed: actionsBlocked || !mfaEnabled
-                        ? null
-                        : () => _run(
-                            () async {
-                              final challenge = await state.api
-                                  .issueMfaRecoveryChallenge(mfaPassword.text);
-                              if (operationCurrent) {
-                                setState(
-                                  () => mfaRecoveryChallenge = challenge,
-                                );
+                if (mfaRecovery['status'] == 'PENDING')
+                  InfoLine(
+                    label: '恢复申请',
+                    value: '审核中 · ${mfaRecovery['submittedAt'] ?? ''}',
+                  )
+                else if (mfaRecovery['status'] == 'APPROVED')
+                  const InfoLine(label: '恢复申请', value: '已通过，可以重新绑定新的验证器密钥')
+                else ...[
+                  if (mfaRecovery['status'] == 'REJECTED')
+                    Text('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
+                  if (mfaRecoveryChallenge.isEmpty) ...[
+                    AppTextField(controller: mfaPassword, label: '登录密码'),
+                    PrimaryAction(
+                      label: '发送恢复验证码',
+                      icon: Icons.mark_email_read_outlined,
+                      onPressed: actionsBlocked || !mfaEnabled
+                          ? null
+                          : () => _run(
+                              () async {
+                                final challenge = await state.api
+                                    .issueMfaRecoveryChallenge(
+                                      mfaPassword.text,
+                                    );
+                                if (operationCurrent) {
+                                  setState(
+                                    () => mfaRecoveryChallenge = challenge,
+                                  );
+                                }
+                              },
+                              '验证码已发送到 ${mfaRecoveryChallenge['destination'] ?? '已绑定联系方式'}',
+                            ),
+                    ),
+                  ] else ...[
+                    Text('验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}'),
+                    AppTextField(controller: mfaRecoveryCode, label: '恢复验证码'),
+                    AppTextField(
+                      controller: mfaRecoveryReason,
+                      label: '丢失原因（至少 8 个字符）',
+                    ),
+                    PrimaryAction(
+                      label: '提交人工审核',
+                      icon: Icons.support_agent,
+                      onPressed: actionsBlocked
+                          ? null
+                          : () => _run(() async {
+                              final id = int.tryParse(
+                                '${mfaRecoveryChallenge['challengeId']}',
+                              );
+                              if (id == null) {
+                                throw StateError('恢复验证码已失效，请重新申请');
                               }
-                            },
-                            '验证码已发送到 ${mfaRecoveryChallenge['destination'] ?? '已绑定联系方式'}',
-                          ),
-                  ),
-                ] else ...[
-                  Text('验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}'),
-                  AppTextField(controller: mfaRecoveryCode, label: '恢复验证码'),
-                  AppTextField(
-                    controller: mfaRecoveryReason,
-                    label: '丢失原因（至少 8 个字符）',
-                  ),
-                  PrimaryAction(
-                    label: '提交人工审核',
-                    icon: Icons.support_agent,
-                    onPressed: actionsBlocked
-                        ? null
-                        : () => _run(() async {
-                            final id = int.tryParse(
-                              '${mfaRecoveryChallenge['challengeId']}',
-                            );
-                            if (id == null) throw StateError('恢复验证码已失效，请重新申请');
-                            final request = await state.api.submitMfaRecovery(
-                              challengeId: id,
-                              currentPassword: mfaPassword.text,
-                              code: mfaRecoveryCode.text.trim(),
-                              reason: mfaRecoveryReason.text.trim(),
-                            );
-                            if (operationCurrent) {
-                              setState(() {
-                                mfaRecovery = request;
-                                mfaRecoveryChallenge = const {};
-                                mfaRecoveryCode.clear();
-                                mfaRecoveryReason.clear();
-                              });
-                            }
-                          }, '已提交，请等待人工审核'),
-                  ),
-                  TextButton(
-                    onPressed: busy
-                        ? null
-                        : () => setState(() => mfaRecoveryChallenge = const {}),
-                    child: const Text('取消'),
-                  ),
+                              final request = await state.api.submitMfaRecovery(
+                                challengeId: id,
+                                currentPassword: mfaPassword.text,
+                                code: mfaRecoveryCode.text.trim(),
+                                reason: mfaRecoveryReason.text.trim(),
+                              );
+                              if (operationCurrent) {
+                                setState(() {
+                                  mfaRecovery = request;
+                                  mfaRecoveryChallenge = const {};
+                                  mfaRecoveryCode.clear();
+                                  mfaRecoveryReason.clear();
+                                });
+                              }
+                            }, '已提交，请等待人工审核'),
+                    ),
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () =>
+                                setState(() => mfaRecoveryChallenge = const {}),
+                      child: const Text('取消'),
+                    ),
+                  ],
                 ],
+              ] else if (mfaEnabled) ...[
+                const SectionTitle(title: '丢失谷歌验证码'),
+                const Text('快捷登录账户丢失验证器时，请联系平台支持申请恢复。'),
               ],
               const SectionTitle(title: '敏感场景'),
               ...scenes.map((scene) {
@@ -4480,73 +4780,75 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 ),
               ),
               AppTextField(controller: securityEmailCode, label: '安全设置邮箱验证码'),
-              const SectionTitle(title: '修改密码'),
-              Text(
-                '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
+              if (primaryAuthentication?.passwordRequired == true) ...[
+                const SectionTitle(title: '修改密码'),
+                Text(
+                  '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              AppTextField(
-                controller: currentPassword,
-                label: '当前密码',
-                obscure: true,
-              ),
-              AppTextField(
-                controller: newPassword,
-                label: '新密码（至少 8 位）',
-                obscure: true,
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppTextField(
-                      controller: changePasswordEmailCode,
-                      label: '邮箱验证码',
+                const SizedBox(height: 8),
+                AppTextField(
+                  controller: currentPassword,
+                  label: '当前密码',
+                  obscure: true,
+                ),
+                AppTextField(
+                  controller: newPassword,
+                  label: '新密码（至少 8 位）',
+                  obscure: true,
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        controller: changePasswordEmailCode,
+                        label: '邮箱验证码',
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: AppTextField(
-                      controller: changePasswordTotpCode,
-                      label: '2FA 验证码',
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: AppTextField(
+                        controller: changePasswordTotpCode,
+                        label: '2FA 验证码',
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton.icon(
-                      onPressed: actionsBlocked
-                          ? null
-                          : () => _run(
-                              () => state.api.issueSecurityChallenge(
-                                'CHANGE_PASSWORD',
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: actionsBlocked
+                            ? null
+                            : () => _run(
+                                () => state.api.issueSecurityChallenge(
+                                  'CHANGE_PASSWORD',
+                                ),
+                                '验证码已发送到邮箱',
                               ),
-                              '验证码已发送到邮箱',
-                            ),
-                      icon: const Icon(Icons.email_outlined),
-                      label: const Text('发送验证码'),
+                        icon: const Icon(Icons.email_outlined),
+                        label: const Text('发送验证码'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: PrimaryAction(
-                      label: '确认修改',
-                      icon: Icons.password,
-                      onPressed: actionsBlocked
-                          ? null
-                          : () => _run(
-                              () => _changePassword(state),
-                              '密码已修改，请重新登录其他设备',
-                            ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: PrimaryAction(
+                        label: '确认修改',
+                        icon: Icons.password,
+                        onPressed: actionsBlocked
+                            ? null
+                            : () => _run(
+                                () => _changePassword(state),
+                                '密码已修改，请重新登录其他设备',
+                              ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
             SectionTitle(
               title:
@@ -4932,118 +5234,51 @@ class MarketChartPage extends StatelessWidget {
   }
 }
 
-class KlinePanel extends StatefulWidget {
+class KlinePanel extends StatelessWidget {
   const KlinePanel({
     required this.candles,
     required this.period,
     required this.onPeriod,
     super.key,
   });
-
   final List<Candle> candles;
   final String period;
   final ValueChanged<String> onPeriod;
-
   @override
-  State<KlinePanel> createState() => _KlinePanelState();
-}
-
-class _KlinePanelState extends State<KlinePanel> {
-  late final KLineController controller;
-
-  @override
-  void initState() {
-    super.initState();
-    controller = KLineController()
-      ..itemCount = 38
-      ..minCount = 12
-      ..maxCount = 90
-      ..showTimeAxis = true
-      ..showMainIndicators = [IndicatorType.ma]
-      ..showSubIndicators = [IndicatorType.vol, IndicatorType.macd]
-      ..chartStyle = const KLineChartStyle(
-        backgroundColor: Colors.transparent,
-        gridLineColor: _line,
-        gridLineWidth: 0.6,
-        rulerTextStyle: TextStyle(color: _muted, fontSize: 10),
-      )
-      ..candleStyle = const KLineCandleStyle(
-        riseColor: _mint,
-        fallColor: _red,
-        riseWickColor: _mint,
-        fallWickColor: _red,
-      )
-      ..volumeStyle = const KLineVolumeStyle(riseColor: _mint, fallColor: _red)
-      ..indicatorColors = const [_amber, _violet, _pink];
-    controller.priceFormatter = (value) =>
-        value.toStringAsFixed(value > 1000 ? 1 : 4);
-    controller.volumeFormatter = (value) => compactInt(value.round());
-    _setData();
-  }
-
-  @override
-  void didUpdateWidget(covariant KlinePanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.candles != widget.candles) _setData();
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  void _setData() {
-    controller.setData(
-      widget.candles.map((candle) {
-        return KLineData(
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-          time: candle.timeMillis,
-        );
-      }).toList(),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Panel(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
-      child: Column(
-        children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                const Text('K线', style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(width: 12),
-                for (final period in const ['1m', '5m', '15m', '1h', '4h'])
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: ChoiceChip(
-                      label: Text(period),
-                      selected: widget.period == period,
-                      visualDensity: VisualDensity.compact,
-                      onSelected: (_) => widget.onPeriod(period),
-                    ),
+  Widget build(BuildContext context) => Panel(
+    padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+    child: Column(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final value in const ['1m', '5m', '15m', '1h', '4h', '1d'])
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: ChoiceChip(
+                    label: Text(value),
+                    selected: period == value,
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => onPeriod(value),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 252,
-            child: widget.candles.isEmpty
-                ? const Center(child: Text('暂无 K 线数据'))
-                : KLineView(controller: controller),
+        ),
+        const SizedBox(height: 6),
+        if (candles.isEmpty)
+          const SizedBox(height: 330, child: Center(child: Text('暂无 K 线数据')))
+        else
+          NativePriceChart(
+            candles: candles,
+            period: period,
+            instrument: AppScope.of(context).selectedInstrument,
           ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }
 
 class OrderTicket extends StatelessWidget {
@@ -6961,9 +7196,62 @@ class _AuthSheetState extends State<AuthSheet> {
   bool busy = false;
   bool showPassword = false;
   String? message;
+  bool telegramEnabled = false;
+  bool telegramBusy = false;
+  int telegramAttempt = 0;
+  bool checkedTelegram = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (checkedTelegram) return;
+    checkedTelegram = true;
+    final api = AppScope.of(context).api;
+    unawaited(
+      api
+          .get('/api/v1/auth/telegram/config')
+          .then((config) {
+            if (mounted) {
+              setState(() => telegramEnabled = config['enabled'] == true);
+            }
+          })
+          .catchError((Object _) {}),
+    );
+  }
+
+  Future<void> telegramLogin(AppState state) async {
+    if (busy) return;
+    final attempt = ++telegramAttempt;
+    final initialSession = state.session;
+    setState(() {
+      busy = true;
+      telegramBusy = true;
+      message = null;
+    });
+    await state.loginTelegram(
+      () => signInWithTelegram(
+        api: state.api,
+        openBrowser: (url) =>
+            launchUrl(url, mode: LaunchMode.externalApplication),
+        cancelled: () =>
+            !mounted ||
+            telegramAttempt != attempt ||
+            state.session != initialSession,
+      ),
+    );
+    if (!mounted || telegramAttempt != attempt) return;
+    setState(() {
+      busy = false;
+      telegramBusy = false;
+      message = state.lastError;
+      password.clear();
+    });
+    if (state.isLoggedIn) Navigator.pop(context);
+  }
 
   @override
   void dispose() {
+    ++telegramAttempt;
     identifier.dispose();
     password.dispose();
     code.dispose();
@@ -7213,6 +7501,22 @@ class _AuthSheetState extends State<AuthSheet> {
                 ),
               ),
             ),
+            if (challenge == null && ['login', 'register'].contains(mode)) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: telegramBusy
+                    ? () => setState(() {
+                        ++telegramAttempt;
+                        telegramBusy = false;
+                        busy = false;
+                      })
+                    : !busy && telegramEnabled
+                    ? () => telegramLogin(state)
+                    : null,
+                icon: const Icon(Icons.send_outlined),
+                label: Text(telegramBusy ? '取消 Telegram 登录' : '通过 Telegram 继续'),
+              ),
+            ],
             if (mode == 'verify')
               TextButton(
                 onPressed: busy
@@ -9323,7 +9627,10 @@ class BalanceRow extends StatelessWidget {
         children: [
           InfoLine(
             label: '${balance.accountType} · ${balance.asset}',
-            value: money(balance.equity, digits: 4),
+            value: scaledAmount(
+              BigInt.from(balance.equityUnits),
+              balance.scaleUnits,
+            ),
           ),
           const SizedBox(height: 8),
           Row(
@@ -9331,14 +9638,20 @@ class BalanceRow extends StatelessWidget {
               Expanded(
                 child: MetricPill(
                   label: '可用',
-                  value: money(balance.available, digits: 4),
+                  value: scaledAmount(
+                    BigInt.from(balance.availableUnits),
+                    balance.scaleUnits,
+                  ),
                   color: Theme.of(context).colorScheme.tertiary,
                 ),
               ),
               Expanded(
                 child: MetricPill(
                   label: '冻结',
-                  value: money(balance.locked, digits: 4),
+                  value: scaledAmount(
+                    BigInt.from(balance.lockedUnits),
+                    balance.scaleUnits,
+                  ),
                   color: _amber,
                 ),
               ),

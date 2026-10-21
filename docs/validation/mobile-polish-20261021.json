@@ -1,0 +1,419 @@
+{
+  "date": "2026-10-21",
+  "branch": "feature/telegram-okx",
+  "base_commit": "7520857",
+  "scope": "Mobile visual consistency, search keyboard/clear interaction and hidden-income color privacy",
+  "flutter": {
+    "focused_passed": 36,
+    "long_symbol_and_shared_search_passed": 11,
+    "privacy_regression_before_fix_failed": 2,
+    "full_suite_passed": 462,
+    "external_environment_skipped": 11,
+    "analyze": "No issues found",
+    "baseline_regression_before_fix_failed": 1,
+    "baseline_alignment_after_fix_passed": 1
+  },
+  "native_redesign": [
+    {
+      "platform": "ios",
+      "exit": 0
+    },
+    {
+      "platform": "android",
+      "exit": 0
+    }
+  ],
+  "screenshots": [
+    {
+      "platform": "ios",
+      "scene": "assets-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/assets-dark-os.png",
+      "sha256": "305fd70fc3001b0ee03ee3f860ceeb356e5ca85a8da756af0beab84776768e9a"
+    },
+    {
+      "platform": "ios",
+      "scene": "assets-light-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/assets-light-os.png",
+      "sha256": "03a24e03a5553ff437eeecd5124e7b2407f11d59392a00bae07720a87779619a"
+    },
+    {
+      "platform": "ios",
+      "scene": "capture-restored-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/capture-restored-os.png",
+      "sha256": "3f158715f4c5867df1ca8a7d2b3af75f9286f9044da482c55540d019f14f9b92"
+    },
+    {
+      "platform": "ios",
+      "scene": "deposit-address-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/deposit-address-os.png",
+      "sha256": "7c2972bb83256968d30920cf1c2df38762aa03424c68919de4caa7b840b53b0b"
+    },
+    {
+      "platform": "ios",
+      "scene": "deposit-assets-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/deposit-assets-os.png",
+      "sha256": "1309134e1b12f2df0103dc372cf89fe28983c361ed73a25313d1f30366c6f41a"
+    },
+    {
+      "platform": "ios",
+      "scene": "deposit-entry-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/deposit-entry-os.png",
+      "sha256": "92668531837d3afaae615ae19d73ae2cbf3010fa674a6c010858d01a959591db"
+    },
+    {
+      "platform": "ios",
+      "scene": "deposit-menu-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/deposit-menu-os.png",
+      "sha256": "a786d6872758e975ac9c83f6a6695295898f7d0391c7f067e8d99f02817f1639"
+    },
+    {
+      "platform": "ios",
+      "scene": "deposit-networks-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/deposit-networks-os.png",
+      "sha256": "e284f3ef8a870ef9337fee438de4a67464cf1546126ed32b5635976a72a0e432"
+    },
+    {
+      "platform": "ios",
+      "scene": "home-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/home-dark-os.png",
+      "sha256": "783bd67c775ed372249f9e6626cdf05afcb7c4998bb62da2671944ccc43b3617"
+    },
+    {
+      "platform": "ios",
+      "scene": "home-light-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/home-light-os.png",
+      "sha256": "6e9b5e377c0989cf0b05fab99dc1949762e1a0d200b16837ea5720f9396dff06"
+    },
+    {
+      "platform": "ios",
+      "scene": "markets-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/markets-dark-os.png",
+      "sha256": "95d1e81d2825480114e1eec3084b080edc9b9869831733aac7297921289e80dd"
+    },
+    {
+      "platform": "ios",
+      "scene": "tradingview-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/tradingview-dark-os.png",
+      "sha256": "54342c234b802e1ee5db8becee7264b1e0e0b9898f3df7d7f01ae9f0896b6895"
+    },
+    {
+      "platform": "ios",
+      "scene": "transfer-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/transfer-dark-os.png",
+      "sha256": "ee783afc86f86cfe0f1652fb0c2a7cbbf5c399fade22021d13125261235e70ea"
+    },
+    {
+      "platform": "ios",
+      "scene": "withdrawal-assets-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/withdrawal-assets-os.png",
+      "sha256": "d476b69a158691c00d15f809b4fa5565e4c368cbc618b69f8c5de80581066569"
+    },
+    {
+      "platform": "ios",
+      "scene": "withdrawal-form-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/withdrawal-form-os.png",
+      "sha256": "299008883f24a83ab6c2e203c34d61dff34d849c2c0d3ac724a1501543f8b833"
+    },
+    {
+      "platform": "ios",
+      "scene": "withdrawal-networks-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/withdrawal-networks-os.png",
+      "sha256": "af52d31e452867e5bb9293fd307c49e7105128e187bc080d2b02f9a6e6bbe635"
+    },
+    {
+      "platform": "ios",
+      "scene": "withdrawal-protected-os",
+      "path": "/tmp/surprising-polish-native-qa/ios/withdrawal-protected-os.png",
+      "sha256": "006cea19557c329e590a5c229ff2282755c65bfadf4fa95750522d22b80a2415"
+    },
+    {
+      "platform": "android",
+      "scene": "assets-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/android/assets-dark-os.png",
+      "sha256": "5019f4e962aad8f4f30a71451922102187be3e8f19a249b0e5e151deb03653cb"
+    },
+    {
+      "platform": "android",
+      "scene": "assets-light-os",
+      "path": "/tmp/surprising-polish-native-qa/android/assets-light-os.png",
+      "sha256": "0cac08dcc19dba5a9eeb9f55e13ffa07f4b3f8778136568134fcf7b3ce565d31"
+    },
+    {
+      "platform": "android",
+      "scene": "capture-restored-os",
+      "path": "/tmp/surprising-polish-native-qa/android/capture-restored-os.png",
+      "sha256": "300123584d626bcad7c1f28a8008ed9fc35ec669474f78605baada92d60e466a"
+    },
+    {
+      "platform": "android",
+      "scene": "deposit-address-os",
+      "path": "/tmp/surprising-polish-native-qa/android/deposit-address-os.png",
+      "sha256": "1bfab25b7903430ab3f7111ccaab2af3731b3f2eacf8028f35d58cce1506f14f"
+    },
+    {
+      "platform": "android",
+      "scene": "deposit-assets-os",
+      "path": "/tmp/surprising-polish-native-qa/android/deposit-assets-os.png",
+      "sha256": "ae43906e2c72ed38f5e948ee21a7dc373b5f73c220d2e807b5784a795b271b82"
+    },
+    {
+      "platform": "android",
+      "scene": "deposit-entry-os",
+      "path": "/tmp/surprising-polish-native-qa/android/deposit-entry-os.png",
+      "sha256": "9a9bb49d61cc4a7675ddf730c3582c891a2bd21126f4052a21a7d049d07eb168"
+    },
+    {
+      "platform": "android",
+      "scene": "deposit-menu-os",
+      "path": "/tmp/surprising-polish-native-qa/android/deposit-menu-os.png",
+      "sha256": "44bc93d7de6caf0d252eee2bea391708e052016d77c5df22de7a1c3a3df64e44"
+    },
+    {
+      "platform": "android",
+      "scene": "deposit-networks-os",
+      "path": "/tmp/surprising-polish-native-qa/android/deposit-networks-os.png",
+      "sha256": "ecef99647dcfadc887b54bf722377c03cbef3d2c2565ca67456ebb31d27db7d9"
+    },
+    {
+      "platform": "android",
+      "scene": "home-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/android/home-dark-os.png",
+      "sha256": "55f59c5cba113cb4d07d8c7cd52e6ccc013de8a9bd73d2861f078ea1f2349d30"
+    },
+    {
+      "platform": "android",
+      "scene": "home-light-os",
+      "path": "/tmp/surprising-polish-native-qa/android/home-light-os.png",
+      "sha256": "ace362649fdfdfe6ee6a08c208f506aca86ea613b78ba9878b6c428f0d83b9f1"
+    },
+    {
+      "platform": "android",
+      "scene": "markets-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/android/markets-dark-os.png",
+      "sha256": "be8bf481dcd3a21a37b7c1ef67c750aa89ecea8066a4a422894b96f0ae0aacb9"
+    },
+    {
+      "platform": "android",
+      "scene": "tradingview-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/android/tradingview-dark-os.png",
+      "sha256": "d3285fae8db13c547eb1a9d6a7c750a3a5f631c3ceb45f86d1bfc3fa0c19474a"
+    },
+    {
+      "platform": "android",
+      "scene": "transfer-dark-os",
+      "path": "/tmp/surprising-polish-native-qa/android/transfer-dark-os.png",
+      "sha256": "ec17568fb5e12a22e7d4ab257c5c02ea630e90e864979c19493ffb058a2a235b"
+    },
+    {
+      "platform": "android",
+      "scene": "withdrawal-assets-os",
+      "path": "/tmp/surprising-polish-native-qa/android/withdrawal-assets-os.png",
+      "sha256": "5cab6c01fed1ccb77a6b1b9d7c777e0a2b921cc63aac2f1326094c5e99536af2"
+    },
+    {
+      "platform": "android",
+      "scene": "withdrawal-form-os",
+      "path": "/tmp/surprising-polish-native-qa/android/withdrawal-form-os.png",
+      "sha256": "a4bca6844c42e465da8baf9cb0efd5035963f9d05bd8c5588516baa8260bae2a"
+    },
+    {
+      "platform": "android",
+      "scene": "withdrawal-networks-os",
+      "path": "/tmp/surprising-polish-native-qa/android/withdrawal-networks-os.png",
+      "sha256": "44f0f12f3234d043ad992dd40c19d2e580fce3e6191781a5f9a2925ae6944343"
+    },
+    {
+      "platform": "android",
+      "scene": "withdrawal-protected-os",
+      "path": "/tmp/surprising-polish-native-qa/android/withdrawal-protected-os.png",
+      "sha256": "c35bacdb98b522206335afa5b9baffd2e4e3352a40749bb747e469cd403af514"
+    },
+    {
+      "platform": "ios",
+      "scene": "income-assets-filter-os",
+      "stage": "final_amount_baseline",
+      "path": "/tmp/surprising-polish-baseline-native-qa/ios/income-assets-filter-os.png",
+      "sha256": "e7c233047e812cbb05a9bb8f32e9090796fa3e01d14a2f1921c9f27105cf9f21"
+    },
+    {
+      "platform": "ios",
+      "scene": "income-home-dark-os",
+      "stage": "final_amount_baseline",
+      "path": "/tmp/surprising-polish-baseline-native-qa/ios/income-home-dark-os.png",
+      "sha256": "e6e9b4dd49e61b1ea979cfbef8a5328971ccd13ea6204b8e9bfb9dcf1ac9d31b"
+    },
+    {
+      "platform": "ios",
+      "scene": "income-home-light-os",
+      "stage": "final_amount_baseline",
+      "path": "/tmp/surprising-polish-baseline-native-qa/ios/income-home-light-os.png",
+      "sha256": "ef7afd0c0c05c6756ef93ef4d87091fceba7e1f503c44bf3d65c301f90deab71"
+    },
+    {
+      "platform": "android",
+      "scene": "income-assets-filter-os",
+      "stage": "final_amount_baseline",
+      "path": "/tmp/surprising-polish-baseline-native-qa/android/income-assets-filter-os.png",
+      "sha256": "dd586d3ff206f2b6b8d00a86333911440d9c4f96b1e8c3d2533b9bc30a1b0c81"
+    },
+    {
+      "platform": "android",
+      "scene": "income-home-dark-os",
+      "stage": "final_amount_baseline",
+      "path": "/tmp/surprising-polish-baseline-native-qa/android/income-home-dark-os.png",
+      "sha256": "0587255049d90fcc83e061aaf674a2c8f83a5958967bc6af84927e04df54aeb1"
+    },
+    {
+      "platform": "android",
+      "scene": "income-home-light-os",
+      "stage": "final_amount_baseline",
+      "path": "/tmp/surprising-polish-baseline-native-qa/android/income-home-light-os.png",
+      "sha256": "6d121342b1d958f95cb2116fbe1038ca035418c206400030c66ed83cd9a4f892"
+    }
+  ],
+  "references": [
+    {
+      "name": "okx_index.jpg",
+      "sha256": "04951ecb4319c16877a78d1fa4a568075e91cc78524ddceb4b65afcd8b69ef18"
+    },
+    {
+      "name": "okx_asset.jpg",
+      "sha256": "04724f402172dd0956cfb40772410f914aa719261a0fe292bcaf4c797b42cf05"
+    },
+    {
+      "name": "划转.jpg",
+      "sha256": "0c63242ab2ff764a5908d01f7ce686b06db51c34677051fc59f36be884b8627b"
+    },
+    {
+      "name": "充值 1.jpg",
+      "sha256": "2cb5d8a27ebcd508a581dda94506a467f28b5259e5e6c9d6fb44724b6e368d19"
+    },
+    {
+      "name": "充值 2.jpg",
+      "sha256": "a3ef46bbd75074f922c3e5f034f0e712feeb7ac28ed9b49569267a6ff9c24ff9"
+    },
+    {
+      "name": "充值 3.jpg",
+      "sha256": "2adf062e307fd177ce262d719ce37c9a1fa8b254396022d440d059f7023267d4"
+    },
+    {
+      "name": "充值 4.jpg",
+      "sha256": "e2dce3caeafe27c2314172e2305ea515888e62bf0b7eb5a1d7489401535e71d0"
+    },
+    {
+      "name": "充值 5.jpg",
+      "sha256": "1ff207e35dbf9e40563a40ae4bb31dd4f4a6fdb2390ba55bdb099386117351b1"
+    }
+  ],
+  "remaining_external": [
+    "TELEGRAM_CLIENT_SECRET absent; actual Telegram consent remains unverified",
+    "Physical iOS camera/gallery/screen capture verification; iOS simulator OS capture still reveals protected synthetic marker"
+  ],
+  "whole_feature_complete": false,
+  "merge_allowed": false,
+  "fixture_limits": {
+    "redesign": "Synthetic catalog and wallet fixtures; unknown committed income remains unknown; no claim of live financial trades",
+    "android_capture": "Own-window SECURE flag only on withdrawal scenes; OS protected screenshot is black, capture restored on exit",
+    "ios_capture": "Simulator protected screenshot still displays synthetic marker; not marked privacy passed"
+  },
+  "redesign_capture_source_sha256": {
+    "lib/src/app.dart": "fea99f050840c5cb3e8c1e5209c80c0b412a6a33f32b30fef3fd3b2fb0fca525",
+    "lib/src/exchange_widgets.dart": "544e4a157015d3607f60fc971136ddbcb3e89e3068222c76d8cd662207020e82",
+    "lib/src/asset_overview.dart": "f2c43953fdb0a3fa1d509aa104d3da88f9b87fc5873d12226efbe28e76550ba4",
+    "lib/src/transfer_page.dart": "f23fe780f9988c2e077b18adae05053b6e0314e0febac8995b8e13c4328e1362"
+  },
+  "source_sha256": {
+    "lib/src/app.dart": "fea99f050840c5cb3e8c1e5209c80c0b412a6a33f32b30fef3fd3b2fb0fca525",
+    "lib/src/exchange_widgets.dart": "26c7bcb90cb61345047c83b83bfad3b6775b4dbb08d637c2585d8400d0a41a61",
+    "lib/src/asset_overview.dart": "f2c43953fdb0a3fa1d509aa104d3da88f9b87fc5873d12226efbe28e76550ba4",
+    "lib/src/transfer_page.dart": "f23fe780f9988c2e077b18adae05053b6e0314e0febac8995b8e13c4328e1362"
+  },
+  "capture_stages": "17 redesign scenes per platform captured before the final shared amount/currency baseline correction; all other production files unchanged. Final baseline verified separately in actual gateway home/assets native scenes on both platforms.",
+  "logs": {
+    "full_tests": {
+      "path": "/tmp/surprising-polish-final-tests.log",
+      "sha256": "8beeece86e46fcc905d09c124928db8297cf978cb096d4a1a428e03c5ff123d5"
+    },
+    "analyze": {
+      "path": "/tmp/surprising-polish-final-analyze.log",
+      "sha256": "4d928ef37ee71fbdb70d530048b03b7f5e67929f6ef7e1edaa74c6126a8e2fd7"
+    },
+    "focused": {
+      "path": "/tmp/surprising-polish-focused.log",
+      "sha256": "f98603a854c644cefe116a40932a14bfb00f8c1c353f71444f08b103255e5934"
+    },
+    "long_symbol": {
+      "path": "/tmp/surprising-polish-long-symbol-tests.log",
+      "sha256": "d9c065fae91fac3b721a20ae78f5514e9aa154c520c1c9e3c12413c90c0e1c64"
+    },
+    "privacy_before": {
+      "path": "/tmp/surprising-polish-privacy-baseline.log",
+      "sha256": "8d1f07442e581984e34ea0ae2b3fbcbeec375a9e3c1e4191d3bbcda96b90b525"
+    },
+    "baseline_before": {
+      "path": "/tmp/surprising-polish-baseline-before.log",
+      "sha256": "73a8f3cca30d051ec1b6c38d461c2b78d3c3baba2e98c3337eb9469e79799064"
+    },
+    "baseline_after": {
+      "path": "/tmp/surprising-polish-baseline-after.log",
+      "sha256": "18154caa0bce4bfa1385f1a73f3c1ca4d4a4c9a5898cffd16a00d78a00b7fbef"
+    },
+    "ios_redesign": {
+      "path": "/tmp/surprising-polish-native-qa/ios-host.log",
+      "sha256": "a64fb3f84c65ce78e56c721ea78859baca1a437197ce2fe1fe78577474d831b9"
+    },
+    "android_redesign": {
+      "path": "/tmp/surprising-polish-native-qa/android-host.log",
+      "sha256": "c6a8fd31d787a5e44b1553389e769d682c744eb6e13fe5d7660acf81cc4c4f52"
+    },
+    "final_baseline_ios.log": {
+      "path": "/tmp/surprising-polish-baseline-native-qa/ios.log",
+      "sha256": "960a1c86b3b143291740f48d84fa608f3cc9801c9b4eebaadad2f3476d85a696"
+    },
+    "final_baseline_ios_native-run.log": {
+      "path": "/tmp/surprising-polish-baseline-native-qa/ios/native-run.log",
+      "sha256": "af86b5bc5917a383908e4a5a39e67cf5ea9295ebcec3c588b8862faee1cdbcbc"
+    },
+    "final_baseline_android.log": {
+      "path": "/tmp/surprising-polish-baseline-native-qa/android.log",
+      "sha256": "7764ada7c8a308ed730d74351d27214f88a76aa58e3fff103933f311d7df3640"
+    },
+    "final_baseline_android_native-run.log": {
+      "path": "/tmp/surprising-polish-baseline-native-qa/android/native-run.log",
+      "sha256": "85fb5c524b56cac41e607c45e8f5c4d2afabc0bc929566e644693caaa24c4fc5"
+    }
+  },
+  "final_amount_baseline_native": {
+    "isolated_gateway_http": true,
+    "controlled_projection_fixture": true,
+    "actual_live_core_trade": false,
+    "no_store": true,
+    "income": "-2",
+    "equity": "118",
+    "native": [
+      {
+        "platform": "ios",
+        "exit": 0,
+        "os_captures": 3
+      },
+      {
+        "platform": "android",
+        "exit": 0,
+        "os_captures": 3
+      }
+    ]
+  },
+  "cleanup": {
+    "financial_fixture_removed": true,
+    "qa_sessions_revoked": true,
+    "qa_user_frozen": true,
+    "private_files_removed": true,
+    "remaining_financial_rows": {
+      "cuts": 0,
+      "equities": 0,
+      "flows": 0
+    },
+    "task_owned_android_emulator_stopped": true
+  },
+  "telegram_config_enabled_at_final_check": false
+}

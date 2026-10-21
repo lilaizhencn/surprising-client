@@ -1605,6 +1605,7 @@ class _SpotState extends AppState {
     mode = ProductMode.spot;
     balances = const [
       ProductBalance(
+        scaleUnits: 100000000,
         accountType: 'SPOT',
         asset: 'USDT',
         availableUnits: 100000000,

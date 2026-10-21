@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';
@@ -188,6 +189,12 @@ void main() {
   testWidgets('top withdrawal action opens the real withdrawal form', (
     tester,
   ) async {
+    const screenProtection = MethodChannel('screen_protector');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(screenProtection, (_) async => null);
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(screenProtection, null),
+    );
     final state = _withdrawalState(
       api: _WithdrawalApiClient(responses: const []),
     );
@@ -200,10 +207,19 @@ void main() {
     await tester.tap(find.text('提币').first);
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('withdraw-asset-USDT')), findsOneWidget);
+    expect(find.text('12.5'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('withdraw-asset-USDT')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('withdraw-network-ETH')));
+    await tester.pumpAndSettle();
+
     expect(find.byType(WithdrawalPage), findsOneWidget);
-    expect(find.text('资产与网络'), findsOneWidget);
+    expect(find.text('USDT'), findsWidgets);
     expect(find.text('提币地址'), findsOneWidget);
     expect(find.text('核对并确认提币'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   });
 
   testWidgets('profile confirms and disables biometric login', (tester) async {
@@ -262,6 +278,7 @@ AppState _withdrawalState({
       settingsStore: settings ?? _MemorySettingsStore(),
     )
     ..session = _session
+    ..walletReady = true
     ..walletPortfolio = WalletPortfolio.fromJson({
       'generatedAt': '2026-08-06T00:00:00Z',
       'assetCount': 1,
@@ -271,21 +288,8 @@ AppState _withdrawalState({
           'availableBalance': '12.5',
           'lockedBalance': '0',
           'totalBalance': '12.5',
-          'chains': [
-            {
-              'chain': 'ETH',
-              'symbol': 'USDT',
-              'network': 'Ethereum',
-              'family': 'EVM',
-              'standard': 'ERC20',
-              'nativeAsset': false,
-              'nativeSymbol': 'ETH',
-              'availableBalance': '12.5',
-              'lockedBalance': '0',
-              'totalBalance': '12.5',
-              'addresses': const [],
-            },
-          ],
+          // Funding balances belong to the asset, independently of networks.
+          'chains': const [],
         },
       ],
     })

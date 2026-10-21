@@ -27,17 +27,22 @@ void main() {
 
   test('reuses a transfer idempotency key after an uncertain result', () async {
     final api = _TransferApiClient(const {'status': 'PENDING'});
-    final state = AppState(offline: true, apiClient: api)
-      ..session = const AuthSession(
-        user: AuthUser(
-          userId: 99,
-          username: 'transfer-user',
-          email: 'transfer@example.com',
-          status: 'ACTIVE',
-        ),
-        accessToken: 'access',
-        refreshToken: 'refresh',
-      );
+    final state =
+        AppState(
+            offline: true,
+            apiClient: api,
+            settingsStore: _InMemorySettingsStore(),
+          )
+          ..session = const AuthSession(
+            user: AuthUser(
+              userId: 99,
+              username: 'transfer-user',
+              email: 'transfer@example.com',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'access',
+            refreshToken: 'refresh',
+          );
 
     await state.transfer(
       sourceAccountType: 'SPOT',
@@ -63,17 +68,22 @@ void main() {
     'requires an explicit reset before retrying a failed transfer',
     () async {
       final api = _TransferApiClient(const {'status': 'FAILED'});
-      final state = AppState(offline: true, apiClient: api)
-        ..session = const AuthSession(
-          user: AuthUser(
-            userId: 100,
-            username: 'failed-transfer-user',
-            email: 'failed-transfer@example.com',
-            status: 'ACTIVE',
-          ),
-          accessToken: 'access',
-          refreshToken: 'refresh',
-        );
+      final state =
+          AppState(
+              offline: true,
+              apiClient: api,
+              settingsStore: _InMemorySettingsStore(),
+            )
+            ..session = const AuthSession(
+              user: AuthUser(
+                userId: 100,
+                username: 'failed-transfer-user',
+                email: 'failed-transfer@example.com',
+                status: 'ACTIVE',
+              ),
+              accessToken: 'access',
+              refreshToken: 'refresh',
+            );
 
       await state.transfer(
         sourceAccountType: 'SPOT',
@@ -90,7 +100,7 @@ void main() {
       expect(api.idempotencyKeys, hasLength(1));
       expect(state.transferOutcomeTerminalFailure, isTrue);
 
-      state.resetTransferIntent();
+      await state.resetTransferIntent();
       await state.transfer(
         sourceAccountType: 'SPOT',
         targetAccountType: 'USDT_PERPETUAL',
@@ -104,17 +114,22 @@ void main() {
 
   test('locks a transfer after a transport error', () async {
     final api = _TransferApiClient(const {}, failure: StateError('offline'));
-    final state = AppState(offline: true, apiClient: api)
-      ..session = const AuthSession(
-        user: AuthUser(
-          userId: 102,
-          username: 'transport-transfer-user',
-          email: 'transport-transfer@example.com',
-          status: 'ACTIVE',
-        ),
-        accessToken: 'access',
-        refreshToken: 'refresh',
-      );
+    final state =
+        AppState(
+            offline: true,
+            apiClient: api,
+            settingsStore: _InMemorySettingsStore(),
+          )
+          ..session = const AuthSession(
+            user: AuthUser(
+              userId: 102,
+              username: 'transport-transfer-user',
+              email: 'transport-transfer@example.com',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'access',
+            refreshToken: 'refresh',
+          );
 
     await state.transfer(
       sourceAccountType: 'SPOT',
@@ -180,6 +195,20 @@ void main() {
             refreshToken: 'refresh',
           )
           ..withdrawalRulesReady = true
+          ..walletReady = true
+          ..walletPortfolio = const WalletPortfolio(
+            generatedAt: 'synthetic',
+            assetCount: 1,
+            assets: [
+              WalletAssetSummary(
+                symbol: 'USDT',
+                availableBalance: 2,
+                lockedBalance: 0,
+                totalBalance: 2,
+                chains: [],
+              ),
+            ],
+          )
           ..withdrawalRules = const [
             WithdrawalAssetRule(
               chain: 'TRON',
@@ -217,6 +246,7 @@ void main() {
         AppState(
             offline: true,
             apiClient: _TransferApiClient(const {'status': 'PENDING'}),
+            settingsStore: _InMemorySettingsStore(),
           )
           ..session = const AuthSession(
             user: AuthUser(
@@ -242,11 +272,7 @@ void main() {
     expect(find.byType(WalletPage), findsOneWidget);
     await tester.tap(find.text('划转'));
     await tester.pumpAndSettle();
-    for (var i = 0; i < 8 && find.text('账户划转').evaluate().isEmpty; i++) {
-      await tester.drag(find.byType(ListView).first, const Offset(0, -420));
-      await tester.pump();
-    }
-    expect(find.text('账户划转'), findsOneWidget);
+    expect(find.text('确认转出'), findsOneWidget);
 
     await state.transfer(
       sourceAccountType: 'SPOT',
@@ -265,19 +291,19 @@ void main() {
     );
     expect(
       tester
-          .widgetList<DropdownButton<String>>(
-            find.byType(DropdownButton<String>),
-          )
-          .where((button) => button.onChanged == null)
-          .length,
-      greaterThanOrEqualTo(2),
+          .widget<IconButton>(find.byKey(const ValueKey('transfer-swap')))
+          .onPressed,
+      isNull,
     );
     expect(
       tester
-          .widgetList<TextFormField>(find.byType(TextFormField))
-          .where((field) => field.enabled == false)
-          .length,
-      greaterThanOrEqualTo(2),
+          .widget<TextField>(find.byKey(const ValueKey('transfer-amount')))
+          .enabled,
+      isFalse,
+    );
+    expect(
+      tester.widget<TextButton>(find.widgetWithText(TextButton, '1')).onPressed,
+      isNull,
     );
   });
 
@@ -290,7 +316,7 @@ void main() {
       SurprisingClientApp(state: state, bootstrap: false),
     );
 
-    expect(find.text('Surprising'), findsOneWidget);
+    expect(find.text('交易所'), findsOneWidget);
     expect(find.text('首页'), findsWidgets);
     expect(find.text('交易'), findsWidgets);
   });
@@ -346,14 +372,15 @@ void main() {
     expect(find.text('C2C'), findsWidgets);
     await tester.tap(find.text('充值').first);
     await tester.pumpAndSettle();
-
-    expect(find.text('充值'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ListTile, '充币'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择资产'), findsOneWidget);
     expect(find.text('USDT'), findsWidgets);
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+    await tester.tap(find.byKey(const ValueKey('deposit-asset-USDT')));
     await tester.pumpAndSettle();
 
-    expect(find.text('充值网络'), findsWidgets);
+    expect(find.text('选择网络'), findsWidgets);
     expect(find.text('Ethereum'), findsOneWidget);
     expect(find.text('Tron'), findsOneWidget);
   });
@@ -380,6 +407,8 @@ void main() {
     await tester.tap(find.text('资产').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('充值').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, '充币'));
     await tester.pumpAndSettle();
     expect(find.text('USDT'), findsNothing);
     expect(find.text('暂无可充值币种'), findsOneWidget);

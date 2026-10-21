@@ -5,8 +5,10 @@ import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/asset_overview.dart';
+import 'package:surprising_client/src/exchange_widgets.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/realtime_state.dart';
+import 'support/portfolio_income_fixture.dart' show IncomeApi;
 
 const session = AuthSession(
   user: AuthUser(
@@ -63,12 +65,11 @@ void main() {
   testWidgets('overview counts shared funding and spot money once', (
     tester,
   ) async {
-    final s = AppState(offline: true)
+    final s = AppState(apiClient: IncomeApi())
       ..session = session
       ..walletReady = true
       ..walletPortfolio = portfolio(12)
       ..assetsReady = true;
-    addTearDown(s.dispose);
     for (final p in ProductMode.values) {
       s.valuedProducts.add(p);
       s.privateViews[p] = PrivateView()
@@ -76,6 +77,7 @@ void main() {
         ..receivedAt = DateTime.now();
       s.productBalances[p] = [
         ProductBalance(
+          scaleUnits: 100000000,
           accountType: p.accountType,
           asset: 'USDT',
           availableUnits: p.isSpot
@@ -92,6 +94,7 @@ void main() {
         ),
       ];
     }
+    await s.refreshPortfolioIncome();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -110,8 +113,41 @@ void main() {
       tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
       '17.00',
     );
-    expect(find.text('资金账户（含现货）'), findsOneWidget);
+    expect(find.text('资金账户'), findsOneWidget);
     expect(find.widgetWithText(ListTile, '现货'), findsNothing);
+    expect(s.productBalancesUsdt(includeSpot: false), 5);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AccountValueHeader(state: s)),
+      ),
+    );
+    expect(find.text('17.00'), findsOneWidget);
+    final RenderBox amountBox = tester.renderObject(find.text('17.00'));
+    final RenderBox currencyBox = tester.renderObject(
+      find
+          .descendant(
+            of: find.byType(DropdownButton<ValuationCurrency>),
+            matching: find.text('USDT'),
+          )
+          .first,
+    );
+    double baseline(RenderBox box) => box
+        .localToGlobal(
+          Offset(
+            0,
+            box.getDryBaseline(box.constraints, TextBaseline.alphabetic)!,
+          ),
+        )
+        .dy;
+    expect(
+      baseline(currencyBox),
+      closeTo(baseline(amountBox), .1),
+      reason: 'The valuation currency must share the amount baseline',
+    );
+
+    expect(find.text('29.00'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    s.dispose();
   });
 
   test('funding balance survives a failed history endpoint', () async {
@@ -130,17 +166,20 @@ void main() {
     testWidgets(
       'account filter, privacy and currency on small $brightness screen',
       (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         tester.view.physicalSize = const Size(320, 900);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final s = AppState(offline: true)
+        final s = AppState(apiClient: IncomeApi(overviewAvailable: false))
           ..session = session
           ..walletReady = true
           ..walletPortfolio = portfolio(12);
         s.valuationRates[ValuationCurrency.cny] = 7;
         s.productBalances[ProductMode.linear] = [
           const ProductBalance(
+            scaleUnits: 100000000,
             accountType: 'USDT_PERPETUAL',
             asset: 'USDT',
             availableUnits: 300000000,
@@ -152,7 +191,7 @@ void main() {
         s.privateViews[ProductMode.linear] = PrivateView()
           ..status = 'READY'
           ..receivedAt = DateTime.now();
-        addTearDown(s.dispose);
+        await s.refreshPortfolioIncome();
         await tester.pumpWidget(
           MaterialApp(
             theme: ThemeData(brightness: brightness),
@@ -175,7 +214,7 @@ void main() {
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
           '—',
         );
-        await tester.tap(find.widgetWithText(ChoiceChip, '资金账户'));
+        await tester.tap(find.byKey(const ValueKey('asset-account-funding')));
         await tester.pumpAndSettle();
         expect(
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
@@ -196,17 +235,20 @@ void main() {
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
           '84.00',
         );
-        await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'U本位永续'));
-        await tester.tap(find.widgetWithText(ChoiceChip, 'U本位永续'));
+        await tester.tap(find.byTooltip('资产筛选'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, 'U本位永续'));
         await tester.pumpAndSettle();
         expect(
           tester.widget<Text>(find.byKey(const ValueKey('asset-total'))).data,
           '35.00',
         );
         expect(find.text('资金账户 · USDT'), findsNothing);
-        expect(find.text('5.0000'), findsOneWidget);
+        expect(find.text('5'), findsOneWidget);
         expect(s.mode, ProductMode.linear);
         expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        s.dispose();
       },
     );
   }
@@ -329,6 +371,12 @@ class AccountApi extends ApiClient {
   bool failOrders = false;
   Completer<Map<String, dynamic>>? pendingMfa;
   final walletRequests = <Completer<WalletPortfolio>>[];
+  @override
+  Future<PrimaryAuthenticationContext> primaryAuthentication() async =>
+      const PrimaryAuthenticationContext(
+        passwordRequired: true,
+        reauthenticationRequired: false,
+      );
   @override
   Future<Map<String, dynamic>> mfaStatus() async =>
       pendingMfa == null ? {'enabled': true} : pendingMfa!.future;

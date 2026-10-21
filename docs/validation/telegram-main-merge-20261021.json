@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-21",
+  "primary_branch": "main",
+  "base": "5328e4adf0ed82d1c16eae0df8a3c04a1ed831c9",
+  "feature": "18cf77d3ef2aa3266c0b4dad8467026a5ab25422",
+  "authorization": "用户明确要求直接合并主分支并停止编译；不继续剩余构建/原生测试。",
+  "conflict_resolution": "app.dart 保留新版 C2cTradingPage 和 Telegram/移动端页面导入；移除无引用的旧聊天导入。",
+  "checks": {
+    "flutter_analyze": "No issues found",
+    "flutter_test": {
+      "passed": 518,
+      "skipped": 12,
+      "failed": 0,
+      "skip_reason": "独立 live 测试未提供显式环境夹具"
+    },
+    "git_diff_check": "passed",
+    "unmerged_files": 0,
+    "ios_merge_build": "completed before interruption (248.3 seconds); native scenario test stopped at user request",
+    "android_merge_native": "not started; user stopped further builds",
+    "physical_ios": "unverified; simulator screenshot protection limitation remains documented"
+  },
+  "logs": {
+    "analyze": {
+      "path": "/tmp/surprising-main-merge-client-analyze.log",
+      "sha256": "85c93d23cbd0a9851287526d6a8603d95137087662d3d6c17bbd08d403e4744e"
+    },
+    "tests": {
+      "path": "/tmp/surprising-main-merge-client-tests.log",
+      "sha256": "f1d7ca82e38631c9850d51bd58b567c3a64365285f7418cb0c6e822013a31011"
+    },
+    "ios_native": {
+      "path": "/tmp/surprising-main-merge-ios-native.log",
+      "sha256": "d348c2d30f4c38a4b11ef9f9c9557e6d8a682cf464fa4b7e759846b1106fe60d"
+    }
+  }
+}

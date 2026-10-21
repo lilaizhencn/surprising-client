@@ -789,10 +789,6 @@ class ApiClient {
       final request = await _httpClient
           .getUrl(uri)
           .timeout(const Duration(seconds: 6));
-      request.headers.set(
-        'X-Trace-Id',
-        'mobile-${DateTime.now().microsecondsSinceEpoch}',
-      );
       if (_accessToken != null) {
         request.headers.set('Authorization', 'Bearer $_accessToken');
       }
@@ -835,10 +831,6 @@ class ApiClient {
       'multipart',
       'form-data',
       parameters: {'boundary': boundary},
-    );
-    request.headers.set(
-      'X-Trace-Id',
-      'mobile-${DateTime.now().microsecondsSinceEpoch}',
     );
     if (_accessToken != null) {
       request.headers.set('Authorization', 'Bearer $_accessToken');
@@ -2283,10 +2275,6 @@ class ApiClient {
     }
     request.headers.contentType = ContentType.json;
     request.headers.set('X-Device-Id', deviceId);
-    request.headers.set(
-      'X-Trace-Id',
-      'mobile-${DateTime.now().microsecondsSinceEpoch}',
-    );
     if (_accessToken != null) {
       request.headers.set('Authorization', 'Bearer $_accessToken');
     }

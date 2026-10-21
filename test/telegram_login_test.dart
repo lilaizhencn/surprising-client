@@ -69,6 +69,7 @@ void main() {
       expect(result.user.email, isEmpty);
       expect(result.requiresEmailVerification, isFalse);
       expect(AuthSession.fromJson(result.toJson()).user.name, '小李 🚀');
+      expect(api.requests.first.$2, {'returnToApp': true});
       expect(api.requests[1].$2, {'flowId': 's' * 43, 'verifier': 'v' * 43});
       expect(api.requests.every((r) => !r.$2.containsKey('password')), isTrue);
     },

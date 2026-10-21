@@ -5,6 +5,8 @@ import 'package:local_auth/local_auth.dart';
 
 import 'models.dart';
 
+const telegramLoginStorageKey = 'surprising.auth.telegram.pending.v1';
+
 abstract interface class SessionStore {
   Future<AuthSession?> readSession();
 
@@ -85,12 +87,14 @@ class SecureSessionStore implements SessionStore {
 
   @override
   Future<void> saveSession(AuthSession session) async {
+    await _storage.delete(key: telegramLoginStorageKey);
     final securePayload = session.toJson()..['accessToken'] = '';
     await _storage.write(key: _sessionKey, value: jsonEncode(securePayload));
   }
 
   @override
   Future<void> clear() async {
+    await _storage.delete(key: telegramLoginStorageKey);
     await _storage.delete(key: _sessionKey);
     await _storage.delete(key: _biometricKey);
   }

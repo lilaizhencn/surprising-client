@@ -189,6 +189,7 @@ class AppState extends ChangeNotifier {
     ApiClient? apiClient,
     RealtimeClient? realtimeClient,
     SessionStore? sessionStore,
+    TelegramLoginStore? telegramLoginStore,
     ClientSettingsStore? settingsStore,
     this.offline = false,
     this.seedInstruments,
@@ -196,6 +197,7 @@ class AppState extends ChangeNotifier {
        realtime = realtimeClient ?? RealtimeClient(config),
        sessionStore = sessionStore ?? SecureSessionStore() {
     this.settingsStore = settingsStore ?? SecureClientSettingsStore();
+    this.telegramLoginStore = telegramLoginStore ?? TelegramLoginStore();
     if (apiClient == null) api.deviceIdLoader = _persistentDeviceId;
     api.onSessionRefreshed = _persistRefreshedSession;
     api.onSessionExpired = _clearExpiredSession;
@@ -217,6 +219,7 @@ class AppState extends ChangeNotifier {
   final ApiClient api;
   final RealtimeClient realtime;
   final SessionStore sessionStore;
+  late final TelegramLoginStore telegramLoginStore;
   late final ClientSettingsStore settingsStore;
   final bool offline;
   final List<Instrument>? seedInstruments;
@@ -1049,10 +1052,48 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> bootstrap() async {
+  Future<void>? _authenticationRestored;
+  Future<void> restoreAuthentication() => _authenticationRestored ??= () async {
     if (offline) return;
     await _restoreSettings();
     await _restoreSession();
+  }();
+
+  Future<bool> resumeTelegramLogin(Uri link) async {
+    if (!TelegramLoginFlow.isReturnLink(link) || offline) return false;
+    final version = _telegramLoginVersion;
+    await restoreAuthentication();
+    if (version != _telegramLoginVersion ||
+        loadingPrivate ||
+        session != null ||
+        pendingBiometricSession != null ||
+        pendingVerificationSession != null ||
+        pendingLoginChallenge != null) {
+      return false;
+    }
+    final flow = await telegramLoginStore.read(api);
+    if (flow == null ||
+        !flow.matches(link) ||
+        version != _telegramLoginVersion ||
+        loadingPrivate ||
+        session != null) {
+      return false;
+    }
+    await loginTelegram(
+      () => signInWithTelegram(
+        api: api,
+        openBrowser: (_) async => false,
+        cancelled: () => version + 1 != _telegramLoginVersion,
+        store: telegramLoginStore,
+        resume: flow,
+      ),
+    );
+    return true;
+  }
+
+  Future<void> bootstrap() async {
+    if (offline) return;
+    await restoreAuthentication();
     await refreshInstruments(silent: true);
     await refreshValuation(silent: true);
     _scheduleOptionReference();

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -137,17 +138,42 @@ class SurprisingClientApp extends StatefulWidget {
 class _SurprisingClientAppState extends State<SurprisingClientApp> {
   late final AppState state = widget.state ?? AppState();
   final _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<Uri>? _authLinks;
 
   @override
   void initState() {
     super.initState();
     if (widget.bootstrap) {
+      _authLinks = AppLinks().uriLinkStream.listen(
+        (link) => unawaited(_returnFromTelegram(link)),
+        onError: (Object _) {},
+      );
       unawaited(state.bootstrap());
+    }
+  }
+
+  Future<void> _returnFromTelegram(Uri link) async {
+    if (!TelegramLoginFlow.isReturnLink(link)) return;
+    try {
+      final resumed = await state.resumeTelegramLogin(link);
+      if (!mounted || !resumed || state.isLoggedIn) return;
+      final context = _navigatorKey.currentState?.overlay?.context;
+      if (context != null && context.mounted) showAuthSheet(context);
+    } catch (_) {
+      // No credentials or provider errors belong in a link-handler log.
+      if (!mounted) return;
+      final context = _navigatorKey.currentState?.overlay?.context;
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Telegram 登录未完成，请重新发起登录')));
+      }
     }
   }
 
   @override
   void dispose() {
+    unawaited(_authLinks?.cancel());
     if (widget.state == null) state.dispose();
     super.dispose();
   }
@@ -7231,6 +7257,7 @@ class _AuthSheetState extends State<AuthSheet> {
     await state.loginTelegram(
       () => signInWithTelegram(
         api: state.api,
+        store: state.telegramLoginStore,
         openBrowser: (url) =>
             launchUrl(url, mode: LaunchMode.externalApplication),
         cancelled: () =>

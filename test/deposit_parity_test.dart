@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,8 +19,12 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = DepositApi();
-        final state = AppState(offline: true, apiClient: api)
-          ..session = session;
+        final state = AppState(
+          initialSession: session,
+          sessionStore: MemorySessionStore(),
+          offline: true,
+          apiClient: api,
+        );
         addTearDown(state.dispose);
         await tester.pumpWidget(
           MaterialApp(
@@ -62,8 +67,7 @@ void main() {
         expect(find.text('NEW-ADDRESS'), findsOneWidget);
         expect(find.text('OLD-ADDRESS'), findsNothing);
         expect(find.text('Memo / Tag：123'), findsOneWidget);
-        state.session = null;
-        state.notifyListeners();
+        await state.logout();
         await tester.pumpAndSettle();
         expect(find.text('NEW-ADDRESS'), findsNothing);
         expect(find.byType(QrImageView), findsNothing);

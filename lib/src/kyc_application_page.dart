@@ -69,6 +69,11 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
       identity == widget.state.session?.accessToken;
   List<String> get slots => kycRequiredSlots(type, applicant, level);
 
+  int? _documentId(String slot) {
+    final id = parseInt64(documents[slot]?['documentId']);
+    return id != null && id > 0 ? id : null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -151,6 +156,10 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
         fileName: file.name,
         bytes: bytes,
       );
+      final documentId = parseInt64(uploaded['documentId']);
+      if (documentId == null || documentId <= 0) {
+        throw const FormatException('上传材料缺少有效标识');
+      }
       if (current && version == generation) {
         setState(() => documents[slot] = {...uploaded, 'fileName': file.name});
       }
@@ -165,8 +174,11 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
 
   Future<void> _remove(String slot) async {
     if (!current || busy || uploading != null) return;
-    final id = asInt(documents[slot]?['documentId']);
-    if (id <= 0) return;
+    final id = _documentId(slot);
+    if (id == null) {
+      setState(() => error = '材料暂不可用，请重新上传');
+      return;
+    }
     setState(() {
       uploading = slot;
       error = null;
@@ -207,13 +219,14 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
     if (!current || busy || uploading != null || loading) return;
     final now = DateTime.now().toUtc(), today = DateTime.now().toUtc();
     final day = DateTime.utc(now.year, now.month, now.day);
+    final documentIds = slots.map(_documentId).toList();
     String? invalid;
     if (!countries.any((c) => c['code'] == country)) {
       invalid = '请选择国家或地区';
     } else if (!['SELF', 'SUMSUB', 'VERIFF'].contains(provider)) {
       invalid = '身份核验服务暂不可用';
     } else if (provider == 'SELF') {
-      if (slots.any((slot) => asInt(documents[slot]?['documentId']) <= 0)) {
+      if (documentIds.any((id) => id == null)) {
         invalid = '请上传所有必需材料';
       } else if (expires == null || expires!.isBefore(day)) {
         invalid = '证件有效期不能为空或早于今天';
@@ -250,9 +263,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
             ? 'PENDING'
             : 'NOT_REQUIRED',
         documentIds: provider == 'SELF'
-            ? slots
-                  .map((slot) => asInt(documents[slot]!['documentId']))
-                  .toList()
+            ? documentIds.whereType<int>().toList()
             : [],
         documentExpiresOn: provider == 'SELF' ? date(expires) : null,
         documentIssuedOn: provider == 'SELF' && type == 'ID_CARD'
@@ -370,7 +381,12 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                 child: ListTile(
                   title: Text(labels[slot] ?? slot),
                   subtitle: Text(
-                    asString(documents[slot]?['fileName'], fallback: '未上传'),
+                    documents.containsKey(slot) && _documentId(slot) == null
+                        ? '材料暂不可用，请重新上传'
+                        : asString(
+                            documents[slot]?['fileName'],
+                            fallback: '未上传',
+                          ),
                   ),
                   trailing: uploading == slot
                       ? const SizedBox(
@@ -388,7 +404,9 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                             if (documents.containsKey(slot))
                               IconButton(
                                 tooltip: '移除材料',
-                                onPressed: blocked ? null : () => _remove(slot),
+                                onPressed: blocked || _documentId(slot) == null
+                                    ? null
+                                    : () => _remove(slot),
                                 icon: const Icon(Icons.delete_outline),
                               ),
                           ],

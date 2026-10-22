@@ -4,11 +4,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/user_scanner_page.dart';
 import 'account_display_test.dart' show session;
+import 'support/authentication.dart';
 
 const attributes = MobileScannerViewAttributes(
   cameraDirection: CameraFacing.back,
@@ -43,7 +43,7 @@ void main() {
       final picker = ScannerPhotoPicker();
       FilePicker.platform = picker;
       final api = ScannerApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = _ScannerState(api: api);
       addTearDown(state.dispose);
       await tester.pumpWidget(MaterialApp(home: UserScannerPage(state: state)));
       await tester.pumpAndSettle();
@@ -74,7 +74,7 @@ void main() {
     'swiping away during permission request stops the late camera start',
     (tester) async {
       platform.startResult = Completer<MobileScannerViewAttributes>();
-      final state = AppState(offline: true)..session = session;
+      final state = _ScannerState();
       addTearDown(state.dispose);
       await tester.pumpWidget(MaterialApp(home: UserScannerPage(state: state)));
       await tester.pump();
@@ -107,8 +107,7 @@ void main() {
         FilePicker.platform = picker;
         addTearDown(() => FilePicker.platform = previousPicker);
         final api = ScannerApi();
-        final state = AppState(offline: true, apiClient: api)
-          ..session = session;
+        final state = _ScannerState(api: api);
         addTearDown(state.dispose);
         await tester.pumpWidget(
           MaterialApp(home: UserScannerPage(state: state)),
@@ -132,8 +131,7 @@ void main() {
         if (closePage) {
           await tester.pumpWidget(const SizedBox());
         } else {
-          state.session = null;
-          state.notifyListeners();
+          await state.logout();
         }
         await tester.pump();
         tester.binding.handleAppLifecycleStateChanged(
@@ -150,7 +148,7 @@ void main() {
     'closing while permission is pending releases the eventual camera session',
     (tester) async {
       platform.startResult = Completer<MobileScannerViewAttributes>();
-      final state = AppState(offline: true)..session = session;
+      final state = _ScannerState();
       addTearDown(state.dispose);
       await tester.pumpWidget(MaterialApp(home: UserScannerPage(state: state)));
       await tester.pump();
@@ -169,7 +167,7 @@ void main() {
     'scan results are public cards, reject external QR and discard late account results',
     (tester) async {
       final api = ScannerApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = _ScannerState(api: api);
       addTearDown(state.dispose);
       await tester.pumpWidget(MaterialApp(home: UserScannerPage(state: state)));
       await tester.pumpAndSettle();
@@ -183,15 +181,13 @@ void main() {
       scan(userQrCode(9));
       await tester.pump();
       expect(api.requests, [userQrCode(9)]);
-      state.session = null;
-      state.notifyListeners();
+      await state.logout();
       await tester.pump();
       api.response.complete({'userId': 9, 'displayName': '迟到的资料'});
       await tester.pumpAndSettle();
       expect(find.text('迟到的资料'), findsNothing);
       expect(find.text('请先登录'), findsOneWidget);
-      state.session = session;
-      state.notifyListeners();
+      await signInAs(state, session);
       api.response = Completer<Map<String, dynamic>>();
       await tester.pumpAndSettle();
       scan(userQrCode(9));
@@ -212,8 +208,20 @@ void main() {
   );
 }
 
-class ScannerApi extends ApiClient {
-  ScannerApi() : super(const AppConfig());
+class _ScannerState extends AppState {
+  _ScannerState({ScannerApi? api})
+    : super(
+        initialSession: session,
+        apiClient: api ?? ScannerApi(),
+        sessionStore: MemorySessionStore(),
+        config: const AppConfig(websocketUrl: ''),
+      );
+
+  @override
+  Future<void> refreshPrivateData() async {}
+}
+
+class ScannerApi extends TestApiClient {
   final requests = <String>[];
   Completer<Map<String, dynamic>> response = Completer();
   @override

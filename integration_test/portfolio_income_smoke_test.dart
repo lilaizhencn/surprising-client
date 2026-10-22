@@ -25,7 +25,11 @@ void main() {
     );
     const config = AppConfig(websocketUrl: '');
     final api = ApiClient(config)..setSession(session);
-    final state = AppState(config: config, apiClient: api)..session = session;
+    final state = AppState(
+      initialSession: session,
+      config: config,
+      apiClient: api,
+    );
     Future<void> capture(String name) async {
       final ack = File('${Directory.systemTemp.path}/native-capture-$name.ack');
       if (await ack.exists()) await ack.delete();

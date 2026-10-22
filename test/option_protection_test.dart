@@ -1,3 +1,5 @@
+import 'support/core_snapshot_fixture.dart';
+import 'support/authentication.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,7 +11,7 @@ import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
 
-const session = AuthSession(
+const actorSession = AuthSession(
   user: AuthUser(userId: 1, username: 'option', email: '', status: 'ACTIVE'),
   accessToken: 'test',
   refreshToken: 'test',
@@ -89,7 +91,7 @@ void main() {
     'atomic pair persists original identities before exactly one canonical product request',
     () async {
       final settings = _Settings(), api = _Api();
-      final state = _State(api, settings)..session = session;
+      final state = _State(initialSession: actorSession, api, settings);
       addTearDown(state.dispose);
       api.before = () {
         final stored = asMap(
@@ -127,15 +129,14 @@ void main() {
     'lost reply survives reconstruction and unknown/terminal reads never resend either leg',
     () async {
       final settings = _Settings(), api = _Api()..lose = true;
-      var state = _State(api, settings)..session = session;
+      var state = _State(initialSession: actorSession, api, settings);
       expect(await state.placeOco(pair()), 0);
       final original = state.pendingTradingCommand!.ocoTakeProfitClientId;
       expect(await state.placeOco(pair()), 0);
       state.dispose();
-      state = _State(api, settings);
+      state = _State(api, settings, initialSession: actorSession);
       addTearDown(state.dispose);
       await state.bootstrap();
-      state.session = session;
       expect(state.pendingTradingCommand!.ocoTakeProfitClientId, original);
       await state.checkPendingTradingCommand();
       expect(state.tradingCommandPending, true);
@@ -156,7 +157,7 @@ void main() {
     'malformed accepted response and failed lookup retain the original OCO',
     () async {
       final api = _Api()..badReply = true;
-      final state = _State(api, _Settings())..session = session;
+      final state = _State(initialSession: actorSession, api, _Settings());
       addTearDown(state.dispose);
       await state.placeOco(pair());
       api.badRead = true;
@@ -169,7 +170,7 @@ void main() {
   test('storage failure stops the pair before any write', () async {
     final api = _Api();
     final settings = _Settings()..fail = true;
-    final state = _State(api, settings)..session = session;
+    final state = _State(initialSession: actorSession, api, settings);
     addTearDown(state.dispose);
     await state.placeOco(pair());
     expect(api.posts, 0);
@@ -182,16 +183,17 @@ void main() {
       for (final status in ['HALT', 'CLOSED']) {
         final api = _Api();
         final state = _State(
+          initialSession: actorSession,
           api,
           _Settings(),
           instrument: contract(status: status),
-        )..session = session;
+        );
         await state.placeOco(pair());
         expect(api.posts, 0);
         state.dispose();
       }
       final api = _Api();
-      final state = _State(api, _Settings())..session = session;
+      final state = _State(initialSession: actorSession, api, _Settings());
       addTearDown(state.dispose);
       for (final invalid in [
         [leg('TAKE_PROFIT', 100), leg('STOP_LOSS', 200)],
@@ -240,7 +242,7 @@ void main() {
     'single tiers persist each identity before POST; loss stops all unsent tiers and restores by GET',
     () async {
       final settings = _Settings(), api = _SingleApi()..loseAt = 2;
-      var state = _State(api, settings)..session = session;
+      var state = _State(initialSession: actorSession, api, settings);
       api.before = () {
         final pending = asMap(
           asList(jsonDecode(settings.values['pendingTradingOrders']!)).single,
@@ -263,10 +265,9 @@ void main() {
       expect(state.lastNotice, contains('其余未发送'));
       expect(await state.placeTriggerOrders(pair()), 0);
       state.dispose();
-      state = _State(api, settings);
+      state = _State(api, settings, initialSession: actorSession);
       addTearDown(state.dispose);
       await state.bootstrap();
-      state.session = session;
       expect(state.pendingTradingCommand!.clientTriggerOrderId, original);
       await state.checkPendingTradingCommand();
       expect(state.tradingCommandPending, true);
@@ -289,7 +290,7 @@ void main() {
     'single cancellation retains exact int64 identity and restores without a second POST',
     () async {
       final settings = _Settings(), api = _SingleApi()..loseAt = 1;
-      var state = _State(api, settings)..session = session;
+      var state = _State(initialSession: actorSession, api, settings);
       final order = TriggerOrderModel.fromJson(
         api.response({'clientTriggerOrderId': 'old'}),
       );
@@ -301,10 +302,9 @@ void main() {
       await state.cancelTriggerOrder(order);
       expect(api.posts.length, 1);
       state.dispose();
-      state = _State(api, settings);
+      state = _State(api, settings, initialSession: actorSession);
       addTearDown(state.dispose);
       await state.bootstrap();
-      state.session = session;
       await state.checkPendingTradingCommand();
       expect(state.tradingCommandPending, true);
       api.terminal = true;
@@ -323,7 +323,7 @@ void main() {
     () async {
       final settings = _Settings()..fail = true;
       final api = _SingleApi(),
-          state = _State(_SingleApi(), settings)..session = session;
+          state = _State(initialSession: actorSession, _SingleApi(), settings);
       addTearDown(state.dispose);
       expect(await state.placeTriggerOrders([leg('TAKE_PROFIT', 24690)]), 0);
       expect(state.tradingCommandPending, false);
@@ -340,7 +340,7 @@ void main() {
     'malformed trigger response and unavailable lookup keep the original and stop later tiers',
     () async {
       final api = _SingleApi()..badReply = true;
-      final state = _State(api, _Settings())..session = session;
+      final state = _State(initialSession: actorSession, api, _Settings());
       addTearDown(state.dispose);
       expect(await state.placeTriggerOrders(pair()), 0);
       expect(api.posts.length, 1);
@@ -356,7 +356,7 @@ void main() {
     'failure to persist confirmation retains the original until a subsequent successful read',
     () async {
       final api = _SingleApi(), settings = _Settings();
-      final state = _State(api, settings)..session = session;
+      final state = _State(initialSession: actorSession, api, settings);
       addTearDown(state.dispose);
       api.before = () => settings.fail = true;
       await state.placeTriggerOrders(pair());
@@ -376,19 +376,26 @@ void main() {
     'an account change during storage prevents sending the old account trigger',
     () async {
       final api = _SingleApi(), settings = _Settings();
-      final state = _State(api, settings)..session = session;
+      final state = _State(initialSession: actorSession, api, settings);
       addTearDown(state.dispose);
-      settings.before = () {
-        state.session = const AuthSession(
-          user: AuthUser(
-            userId: 2,
-            username: 'new',
-            email: '',
-            status: 'ACTIVE',
+      settings.before = () async {
+        settings.before = null;
+        await state.logout();
+        await signInAs(
+          state,
+          const AuthSession(
+            user: AuthUser(
+              userId: 2,
+              username: 'new',
+              email: '',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'new',
+            refreshToken: 'new',
           ),
-          accessToken: 'new',
-          refreshToken: 'new',
         );
+        // The new account has no trading feedback; late old work must not add any.
+        state.lastNotice = null;
       };
       await state.placeTriggerOrders(pair());
       expect(api.posts, isEmpty);
@@ -402,7 +409,7 @@ void main() {
       '320px $brightness independent unknown tier leaves only unsent draft and disables resubmit',
       (tester) async {
         final api = _SingleApi()..loseAt = 1;
-        final state = _State(api, _Settings())..session = session;
+        final state = _State(initialSession: actorSession, api, _Settings());
         tester.view.physicalSize = const Size(320, 1800);
         tester.view.devicePixelRatio = 1;
         addTearDown(() {
@@ -461,7 +468,7 @@ void main() {
       '320px $brightness OCO source/limit controls use actual three-decimal scale',
       (tester) async {
         final api = _Api();
-        final state = _State(api, _Settings())..session = session;
+        final state = _State(initialSession: actorSession, api, _Settings());
         tester.view.physicalSize = const Size(320, 1600);
         tester.view.devicePixelRatio = 1;
         addTearDown(() {
@@ -565,6 +572,7 @@ class _Api extends ApiClient {
             'success': true,
             'message': 'completed',
             'order': {
+              ...completeCoreRow('trigger', {}),
               ...orders[i],
               'instrumentId': badReply ? '99' : orders[i]['instrumentId'],
               'triggerOrderId': 100 + i,
@@ -613,22 +621,32 @@ class _PayloadApi extends ApiClient {
     expect(path, '/api/v1/gateway/trading-trigger');
     expect(productLine, 'OPTION');
     this.body = body;
-    return {...body, 'triggerOrderId': 99, 'status': 'PENDING'};
+    return {
+      ...completeCoreRow('trigger', {}),
+      ...body,
+      'triggerOrderId': 99,
+      'status': 'PENDING',
+    };
   }
 }
 
 class _State extends AppState {
-  _State(ApiClient api, _Settings settings, {Instrument? instrument})
-    : super(
-        apiClient: api,
-        settingsStore: settings,
-        sessionStore: _Sessions(),
-        config: const AppConfig(websocketUrl: ''),
-        seedInstruments: [instrument ?? contract()],
-      ) {
+  _State(
+    ApiClient api,
+    _Settings settings, {
+    Instrument? instrument,
+    super.initialSession,
+  }) : super(
+         apiClient: api,
+         settingsStore: settings,
+         sessionStore: _Sessions(),
+         config: const AppConfig(websocketUrl: ''),
+         seedInstruments: [instrument ?? contract()],
+       ) {
     mode = ProductMode.option;
     positions = [
       Position.fromJson({
+        ...completeCoreRow('position', {}),
         'instrumentId': '74',
         'symbol': selectedSymbol,
         'signedQuantitySteps': 4,
@@ -680,13 +698,14 @@ class _Sessions implements SessionStore {
   Future<void> enableBiometric() async {}
 }
 
-class _SingleApi extends ApiClient {
+class _SingleApi extends TestApiClient {
   _SingleApi() : super(const AppConfig());
   final List<Map<String, dynamic>> posts = [], reads = [];
   int loseAt = 0;
   bool terminal = false, badReply = false, badRead = false;
   FutureOr<void> Function()? before;
   Map<String, dynamic> response(Map<String, dynamic> body) => {
+    ...completeCoreRow('trigger', {}),
     'userId': 1,
     'instrumentId': '74',
     'symbol': contract().symbol,

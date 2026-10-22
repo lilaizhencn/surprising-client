@@ -20,8 +20,11 @@ ApiClient deviceApi({
 Uri returnLink(String id) => Uri.parse('surprising://auth/telegram?flowId=$id');
 
 class RestoredAppState extends AppState {
-  RestoredAppState(ApiClient api, TelegramLoginStore store)
-    : super(apiClient: api, telegramLoginStore: store);
+  RestoredAppState(
+    ApiClient api,
+    TelegramLoginStore store, {
+    super.initialSession,
+  }) : super(apiClient: api, telegramLoginStore: store);
   @override
   Future<void> restoreAuthentication() async {}
 }
@@ -197,13 +200,14 @@ void main() {
         ..deviceIdLoader = () async => device;
       final store = TelegramLoginStore();
       await store.save(api, TelegramLoginFlow.fromJson(fixtures.flow()));
-      final state = RestoredAppState(api, store);
-      addTearDown(state.dispose);
-      state.session = AuthSession.fromJson(fixtures.session());
-      expect(await state.resumeTelegramLogin(returnLink('s' * 43)), isFalse);
-      state.pendingBiometricSession = state.session;
-      state.session = null;
-      expect(await state.resumeTelegramLogin(returnLink('s' * 43)), isFalse);
+      final session = AuthSession.fromJson(fixtures.session());
+      final signedIn = RestoredAppState(api, store, initialSession: session);
+      expect(await signedIn.resumeTelegramLogin(returnLink('s' * 43)), isFalse);
+      signedIn.dispose();
+      final locked = RestoredAppState(api, store)
+        ..pendingBiometricSession = session;
+      addTearDown(locked.dispose);
+      expect(await locked.resumeTelegramLogin(returnLink('s' * 43)), isFalse);
       expect(api.requests, isEmpty);
     },
   );

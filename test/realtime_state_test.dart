@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -8,18 +9,19 @@ import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/realtime_state.dart';
 
 String version(int n) => '${n.toString().padLeft(19, '0')}:0000000000';
-Map<String, dynamic> event(String channel, int n, dynamic value) => {
-  'op': 'event',
-  'channel': channel,
-  'userId': 1,
-  'productLine': 'LINEAR_PERPETUAL',
-  'data': {'version': version(n), 'entityId': 'user', 'value': value},
-};
+Map<String, dynamic> event(String channel, int n, dynamic value) =>
+    completeCoreEvent({
+      'op': 'event',
+      'channel': channel,
+      'userId': 1,
+      'productLine': 'LINEAR_PERPETUAL',
+      'data': {'version': version(n), 'entityId': 'user', 'value': value},
+    });
 Map<String, dynamic> snapshot(
   int n, {
   Map<String, dynamic>? account,
   List<dynamic>? orders,
-}) => {
+}) => completeCoreSnapshot({
   'op': 'snapshot',
   'userId': 1,
   'productLine': 'LINEAR_PERPETUAL',
@@ -29,7 +31,7 @@ Map<String, dynamic> snapshot(
     'account': account ?? {'balances': [], 'positions': []},
     'openOrders': orders ?? [],
   },
-};
+});
 
 void main() {
   test(
@@ -176,25 +178,27 @@ void main() {
         }),
       );
       expect(view.rows('position'), isEmpty);
-      for (final status in [
+      for (final (index, status) in [
         'TRIGGERED',
         'TRIGGER_FAILED',
         'CANCELED',
         'EXPIRED',
-      ]) {
+      ].indexed) {
+        final triggerId = index + 1;
         view.apply(
           event('triggerOrders', 6, [
-            {'triggerOrderId': status, 'status': 'PENDING'},
+            {'triggerOrderId': triggerId, 'status': 'PENDING'},
           ]),
         );
+        expect(view.rows('trigger'), hasLength(1));
         view.apply(
           event('triggerOrders', 8, [
-            {'triggerOrderId': status, 'status': status},
+            {'triggerOrderId': triggerId, 'status': status},
           ]),
         );
         view.apply(
           event('triggerOrders', 7, [
-            {'triggerOrderId': status, 'status': 'PENDING'},
+            {'triggerOrderId': triggerId, 'status': 'PENDING'},
           ]),
         );
       }
@@ -236,33 +240,36 @@ void main() {
   test(
     'six products share a symbol without mixing balances, marks or closing PnL',
     () {
-      final state = AppState(offline: true)
-        ..session = const AuthSession(
-          user: AuthUser(
-            userId: 1,
-            username: 'test',
-            email: 'test@example.com',
-            status: 'ACTIVE',
-          ),
-          accessToken: 'access',
-          refreshToken: 'refresh',
-        )
-        ..instruments = [
-          for (final p in ProductMode.values)
-            Instrument.fromJson({
-              'symbol': 'BTC-USDT',
-              'contractType': p.contractType,
-              'changeId': 1,
-              'notionalMultiplierUnits': 10,
-              'priceTickUnits': 1,
-              'baseAsset': 'BTC',
-              'quoteAsset': 'USDT',
-              'settleAsset': 'USDT',
-              'baseScaleUnits': 100000000,
-              'quoteScaleUnits': 100000000,
-              'settleScaleUnits': 100000000,
-            }),
-        ];
+      final state =
+          AppState(
+              initialSession: const AuthSession(
+                user: AuthUser(
+                  userId: 1,
+                  username: 'test',
+                  email: 'test@example.com',
+                  status: 'ACTIVE',
+                ),
+                accessToken: 'access',
+                refreshToken: 'refresh',
+              ),
+              offline: true,
+            )
+            ..instruments = [
+              for (final p in ProductMode.values)
+                Instrument.fromJson({
+                  'symbol': 'BTC-USDT',
+                  'contractType': p.contractType,
+                  'changeId': 1,
+                  'notionalMultiplierUnits': 10,
+                  'priceTickUnits': 1,
+                  'baseAsset': 'BTC',
+                  'quoteAsset': 'USDT',
+                  'settleAsset': 'USDT',
+                  'baseScaleUnits': 100000000,
+                  'quoteScaleUnits': 100000000,
+                  'settleScaleUnits': 100000000,
+                }),
+            ];
       addTearDown(state.dispose);
       state.handleRealtimeMessage({'op': 'authenticated', 'userId': 1});
       for (final p in ProductMode.values) {

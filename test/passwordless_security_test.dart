@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -47,7 +48,12 @@ void main() {
     'fresh passwordless account binds a new contact without a password and still submits its code',
     (tester) async {
       final api = PasswordlessApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await openSecurity(tester, state);
       await tester.ensureVisible(find.text('启用/绑定').first);
@@ -82,7 +88,12 @@ void main() {
     'expired primary authentication requests a new login before issuing a code',
     (tester) async {
       final api = PasswordlessApi()..expired = true;
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await openSecurity(tester, state);
       expect(find.text('重新登录验证身份'), findsOneWidget);
@@ -100,15 +111,19 @@ void main() {
     'a late primary context cannot open a dialog after account logout',
     (tester) async {
       final api = PasswordlessApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await openSecurity(tester, state);
       api.pendingPrimary = Completer<PrimaryAuthenticationContext>();
       await tester.ensureVisible(find.text('启用/绑定').first);
       await tester.tap(find.text('启用/绑定').first);
       await tester.pump();
-      state.session = null;
-      state.notifyListeners();
+      await state.logout();
       await tester.pump();
       api.pendingPrimary!.complete(api.context);
       await tester.pumpAndSettle();

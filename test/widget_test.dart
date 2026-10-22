@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -27,22 +28,21 @@ void main() {
 
   test('reuses a transfer idempotency key after an uncertain result', () async {
     final api = _TransferApiClient(const {'status': 'PENDING'});
-    final state =
-        AppState(
-            offline: true,
-            apiClient: api,
-            settingsStore: _InMemorySettingsStore(),
-          )
-          ..session = const AuthSession(
-            user: AuthUser(
-              userId: 99,
-              username: 'transfer-user',
-              email: 'transfer@example.com',
-              status: 'ACTIVE',
-            ),
-            accessToken: 'access',
-            refreshToken: 'refresh',
-          );
+    final state = AppState(
+      initialSession: const AuthSession(
+        user: AuthUser(
+          userId: 99,
+          username: 'transfer-user',
+          email: 'transfer@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      ),
+      offline: true,
+      apiClient: api,
+      settingsStore: _InMemorySettingsStore(),
+    );
 
     await state.transfer(
       sourceAccountType: 'SPOT',
@@ -68,22 +68,21 @@ void main() {
     'requires an explicit reset before retrying a failed transfer',
     () async {
       final api = _TransferApiClient(const {'status': 'FAILED'});
-      final state =
-          AppState(
-              offline: true,
-              apiClient: api,
-              settingsStore: _InMemorySettingsStore(),
-            )
-            ..session = const AuthSession(
-              user: AuthUser(
-                userId: 100,
-                username: 'failed-transfer-user',
-                email: 'failed-transfer@example.com',
-                status: 'ACTIVE',
-              ),
-              accessToken: 'access',
-              refreshToken: 'refresh',
-            );
+      final state = AppState(
+        initialSession: const AuthSession(
+          user: AuthUser(
+            userId: 100,
+            username: 'failed-transfer-user',
+            email: 'failed-transfer@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'access',
+          refreshToken: 'refresh',
+        ),
+        offline: true,
+        apiClient: api,
+        settingsStore: _InMemorySettingsStore(),
+      );
 
       await state.transfer(
         sourceAccountType: 'SPOT',
@@ -114,22 +113,21 @@ void main() {
 
   test('locks a transfer after a transport error', () async {
     final api = _TransferApiClient(const {}, failure: StateError('offline'));
-    final state =
-        AppState(
-            offline: true,
-            apiClient: api,
-            settingsStore: _InMemorySettingsStore(),
-          )
-          ..session = const AuthSession(
-            user: AuthUser(
-              userId: 102,
-              username: 'transport-transfer-user',
-              email: 'transport-transfer@example.com',
-              status: 'ACTIVE',
-            ),
-            accessToken: 'access',
-            refreshToken: 'refresh',
-          );
+    final state = AppState(
+      initialSession: const AuthSession(
+        user: AuthUser(
+          userId: 102,
+          username: 'transport-transfer-user',
+          email: 'transport-transfer@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      ),
+      offline: true,
+      apiClient: api,
+      settingsStore: _InMemorySettingsStore(),
+    );
 
     await state.transfer(
       sourceAccountType: 'SPOT',
@@ -150,8 +148,8 @@ void main() {
   });
 
   test('fails closed when withdrawal rules are unavailable', () {
-    final state = AppState(offline: true)
-      ..session = const AuthSession(
+    final state = AppState(
+      initialSession: const AuthSession(
         user: AuthUser(
           userId: 103,
           username: 'withdrawal-user',
@@ -160,7 +158,9 @@ void main() {
         ),
         accessToken: 'access',
         refreshToken: 'refresh',
-      );
+      ),
+      offline: true,
+    );
 
     expect(
       state.validateWithdrawal(
@@ -180,19 +180,19 @@ void main() {
     });
     final state =
         AppState(
+            initialSession: const AuthSession(
+              user: AuthUser(
+                userId: 104,
+                username: 'withdrawal-user',
+                email: 'withdrawal@example.com',
+                status: 'ACTIVE',
+              ),
+              accessToken: 'access',
+              refreshToken: 'refresh',
+            ),
             offline: true,
             apiClient: api,
             settingsStore: _InMemorySettingsStore(),
-          )
-          ..session = const AuthSession(
-            user: AuthUser(
-              userId: 104,
-              username: 'withdrawal-user',
-              email: 'withdrawal@example.com',
-              status: 'ACTIVE',
-            ),
-            accessToken: 'access',
-            refreshToken: 'refresh',
           )
           ..withdrawalRulesReady = true
           ..walletReady = true
@@ -242,22 +242,21 @@ void main() {
   testWidgets('locks transfer fields and action after a pending result', (
     tester,
   ) async {
-    final state =
-        AppState(
-            offline: true,
-            apiClient: _TransferApiClient(const {'status': 'PENDING'}),
-            settingsStore: _InMemorySettingsStore(),
-          )
-          ..session = const AuthSession(
-            user: AuthUser(
-              userId: 101,
-              username: 'pending-transfer-user',
-              email: 'pending-transfer@example.com',
-              status: 'ACTIVE',
-            ),
-            accessToken: 'access',
-            refreshToken: 'refresh',
-          );
+    final state = AppState(
+      initialSession: const AuthSession(
+        user: AuthUser(
+          userId: 101,
+          username: 'pending-transfer-user',
+          email: 'pending-transfer@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      ),
+      offline: true,
+      apiClient: _TransferApiClient(const {'status': 'PENDING'}),
+      settingsStore: _InMemorySettingsStore(),
+    );
 
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -324,42 +323,46 @@ void main() {
   testWidgets('opens the deposit coin and network selection flow', (
     tester,
   ) async {
-    final state = AppState(offline: true, apiClient: DepositApi())
-      ..session = const AuthSession(
-        user: AuthUser(
-          userId: 1,
-          username: 'demo_user',
-          email: 'demo@example.com',
-          status: 'ACTIVE',
-        ),
-        accessToken: 'access',
-        refreshToken: 'refresh',
-      )
-      ..walletPortfolio = WalletPortfolio.fromJson({
-        'generatedAt': '2026-07-06T00:00:00Z',
-        'assetCount': 1,
-        'assets': [
-          {
-            'symbol': 'USDT',
-            'availableBalance': '12.5',
-            'lockedBalance': 0,
-            'totalBalance': '12.5',
-            'chains': [
+    final state =
+        AppState(
+            initialSession: const AuthSession(
+              user: AuthUser(
+                userId: 1,
+                username: 'demo_user',
+                email: 'demo@example.com',
+                status: 'ACTIVE',
+              ),
+              accessToken: 'access',
+              refreshToken: 'refresh',
+            ),
+            offline: true,
+            apiClient: DepositApi(),
+          )
+          ..walletPortfolio = WalletPortfolio.fromJson({
+            'generatedAt': '2026-07-06T00:00:00Z',
+            'assetCount': 1,
+            'assets': [
               {
-                'chain': 'ETH',
                 'symbol': 'USDT',
-                'network': 'Ethereum',
-                'nativeAsset': false,
-                'nativeSymbol': 'ETH',
                 'availableBalance': '12.5',
                 'lockedBalance': 0,
                 'totalBalance': '12.5',
-                'addresses': const [],
+                'chains': [
+                  {
+                    'chain': 'ETH',
+                    'symbol': 'USDT',
+                    'network': 'Ethereum',
+                    'nativeAsset': false,
+                    'nativeSymbol': 'ETH',
+                    'availableBalance': '12.5',
+                    'lockedBalance': 0,
+                    'totalBalance': '12.5',
+                    'addresses': const [],
+                  },
+                ],
               },
             ],
-          },
-        ],
-      });
+          });
 
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -388,8 +391,8 @@ void main() {
   testWidgets('does not invent deposit networks when catalog is empty', (
     tester,
   ) async {
-    final state = AppState(offline: true, apiClient: _EmptyDepositApi())
-      ..session = const AuthSession(
+    final state = AppState(
+      initialSession: const AuthSession(
         user: AuthUser(
           userId: 1,
           username: 'demo_user',
@@ -398,7 +401,10 @@ void main() {
         ),
         accessToken: 'access',
         refreshToken: 'refresh',
-      );
+      ),
+      offline: true,
+      apiClient: _EmptyDepositApi(),
+    );
 
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -418,32 +424,35 @@ void main() {
   });
 
   testWidgets('renders the deposit address show page details', (tester) async {
-    final state = AppState(offline: true)
-      ..session = const AuthSession(
-        user: AuthUser(
-          userId: 1,
-          username: 'demo_user',
-          email: 'demo@example.com',
-          status: 'ACTIVE',
-        ),
-        accessToken: 'access',
-        refreshToken: 'refresh',
-      )
-      ..walletDepositAddress = const WalletDepositAddress(
-        chain: 'Surprising Chain',
-        symbol: 'USDT',
-        network: 'Surprising Chain',
-        standard: 'SPEX',
-        nativeAsset: false,
-        nativeSymbol: 'SPEX',
-        address: 'SX00861E9d78139CD68Ae6C78A5b5F7384325e60950',
-        qrCodeDataUrl: '',
-        ownerAddress: '',
-        accountId: '1',
-        addressIndex: 0,
-        memo: '',
-        warnings: [],
-      );
+    final state =
+        AppState(
+            initialSession: const AuthSession(
+              user: AuthUser(
+                userId: 1,
+                username: 'demo_user',
+                email: 'demo@example.com',
+                status: 'ACTIVE',
+              ),
+              accessToken: 'access',
+              refreshToken: 'refresh',
+            ),
+            offline: true,
+          )
+          ..walletDepositAddress = const WalletDepositAddress(
+            chain: 'Surprising Chain',
+            symbol: 'USDT',
+            network: 'Surprising Chain',
+            standard: 'SPEX',
+            nativeAsset: false,
+            nativeSymbol: 'SPEX',
+            address: 'SX00861E9d78139CD68Ae6C78A5b5F7384325e60950',
+            qrCodeDataUrl: '',
+            ownerAddress: '',
+            accountId: '1',
+            addressIndex: 0,
+            memo: '',
+            warnings: [],
+          );
 
     await tester.pumpWidget(
       AppScope(
@@ -546,24 +555,23 @@ void main() {
 
   test('reconnects private realtime after access token rotation', () async {
     final privateRealtime = _RecordingRealtimeClient();
-    final state =
-        AppState(
-            config: const AppConfig(websocketUrl: 'ws://test'),
-            apiClient: _PrivateRealtimeApiClient(),
-            realtimeClient: privateRealtime,
-            sessionStore: _InMemorySessionStore(),
-            seedInstruments: fallbackInstruments(),
-          )
-          ..session = const AuthSession(
-            user: AuthUser(
-              userId: 1001,
-              username: 'demo_user',
-              email: 'demo@example.com',
-              status: 'ACTIVE',
-            ),
-            accessToken: 'old-access',
-            refreshToken: 'old-refresh',
-          );
+    final state = AppState(
+      initialSession: const AuthSession(
+        user: AuthUser(
+          userId: 1001,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+      ),
+      config: const AppConfig(websocketUrl: 'ws://test'),
+      apiClient: _PrivateRealtimeApiClient(),
+      realtimeClient: privateRealtime,
+      sessionStore: _InMemorySessionStore(),
+      seedInstruments: fallbackInstruments(),
+    );
 
     await state.api.onSessionRefreshed!(
       const AuthSession(
@@ -595,23 +603,22 @@ void main() {
     'ignores a stale private realtime event after access token rotation',
     () async {
       final privateRealtime = _RecordingRealtimeClient();
-      final state =
-          AppState(
-              config: const AppConfig(websocketUrl: 'ws://test'),
-              apiClient: _PrivateRealtimeApiClient(),
-              realtimeClient: privateRealtime,
-              sessionStore: _InMemorySessionStore(),
-            )
-            ..session = const AuthSession(
-              user: AuthUser(
-                userId: 1001,
-                username: 'demo_user',
-                email: 'demo@example.com',
-                status: 'ACTIVE',
-              ),
-              accessToken: 'old-access',
-              refreshToken: 'old-refresh',
-            );
+      final state = AppState(
+        initialSession: const AuthSession(
+          user: AuthUser(
+            userId: 1001,
+            username: 'demo_user',
+            email: 'demo@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'old-access',
+          refreshToken: 'old-refresh',
+        ),
+        config: const AppConfig(websocketUrl: 'ws://test'),
+        apiClient: _PrivateRealtimeApiClient(),
+        realtimeClient: privateRealtime,
+        sessionStore: _InMemorySessionStore(),
+      );
 
       await state.api.onSessionRefreshed!(
         const AuthSession(
@@ -658,23 +665,22 @@ void main() {
 
   test('ignores a stale private realtime failure', () async {
     final privateRealtime = _FailingFirstRealtimeClient();
-    final state =
-        AppState(
-            config: const AppConfig(websocketUrl: 'ws://test'),
-            apiClient: _PrivateRealtimeApiClient(),
-            realtimeClient: privateRealtime,
-            sessionStore: _InMemorySessionStore(),
-          )
-          ..session = const AuthSession(
-            user: AuthUser(
-              userId: 1001,
-              username: 'demo_user',
-              email: 'demo@example.com',
-              status: 'ACTIVE',
-            ),
-            accessToken: 'old-access',
-            refreshToken: 'old-refresh',
-          );
+    final state = AppState(
+      initialSession: const AuthSession(
+        user: AuthUser(
+          userId: 1001,
+          username: 'demo_user',
+          email: 'demo@example.com',
+          status: 'ACTIVE',
+        ),
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+      ),
+      config: const AppConfig(websocketUrl: 'ws://test'),
+      apiClient: _PrivateRealtimeApiClient(),
+      realtimeClient: privateRealtime,
+      sessionStore: _InMemorySessionStore(),
+    );
 
     final firstRefresh = state.api.onSessionRefreshed!(
       const AuthSession(
@@ -932,7 +938,7 @@ void main() {
       'op': 'event',
       'channel': 'trades',
       'productLine': 'LINEAR_PERPETUAL',
-      'data': {'symbol': 'BTC-USDT', 'price': 65000.0},
+      'data': {'symbol': 'BTC-USDT', 'price': 65000.0, 'quantity': '0.01'},
     });
     expect(state.latestPrices, isNot(contains('BTC-USDT')));
 
@@ -940,7 +946,7 @@ void main() {
       'op': 'event',
       'channel': 'trades',
       'productLine': 'SPOT',
-      'data': {'symbol': 'BTC-USDT', 'price': 65001.0},
+      'data': {'symbol': 'BTC-USDT', 'price': 65001.0, 'quantity': '0.01'},
     });
     expect(state.latestPrices['SPOT:BTC-USDT'], 65001.0);
     expect(state.latestPrices['LINEAR_PERPETUAL:BTC-USDT'], 65000.0);
@@ -949,21 +955,24 @@ void main() {
 
   test('spot private refresh skips derivative-only product services', () async {
     final api = _SpotRefreshApiClient();
-    final state = AppState(apiClient: api)
-      ..session = const AuthSession(
-        user: AuthUser(
-          userId: 1,
-          username: 'demo_user',
-          email: 'demo@example.com',
-          status: 'ACTIVE',
-        ),
-        accessToken: 'access',
-        refreshToken: 'refresh',
-      )
-      ..mode = ProductMode.spot
-      ..selectedSymbol = fallbackInstruments()
-          .firstWhere((instrument) => instrument.mode == ProductMode.spot)
-          .symbol;
+    final state =
+        AppState(
+            initialSession: const AuthSession(
+              user: AuthUser(
+                userId: 1,
+                username: 'demo_user',
+                email: 'demo@example.com',
+                status: 'ACTIVE',
+              ),
+              accessToken: 'access',
+              refreshToken: 'refresh',
+            ),
+            apiClient: api,
+          )
+          ..mode = ProductMode.spot
+          ..selectedSymbol = fallbackInstruments()
+              .firstWhere((instrument) => instrument.mode == ProductMode.spot)
+              .symbol;
 
     await state.refreshPrivateData();
 
@@ -1003,34 +1012,39 @@ void main() {
           limit: 100,
         ),
       ]);
-      final state = AppState(apiClient: api)
-        ..session = const AuthSession(
-          user: AuthUser(
-            userId: 1,
-            username: 'demo_user',
-            email: 'demo@example.com',
-            status: 'ACTIVE',
-          ),
-          accessToken: 'access',
-          refreshToken: 'refresh',
-        )
-        ..mode = ProductMode.spot
-        ..selectedSymbol = spotSymbol;
+      final state =
+          AppState(
+              initialSession: const AuthSession(
+                user: AuthUser(
+                  userId: 1,
+                  username: 'demo_user',
+                  email: 'demo@example.com',
+                  status: 'ACTIVE',
+                ),
+                accessToken: 'access',
+                refreshToken: 'refresh',
+              ),
+              apiClient: api,
+            )
+            ..mode = ProductMode.spot
+            ..selectedSymbol = spotSymbol;
 
-      state.handleRealtimeMessage({
-        'op': 'snapshot',
-        'productLine': 'SPOT',
-        'userId': 1,
-        'data': {
-          'status': 'READY',
-          'snapshotVersion': '0000000000000000001:0000000000',
-          'account': {'balances': [], 'positions': []},
-          'openOrders': [
-            for (final id in [11, 10, 9])
-              _openOrderJson(id, spotSymbol, status: 'OPEN'),
-          ],
-        },
-      });
+      state.handleRealtimeMessage(
+        completeCoreSnapshot({
+          'op': 'snapshot',
+          'productLine': 'SPOT',
+          'userId': 1,
+          'data': {
+            'status': 'READY',
+            'snapshotVersion': '0000000000000000001:0000000000',
+            'account': {'balances': [], 'positions': []},
+            'openOrders': [
+              for (final id in [11, 10, 9])
+                _openOrderJson(id, spotSymbol, status: 'OPEN'),
+            ],
+          },
+        }),
+      );
       await state.refreshPrivateData();
       await state.loadMoreOpenOrders();
 
@@ -1103,6 +1117,7 @@ void main() {
 
   test('parses trigger orders with position side', () {
     final order = TriggerOrderModel.fromJson({
+      ...completeCoreRow('trigger', {}),
       'triggerOrderId': 7,
       'symbol': 'BTC-USDT',
       'side': 'SELL',
@@ -1124,6 +1139,7 @@ void main() {
 
   test('applies pushed trigger snapshots and removes terminal orders', () {
     Map<String, dynamic> orderJson(String status) => {
+      ...completeCoreRow('trigger', {}),
       'triggerOrderId': 7,
       'symbol': 'BTC-USDT',
       'side': 'SELL',
@@ -1150,8 +1166,8 @@ void main() {
         'value': [orderJson(status)],
       },
     };
-    final state = AppState(offline: true)
-      ..session = const AuthSession(
+    final state = AppState(
+      initialSession: const AuthSession(
         user: AuthUser(
           userId: 1,
           username: 'test',
@@ -1160,8 +1176,9 @@ void main() {
         ),
         accessToken: 'test',
         refreshToken: 'test',
-      )
-      ..selectedSymbol = 'BTC-USDT';
+      ),
+      offline: true,
+    )..selectedSymbol = 'BTC-USDT';
     state.handleRealtimeMessage(event(8, 'PENDING'));
 
     state.handleRealtimeMessage(event(10, 'CANCELED'));
@@ -1261,7 +1278,7 @@ void main() {
       'channel': 'trades',
       'symbol': 'BTC-USDT',
       'productLine': 'LINEAR_PERPETUAL',
-      'data': {'priceTicks': 650123},
+      'data': {'priceTicks': 650123, 'quantitySteps': 1},
     });
 
     expect(state.latestPriceFor(state.selectedInstrument), 65012.3);
@@ -1274,7 +1291,7 @@ void main() {
       'op': 'event',
       'channel': 'trades',
       'symbol': 'BTC-USDT',
-      'data': {'priceTicks': 650123},
+      'data': {'priceTicks': 650123, 'quantitySteps': 1},
     });
 
     expect(state.latestPrices, isNot(contains('BTC-USDT')));
@@ -1288,7 +1305,7 @@ void main() {
       'channel': 'trades',
       'symbol': 'BTC-USDT',
       'productLine': 'OPTION',
-      'data': {'priceTicks': 650123},
+      'data': {'priceTicks': 650123, 'quantitySteps': 1},
     });
 
     expect(state.latestPrices, isNot(contains('BTC-USDT')));
@@ -1581,6 +1598,7 @@ Map<String, dynamic> _openOrderJson(
   String status = 'ACCEPTED',
 }) {
   return {
+    ...completeCoreRow('order', {}),
     'orderId': orderId,
     'symbol': symbol,
     'side': 'BUY',

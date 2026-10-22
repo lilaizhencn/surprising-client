@@ -24,14 +24,66 @@ int? _fundingPrecision(String? scale, Object? chainDecimals) {
 }
 
 class ApiClient {
-  ApiClient(this.config, {HttpClient? httpClient})
-    : _httpClient = httpClient ?? HttpClient() {
+  ApiClient(
+    this.config, {
+    HttpClient? httpClient,
+    this.requestTimeout = const Duration(seconds: 20),
+    this.uploadTimeout = const Duration(seconds: 90),
+    this.maxResponseBytes = 8 * 1024 * 1024,
+    this.maxDownloadBytes = 20 * 1024 * 1024,
+  }) : _httpClient = httpClient ?? HttpClient() {
+    if (requestTimeout <= Duration.zero ||
+        uploadTimeout <= Duration.zero ||
+        maxResponseBytes <= 0 ||
+        maxDownloadBytes <= 0) {
+      throw ArgumentError('请求截止时间和响应大小限制必须大于零');
+    }
     _httpClient.connectionTimeout = const Duration(seconds: 5);
   }
 
   final AppConfig config;
   List<Instrument> instrumentCatalog = [];
   final HttpClient _httpClient;
+  final Duration requestTimeout;
+  final Duration uploadTimeout;
+  final int maxResponseBytes;
+  final int maxDownloadBytes;
+  final _pendingRequests = <_HttpRequestScope>{};
+  bool _disposed = false;
+
+  /// Cancel requests when their screen, product or session is no longer current.
+  void cancelPendingRequests() {
+    for (final request in _pendingRequests.toList()) {
+      request.cancel(const ApiRequestCancelled());
+    }
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    cancelPendingRequests();
+    _httpClient.close(force: true);
+    onSessionRefreshed = null;
+    onSessionExpired = null;
+  }
+
+  Future<T> _withRequest<T>(
+    Future<T> Function(_HttpRequestScope scope) operation, {
+    Duration? timeout,
+  }) async {
+    if (_disposed) throw const ApiRequestCancelled();
+    final scope = _HttpRequestScope(timeout ?? requestTimeout);
+    _pendingRequests.add(scope);
+    try {
+      final value = await scope.run(() => operation(scope));
+      scope.checkActive();
+      return value;
+    } finally {
+      scope.close();
+      _pendingRequests.remove(scope);
+    }
+  }
+
   String? _accessToken;
   int? _sessionUserId;
   String? _refreshToken;
@@ -85,10 +137,13 @@ class ApiClient {
   }
 
   Future<AuthSession> refresh(String refreshToken) async {
-    final response = await _sendOnce(
-      'POST',
-      '/api/v1/auth/refresh',
-      body: {'refreshToken': refreshToken},
+    final response = await _withRequest(
+      (scope) => _sendOnce(
+        'POST',
+        '/api/v1/auth/refresh',
+        body: {'refreshToken': refreshToken},
+        scope: scope,
+      ),
     );
     final session = AuthSession.fromJson(asMap(response));
     return session;
@@ -781,61 +836,66 @@ class ApiClient {
     return asList(response).map(asMap).toList();
   }
 
-  Future<Uint8List> downloadKycDocument(int id) async {
+  Future<Uint8List> downloadKycDocument(int id) => _withRequest((scope) async {
+    final originalToken = _accessToken;
+    final originalUser = _sessionUserId;
     Future<Uint8List> read() async {
+      final token = _accessToken;
       final uri = Uri.parse(
         config.gatewayBaseUrl,
       ).replace(path: '/api/v1/compliance/kyc/documents/$id');
-      final request = await _httpClient
-          .getUrl(uri)
-          .timeout(const Duration(seconds: 6));
-      if (_accessToken != null) {
-        request.headers.set('Authorization', 'Bearer $_accessToken');
+      final request = await scope.open(_httpClient.getUrl(uri));
+      if (token != _accessToken) {
+        throw ApiException(401, '登录账户已变化，未发送请求');
       }
-      final response = await request.close().timeout(
-        const Duration(seconds: 20),
+      if (token != null) request.headers.set('Authorization', 'Bearer $token');
+      final response = await request.close();
+      final success = response.statusCode >= 200 && response.statusCode < 300;
+      final bytes = await scope.read(
+        response,
+        maxBytes: success ? maxDownloadBytes : maxResponseBytes,
       );
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(
-          response.statusCode,
-          await utf8.decodeStream(response),
-        );
+      if (!success) {
+        throw ApiException(response.statusCode, utf8.decode(bytes));
       }
-      final bytes = await response
-          .fold<List<int>>([], (all, chunk) => all..addAll(chunk))
-          .timeout(const Duration(seconds: 30));
-      return Uint8List.fromList(bytes);
+      return bytes;
     }
 
     try {
       return await read();
     } on ApiException catch (error) {
-      if (error.statusCode != 401 || _refreshToken == null) rethrow;
+      if (error.statusCode != 401 ||
+          originalToken != _accessToken ||
+          originalUser != _sessionUserId ||
+          _refreshToken == null) {
+        rethrow;
+      }
       if (await _refreshAccessToken() == null) rethrow;
+      scope.checkActive();
       return read();
     }
-  }
+  });
 
   Future<Map<String, dynamic>> uploadKycDocument({
     required String documentType,
     required String fileName,
     required List<int> bytes,
-  }) async {
-    final base = Uri.parse(config.gatewayBaseUrl);
-    final uri = base.replace(path: '/api/v1/compliance/kyc/documents');
+  }) => _withRequest((scope) async {
+    final token = _accessToken;
+    final uri = Uri.parse(
+      config.gatewayBaseUrl,
+    ).replace(path: '/api/v1/compliance/kyc/documents');
     final boundary = 'surprising-${DateTime.now().microsecondsSinceEpoch}';
-    final request = await _httpClient
-        .openUrl('POST', uri)
-        .timeout(const Duration(seconds: 6));
+    final request = await scope.open(_httpClient.openUrl('POST', uri));
+    if (token != _accessToken) {
+      throw ApiException(401, '登录账户已变化，未上传文件');
+    }
     request.headers.contentType = ContentType(
       'multipart',
       'form-data',
       parameters: {'boundary': boundary},
     );
-    if (_accessToken != null) {
-      request.headers.set('Authorization', 'Bearer $_accessToken');
-    }
-    final contentType = _kycContentType(fileName);
+    if (token != null) request.headers.set('Authorization', 'Bearer $token');
     request.write('--$boundary\r\n');
     request.write(
       'Content-Disposition: form-data; name="documentType"\r\n\r\n',
@@ -845,19 +905,24 @@ class ApiClient {
     request.write(
       'Content-Disposition: form-data; name="file"; filename="${_safeFileName(fileName)}"\r\n',
     );
-    request.write('Content-Type: $contentType\r\n\r\n');
+    request.write('Content-Type: ${_kycContentType(fileName)}\r\n\r\n');
     request.add(bytes);
     request.write('\r\n--$boundary--\r\n');
-    final response = await request.close().timeout(const Duration(seconds: 30));
-    final payload = await utf8.decodeStream(response);
+    final response = await request.close();
+    final payload = utf8.decode(
+      await scope.read(response, maxBytes: maxResponseBytes),
+    );
+    scope.checkActive();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(
         response.statusCode,
         payload.isEmpty ? response.reasonPhrase : payload,
       );
     }
-    return asMap(payload.isEmpty ? <String, dynamic>{} : jsonDecode(payload));
-  }
+    final decoded = payload.isEmpty ? <String, dynamic>{} : jsonDecode(payload);
+    scope.checkActive();
+    return asMap(decoded);
+  }, timeout: uploadTimeout);
 
   Future<Map<String, dynamic>> submitKyc({
     required String applicantType,
@@ -960,8 +1025,12 @@ class ApiClient {
         '/api/v1/gateway/instrument/list',
         query: {...filters, 'includeMarketSummary': 'true', 'cursor': ?cursor},
       );
-      for (final row in asList(json['instruments'] ?? json['items'])) {
-        final raw = asMap(row);
+      final rows = json['instruments'] ?? json['items'];
+      if (rows is! List || rows.any((row) => row is! Map<String, dynamic>)) {
+        throw const FormatException('合约目录结构无效');
+      }
+      for (final row in rows) {
+        final raw = row as Map<String, dynamic>;
         final instrument = Instrument.fromJson({
           ...raw,
           'baseScaleUnits': scales[asString(raw['baseAsset']).toUpperCase()],
@@ -969,8 +1038,17 @@ class ApiClient {
           'settleScaleUnits':
               scales[asString(raw['settleAsset']).toUpperCase()],
         });
-        loaded['${instrument.mode.productLine}:${instrument.instrumentId.isEmpty ? instrument.symbol : instrument.instrumentId}'] =
-            instrument;
+        if (instrument.instrumentId.isEmpty ||
+            instrument.symbol.isEmpty ||
+            (filters['productLine'] != null &&
+                filters['productLine'] != instrument.mode.productLine)) {
+          throw const FormatException('合约目录身份或产品线无效');
+        }
+        final key = '${instrument.mode.productLine}:${instrument.instrumentId}';
+        if (loaded.containsKey(key)) {
+          throw const FormatException('合约目录包含重复身份');
+        }
+        loaded[key] = instrument;
       }
       if (!asBool(json['hasMore'])) break;
       cursor = asString(json['nextCursor']);
@@ -1486,6 +1564,7 @@ class ApiClient {
 
   Future<AlgoOrderModel> placeAlgoOrder({
     required int userId,
+    required String clientAlgoOrderId,
     required String symbol,
     required String algoType,
     required String side,
@@ -1500,12 +1579,14 @@ class ApiClient {
     required bool postOnly,
     String? productLine,
   }) async {
+    if (clientAlgoOrderId.isEmpty || clientAlgoOrderId.length > 64) {
+      throw const FormatException('算法单请求身份无效');
+    }
     final json = await post(
       '/api/v1/gateway/trading/algo',
       {
         'userId': userId,
-        'clientAlgoOrderId':
-            'app-algo-$userId-${DateTime.now().microsecondsSinceEpoch}',
+        'clientAlgoOrderId': clientAlgoOrderId,
         'symbol': symbol,
         'algoType': algoType,
         'side': side,
@@ -1999,6 +2080,30 @@ class ApiClient {
         userId: userId,
         productLine: productLine,
       );
+      final reportedAt = DateTime.tryParse(asString(json['eventTime']));
+      final age = reportedAt == null
+          ? null
+          : DateTime.now().difference(reportedAt);
+      if (parseInt64(json['userId']) != userId ||
+          requireString(json['settleAsset'], 'settleAsset') != settleAsset ||
+          (accountType != null && json['accountType'] != accountType) ||
+          !ProductMode.values.any(
+            (mode) => mode.accountType == json['accountType'],
+          ) ||
+          (productLine != null &&
+              !ProductMode.values.any(
+                (mode) =>
+                    mode.productLine == productLine &&
+                    mode.accountType == json['accountType'],
+              )) ||
+          requireInt64(json['snapshotId'], 'snapshotId') < 0 ||
+          age == null ||
+          age > const Duration(seconds: 15) ||
+          age < const Duration(seconds: -5)) {
+        throw const FormatException('账户风险身份或时间无效');
+      }
+      requireInt64(json['walletBalanceUnits'], 'walletBalanceUnits');
+      requireInt64(json['unrealizedPnlUnits'], 'unrealizedPnlUnits');
       return AccountRisk.fromJson(json);
     } catch (_) {
       return null;
@@ -2158,6 +2263,32 @@ class ApiClient {
     String? productLine,
     bool unwrapResponseResult = false,
   }) async {
+    return _withRequest(
+      (scope) => _sendAuthenticated(
+        method,
+        path,
+        query: query,
+        body: body,
+        headers: headers,
+        userId: userId,
+        productLine: productLine,
+        unwrapResponseResult: unwrapResponseResult,
+        scope: scope,
+      ),
+    );
+  }
+
+  Future<Object?> _sendAuthenticated(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = false,
+    required _HttpRequestScope scope,
+  }) async {
     final originalToken = _accessToken;
     final originalUser = _sessionUserId;
     try {
@@ -2170,6 +2301,7 @@ class ApiClient {
         userId: userId,
         productLine: productLine,
         unwrapResponseResult: unwrapResponseResult,
+        scope: scope,
       );
     } on ApiException catch (error) {
       if (error.statusCode != 401 ||
@@ -2181,6 +2313,7 @@ class ApiClient {
       }
       final refreshed = await _refreshAccessToken();
       if (refreshed == null) rethrow;
+      scope.checkActive();
       return _sendOnce(
         method,
         path,
@@ -2190,6 +2323,7 @@ class ApiClient {
         userId: userId,
         productLine: productLine,
         unwrapResponseResult: unwrapResponseResult,
+        scope: scope,
       );
     }
   }
@@ -2235,6 +2369,7 @@ class ApiClient {
     int? userId,
     String? productLine,
     bool unwrapResponseResult = false,
+    required _HttpRequestScope scope,
   }) async {
     final token = _accessToken;
     if (userId != null && _sessionUserId != null && userId != _sessionUserId) {
@@ -2266,11 +2401,9 @@ class ApiClient {
       queryParameters: query == null || query.isEmpty ? null : query,
     );
     final deviceId = await resolveDeviceId();
-    final request = await _httpClient
-        .openUrl(method, uri)
-        .timeout(const Duration(seconds: 6));
+    scope.checkActive();
+    final request = await scope.open(_httpClient.openUrl(method, uri));
     if (token != _accessToken) {
-      request.abort();
       throw ApiException(401, '登录账户已变化，未发送请求');
     }
     request.headers.contentType = ContentType.json;
@@ -2286,8 +2419,11 @@ class ApiClient {
     if (body != null) {
       request.write(jsonEncode(body));
     }
-    final response = await request.close().timeout(const Duration(seconds: 20));
-    final payload = await utf8.decodeStream(response);
+    final response = await request.close();
+    final payload = utf8.decode(
+      await scope.read(response, maxBytes: maxResponseBytes),
+    );
+    scope.checkActive();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(
         response.statusCode,
@@ -2296,6 +2432,7 @@ class ApiClient {
     }
     if (payload.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(payload);
+    scope.checkActive();
     if (method == 'POST' &&
         path.startsWith('/api/v1/gateway/trading') &&
         decoded is Map &&
@@ -2334,6 +2471,124 @@ class ApiClient {
     if (data is List) return {'items': data};
     if (data == null) return <String, dynamic>{};
     return asMap(data);
+  }
+}
+
+/// A cancelled write may already have reached the server; its existing intent
+/// and idempotency key must still be used to resolve the outcome.
+class ApiRequestCancelled implements Exception {
+  const ApiRequestCancelled();
+  @override
+  String toString() => '请求已取消';
+}
+
+class ApiResponseTooLarge implements Exception {
+  const ApiResponseTooLarge(this.maxBytes);
+  final int maxBytes;
+  @override
+  String toString() => '响应超过大小限制，请缩小查询范围后重试';
+}
+
+/// One deadline and cancellation boundary owns both the request and body stream.
+class _HttpRequestScope {
+  _HttpRequestScope(this.timeout) {
+    _timer = Timer(timeout, () => cancel(TimeoutException('请求超时', timeout)));
+  }
+
+  final Duration timeout;
+  final _elapsed = Stopwatch()..start();
+  final _interrupted = Completer<Object>();
+  late final Timer _timer;
+  HttpClientRequest? _request;
+  StreamSubscription<List<int>>? _body;
+  void Function(Object)? _failBody;
+  Object? _error;
+
+  Future<T> run<T>(Future<T> Function() action) => Future.any([
+    Future<T>.sync(action),
+    _interrupted.future.then<T>((error) => throw error),
+  ]);
+
+  void checkActive() {
+    if (_error == null && _elapsed.elapsed >= timeout) {
+      cancel(TimeoutException('请求超时', timeout));
+    }
+    final error = _error;
+    if (error != null) throw error;
+  }
+
+  Future<HttpClientRequest> open(Future<HttpClientRequest> opening) async {
+    final request = await opening;
+    // abort() completes done with an error, even before close() is called.
+    unawaited(request.done.then<void>((_) {}, onError: (Object _) {}));
+    _request = request;
+    if (_error != null) request.abort(_error);
+    checkActive();
+    return request;
+  }
+
+  Future<Uint8List> read(
+    HttpClientResponse response, {
+    required int maxBytes,
+  }) async {
+    final bytes = BytesBuilder(copy: false);
+    final result = Completer<Uint8List>();
+    void fail(Object error) {
+      if (!result.isCompleted) result.completeError(error);
+    }
+
+    _failBody = fail;
+    final subscription = response.listen(
+      (chunk) {
+        if (chunk.length > maxBytes - bytes.length) {
+          cancel(ApiResponseTooLarge(maxBytes));
+          return;
+        }
+        bytes.add(chunk);
+      },
+      onError: fail,
+      onDone: () {
+        if (!result.isCompleted) result.complete(bytes.takeBytes());
+      },
+      cancelOnError: true,
+    );
+    _body = subscription;
+    if (_error != null) {
+      fail(_error!);
+      unawaited(subscription.cancel());
+    }
+    if (response.contentLength > maxBytes) {
+      cancel(ApiResponseTooLarge(maxBytes));
+    }
+    try {
+      return await result.future;
+    } finally {
+      if (identical(_body, subscription)) {
+        _body = null;
+        _failBody = null;
+      }
+      await subscription.cancel();
+    }
+  }
+
+  void cancel(Object error) {
+    if (_error != null) return;
+    _error = error;
+    _timer.cancel();
+    _request?.abort(error);
+    _failBody?.call(error);
+    final body = _body;
+    if (body != null) unawaited(body.cancel());
+    _interrupted.complete(error);
+  }
+
+  void close() {
+    _timer.cancel();
+    _elapsed.stop();
+    // A header/authentication/write failure must also release the connection.
+    _request?.abort();
+    final body = _body;
+    if (body != null) unawaited(body.cancel());
   }
 }
 
@@ -2439,6 +2694,8 @@ class RealtimeClient {
   WebSocket? _socket;
   StreamSubscription<dynamic>? _subscription;
   bool _closing = false;
+  int? _closeCode;
+  int? get closeCode => _closeCode;
   int _connectionGeneration = 0;
   bool _authenticated = false;
   bool _authenticationRequested = false;
@@ -2598,6 +2855,34 @@ class RealtimeClient {
     socket.add(jsonEncode({'op': 'subscribe', 'id': key, ...installed}));
   }
 
+  static bool _messageTooLarge(String value) {
+    const maxBytes = 4 * 1024 * 1024;
+    // UTF-8 needs at most three bytes per UTF-16 code unit. Ordinary frames
+    // therefore need no additional scan or full encoded payload allocation.
+    if (value.length <= maxBytes ~/ 3) return false;
+    if (value.length > maxBytes) return true;
+    var bytes = 0;
+    for (var index = 0; index < value.length; index++) {
+      final unit = value.codeUnitAt(index);
+      if (unit <= 0x7f) {
+        bytes++;
+      } else if (unit <= 0x7ff) {
+        bytes += 2;
+      } else if (unit >= 0xd800 &&
+          unit <= 0xdbff &&
+          index + 1 < value.length &&
+          value.codeUnitAt(index + 1) >= 0xdc00 &&
+          value.codeUnitAt(index + 1) <= 0xdfff) {
+        bytes += 4;
+        index++;
+      } else {
+        bytes += 3;
+      }
+      if (bytes > maxBytes) return true;
+    }
+    return false;
+  }
+
   Future<void> connect({
     int? userId,
     String? accessToken,
@@ -2614,6 +2899,7 @@ class RealtimeClient {
     await _closeCurrent();
     if (generation != _connectionGeneration) return;
     _closing = false;
+    _closeCode = null;
     final base = Uri.parse(config.websocketUrl);
     final query = <String, String>{...base.queryParameters}
       ..remove('token')
@@ -2645,6 +2931,7 @@ class RealtimeClient {
       await socket.close();
       return;
     }
+    socket.pingInterval = const Duration(seconds: 20);
     _socket = socket;
     _installed.clear();
     _desired.clear();
@@ -2655,23 +2942,40 @@ class RealtimeClient {
       (message) {
         if (generation != _connectionGeneration) return;
         try {
-          final decoded = asMap(jsonDecode(message as String));
-          if (decoded['op'] == 'authenticated' &&
-              _authenticationRequested &&
-              asInt(decoded['userId']) > 0 &&
-              (_expectedUserId == null ||
-                  asInt(decoded['userId']) == _expectedUserId)) {
+          if (message is! String) {
+            unawaited(socket.close(WebSocketStatus.unsupportedData, '仅支持文本消息'));
+            throw const FormatException('实时消息类型不受支持');
+          }
+          if (_messageTooLarge(message)) {
+            unawaited(socket.close(WebSocketStatus.messageTooBig, '文本消息超过限制'));
+            throw const FormatException('实时消息超过大小限制');
+          }
+          final raw = jsonDecode(message);
+          if (raw is! Map<String, dynamic>) {
+            throw const FormatException('实时消息结构无效');
+          }
+          final decoded = raw;
+          // Invalid private identities are rejected before dispatch, without
+          // turning a malformed authentication frame into a UI exception.
+          final messageUserId = parseInt64(decoded['userId']);
+          if (decoded['op'] == 'authenticated') {
+            if (!_authenticationRequested ||
+                messageUserId == null ||
+                messageUserId <= 0 ||
+                (_expectedUserId != null && messageUserId != _expectedUserId)) {
+              return;
+            }
+            _expectedUserId ??= messageUserId;
             _authenticated = true;
             _reconcileSubscriptions();
             _reconcileC2c();
           }
-          if (decoded['op'] == 'authenticated' && !_authenticated) return;
           if (asString(decoded['channel']).startsWith('c2c.')) {
             if (_authenticated &&
                 _c2cOwner == _expectedUserId &&
                 _c2cOwner != null &&
                 (decoded['userId'] == null ||
-                    asInt(decoded['userId']) == _expectedUserId) &&
+                    messageUserId == _expectedUserId) &&
                 (decoded['channel'] == 'c2c.inbox' ||
                     decoded['op'] == 'c2c.error' ||
                     asMap(decoded['data'])['conversationId'] ==
@@ -2686,8 +2990,10 @@ class RealtimeClient {
           }
           if (_isPrivate(decoded) &&
               (!_authenticated ||
-                  (_expectedUserId != null &&
-                      asInt(decoded['userId']) != _expectedUserId))) {
+                  messageUserId == null ||
+                  messageUserId <= 0 ||
+                  _expectedUserId == null ||
+                  messageUserId != _expectedUserId)) {
             return;
           }
           onEvent(decoded);
@@ -2700,6 +3006,7 @@ class RealtimeClient {
       },
       onDone: () {
         if (generation != _connectionGeneration) return;
+        _closeCode = socket.closeCode;
         _socket = null;
         _subscription = null;
         _authenticated = false;

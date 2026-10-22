@@ -40,8 +40,8 @@ void main() {
       reason: 'Host automation covers Android only',
     );
     final api = ExportQaApi();
-    final state = AppState(offline: true, apiClient: api)
-      ..session = const AuthSession(
+    final state = AppState(
+      initialSession: const AuthSession(
         user: AuthUser(
           userId: 7,
           username: '',
@@ -51,7 +51,10 @@ void main() {
         ),
         accessToken: 'synthetic-only',
         refreshToken: 'synthetic-only',
-      );
+      ),
+      offline: true,
+      apiClient: api,
+    );
     addTearDown(state.dispose);
     await tester.pumpWidget(MaterialApp(home: MobileDepositPage(state: state)));
     await tester.pumpAndSettle();

@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -100,6 +101,10 @@ void main() {
         request.response.headers.contentType = ContentType.json;
         request.response.write(
           jsonEncode({
+            ...completeCoreRow('order', {}),
+            'orderId': 1,
+            'status': 'ACCEPTED',
+            'sequence': 1,
             'instrumentId': '42',
             'bids': [],
             'asks': [],
@@ -341,7 +346,7 @@ class ChallengeApi extends ApiClient {
 }
 
 class RecoveryState extends AppState {
-  RecoveryState() : super(offline: true);
+  RecoveryState() : super(offline: true, apiClient: RecoveryApi());
   String? resetIdentifier;
   @override
   Future<bool> requestPasswordReset(String identifier) async => true;
@@ -357,3 +362,19 @@ class RecoveryState extends AppState {
 }
 
 class RealHttpOverrides extends HttpOverrides {}
+
+class RecoveryApi extends ApiClient {
+  RecoveryApi() : super(const AppConfig());
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = false,
+  }) async {
+    expect(path, '/api/v1/auth/telegram/config');
+    return {'enabled': false};
+  }
+}

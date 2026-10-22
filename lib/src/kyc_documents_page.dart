@@ -15,6 +15,11 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
   List<Map<String, dynamic>> records = [];
   int generation = 0;
   bool loading = false, busy = false;
+  int? _documentId(Map<String, dynamic> row) {
+    final id = parseInt64(row['documentId']);
+    return id != null && id > 0 ? id : null;
+  }
+
   bool get current =>
       mounted &&
       identity != null &&
@@ -61,6 +66,11 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
 
   Future<void> _change(Map<String, dynamic> row, bool remove) async {
     if (!current || busy) return;
+    final id = _documentId(row);
+    if (id == null) {
+      setState(() => error = '材料暂不可用，请刷新后重试');
+      return;
+    }
     if (remove) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -86,7 +96,6 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
       error = null;
     });
     try {
-      final id = asInt(row['documentId']);
       if (remove) {
         await widget.state.api.deleteKycDocument(id);
         if (current) await _load();
@@ -140,20 +149,22 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(asString(row['originalFilename'], fallback: '认证材料')),
+                  if (_documentId(row) == null) const Text('材料暂不可用，请刷新后重试'),
                   Text(
                     '${row['documentType'] ?? ''} · ${row['status'] == 'SUBMITTED' ? '已提交' : '未提交'} · ${row['createdAt'] ?? ''}',
                   ),
                   Wrap(
                     children: [
                       TextButton(
-                        onPressed: current && !busy
+                        onPressed: current && !busy && _documentId(row) != null
                             ? () => _change(row, false)
                             : null,
                         child: const Text('保存原件'),
                       ),
                       if (row['status'] == 'UPLOADED')
                         TextButton(
-                          onPressed: current && !busy
+                          onPressed:
+                              current && !busy && _documentId(row) != null
                               ? () => _change(row, true)
                               : null,
                           child: const Text('删除未提交材料'),

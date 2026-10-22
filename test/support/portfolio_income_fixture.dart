@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:surprising_client/src/api.dart';
+import 'package:surprising_client/src/app_state.dart';
+import 'authentication.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/portfolio_income.dart';
 
@@ -40,7 +42,7 @@ Map<String, dynamic> incomeFixture({bool overviewAvailable = true}) {
   };
 }
 
-class IncomeApi extends ApiClient {
+class IncomeApi extends TestApiClient {
   IncomeApi({this.overviewAvailable = true}) : super(const AppConfig());
   bool overviewAvailable, fail = false;
   Completer<Map<String, dynamic>>? pending;
@@ -63,4 +65,17 @@ class IncomeApi extends ApiClient {
         ? incomeFixture(overviewAvailable: overviewAvailable)
         : pending!.future;
   }
+}
+
+/// Keeps income requests explicit while exercising real authentication changes.
+class IncomeTestState extends AppState {
+  IncomeTestState({required IncomeApi api, required super.initialSession})
+    : super(
+        apiClient: api,
+        sessionStore: MemorySessionStore(),
+        config: const AppConfig(websocketUrl: ''),
+      );
+
+  @override
+  Future<void> refreshPrivateData() async {}
 }

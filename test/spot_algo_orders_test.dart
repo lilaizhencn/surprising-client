@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -7,6 +8,8 @@ import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
+
+import 'transfer_page_test.dart' show MemorySettings;
 
 // Explicit contract samples for unit/widget tests, never financial runtime responses.
 Map<String, dynamic> row({String status = 'RUNNING'}) => {
@@ -187,13 +190,15 @@ void main() {
       final old = Completer<List<AlgoOrderModel>>();
       api.nextRead = old.future;
       final loading = state.refreshAlgoOrders();
-      state.session = authSession(2);
+      await state.logout();
+      await signInAs(state, authSession(2));
       api.rows = [];
       await state.refreshAlgoOrders();
       old.complete([model(row())]);
       await loading;
       expect(state.visibleAlgoOrders, isEmpty);
-      state.session = authSession(1);
+      await state.logout();
+      await signInAs(state, authSession(1));
       final first = Completer<List<AlgoOrderModel>>();
       api.nextRead = first.future;
       final previous = state.refreshAlgoOrders();
@@ -253,7 +258,8 @@ void main() {
       expect(state.openAlgoOrders.single.status, 'CANCEL_REQUESTED');
       expect(state.submittingOrder, isFalse);
       final old = state.openAlgoOrders.single;
-      state.session = authSession(2);
+      await state.logout();
+      await signInAs(state, authSession(2));
       await state.cancelAlgoOrder(old);
       expect(api.cancels.length, 1);
     },
@@ -265,12 +271,14 @@ void main() {
     final pending = Completer<AlgoOrderModel>();
     api.nextCancel = pending.future;
     final request = state.cancelAlgoOrder(state.openAlgoOrders.single);
-    state.session = authSession(2);
+    await state.logout();
+    await signInAs(state, authSession(2));
     state.openAlgoOrders = [];
+    final newAccountNotice = state.lastNotice;
     pending.complete(model(row(status: 'CANCELED')));
     await request;
     expect(state.visibleAlgoOrders, isEmpty);
-    expect(state.lastNotice, isNull);
+    expect(state.lastNotice, newAccountNotice);
   });
   test(
     'an older SQL read cannot resurrect the parent after its cancellation response',
@@ -424,7 +432,7 @@ void main() {
 
 class _Http extends HttpOverrides {}
 
-class _Api extends ApiClient {
+class _Api extends TestApiClient {
   _Api() : super(const AppConfig(websocketUrl: ''));
   List<AlgoOrderModel> rows = [];
   Object? failure;
@@ -484,13 +492,26 @@ class _State extends AppState {
   _State(_Api api)
     : super(
         apiClient: api,
+        initialSession: sessionForTest,
+        sessionStore: MemorySessionStore(),
+        settingsStore: MemorySettings(),
         config: const AppConfig(websocketUrl: ''),
         seedInstruments: [instrument(), instrument('869', 'ETH-USDT')],
       ) {
     mode = ProductMode.spot;
-    session = sessionForTest;
   }
   static final sessionForTest = authSession(1);
+  @override
+  Future<void> refreshPrivateData() async {
+    // Authentication is tested through the real flow; individual tests control
+    // their trading reads explicitly so a login cannot consume a held response.
+    if (!auth.loading) await super.refreshPrivateData();
+  }
+
+  @override
+  Future<void> refreshProductAvailability() async {}
+  @override
+  Future<void> refreshAnnouncements() async {}
   @override
   Future<void> refreshWallet() async {}
   @override

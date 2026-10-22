@@ -95,14 +95,12 @@ void main() {
               expect(rows.length, lessThan(100));
             } while (cursor != null);
             expect(rows.map((r) => asString(r['orderId'])).toSet(), expected);
-            state =
-                AppState(
-                    config: config,
-                    apiClient: api,
-                    seedInstruments: [instrument],
-                  )
-                  ..mode = ProductMode.spot
-                  ..session = session;
+            state = AppState(
+              initialSession: session,
+              config: config,
+              apiClient: api,
+              seedInstruments: [instrument],
+            )..mode = ProductMode.spot;
             Future<void> waitFor(Finder finder) async {
               for (var n = 0; n < 80 && finder.evaluate().isEmpty; n++) {
                 await Future<void>.delayed(const Duration(milliseconds: 100));

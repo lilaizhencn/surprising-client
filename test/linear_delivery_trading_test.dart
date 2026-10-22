@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -101,10 +102,11 @@ void main() {
       () async {
         final api = _Api(mode: product);
         final active = _State(
+          initialSession: actor,
           api,
           mode: product,
           instrument: precisionContract(),
-        )..session = actor;
+        );
         addTearDown(active.dispose);
         await active.placeOrder(
           side: 'BUY',
@@ -131,8 +133,12 @@ void main() {
           precisionContract(scale: 1000, tick: 5),
         ]) {
           final api = _Api(mode: product);
-          final state = _State(api, mode: product, instrument: instrument)
-            ..session = actor;
+          final state = _State(
+            initialSession: actor,
+            api,
+            mode: product,
+            instrument: instrument,
+          );
           await state.placeOrder(
             side: 'BUY',
             orderType: 'LIMIT',
@@ -172,6 +178,7 @@ void main() {
           request.response.headers.contentType = ContentType.json;
           request.response.write(
             jsonEncode({
+              ...completeCoreRow('order', {}),
               ...body,
               'orderId': 9007199254740993,
               'status': 'ACCEPTED',
@@ -190,8 +197,12 @@ void main() {
               )
               ..setSession(actor)
               ..instrumentCatalog = [instrument];
-        final state = _State(api, mode: product, instrument: instrument)
-          ..session = actor;
+        final state = _State(
+          initialSession: actor,
+          api,
+          mode: product,
+          instrument: instrument,
+        );
         addTearDown(() async {
           state.dispose();
           http.close(force: true);
@@ -222,8 +233,12 @@ void main() {
           tester.view.physicalSize = const Size(320, 1500);
           tester.view.devicePixelRatio = 1;
           final instrument = precisionContract(), api = _Api(mode: product);
-          final state = _State(api, mode: product, instrument: instrument)
-            ..session = actor;
+          final state = _State(
+            initialSession: actor,
+            api,
+            mode: product,
+            instrument: instrument,
+          );
           state.orderBook = OrderBook(
             symbol: instrument.symbol,
             sequence: 1,
@@ -335,11 +350,12 @@ void main() {
       () async {
         final api = _Api(mode: product)..lost = true, settings = _Settings();
         var state = _State(
+          initialSession: actor,
           api,
           mode: product,
           status: 'TRADING',
           store: settings,
-        )..session = actor;
+        );
         await state.placeOrder(
           side: 'BUY',
           orderType: 'LIMIT',
@@ -355,9 +371,14 @@ void main() {
         expect(original, isNotNull);
         expect(api.calls, 1);
         state.dispose();
-        state = _State(api, mode: product, status: 'TRADING', store: settings);
+        state = _State(
+          api,
+          initialSession: actor,
+          mode: product,
+          status: 'TRADING',
+          store: settings,
+        );
         await state.bootstrap();
-        state.session = actor;
         expect(state.pendingTradingCommand?.clientOrderId, original);
         await state.checkPendingTradingCommand();
         expect(state.tradingCommandPending, true);
@@ -368,16 +389,22 @@ void main() {
         api.terminal = false;
         await state.cancelOrder(
           OrderModel.fromJson({
+            ...completeCoreRow('order', {}),
             'orderId': 9007199254740993,
             'status': 'ACCEPTED',
           }),
         );
         expect(state.pendingTradingCommand?.cancelOrderId, 9007199254740993);
         state.dispose();
-        state = _State(api, mode: product, status: 'TRADING', store: settings);
+        state = _State(
+          api,
+          initialSession: actor,
+          mode: product,
+          status: 'TRADING',
+          store: settings,
+        );
         addTearDown(state.dispose);
         await state.bootstrap();
-        state.session = actor;
         api.terminal = true;
         await state.checkPendingTradingCommand();
         expect(state.tradingCommandPending, false);
@@ -419,7 +446,7 @@ void main() {
       },
     );
     test(
-      '${product.name} catalog refresh retains visible settling delivery contracts and validates product identity',
+      '${product.name} catalog refresh retains settling contracts and disables mismatched product identities',
       () async {
         final api = _Catalog(mode: product);
         final state = AppState(
@@ -437,9 +464,10 @@ void main() {
         expect(api.instrumentCatalog, state.instruments);
         api.wrongProduct = true;
         await state.refreshInstruments();
-        expect(state.selectedInstrument.status, 'SETTLING');
+        expect(state.selectedInstrument.status, 'UNAVAILABLE');
+        expect(state.selectedInstrument.canPlaceOrder(reduceOnly: true), false);
         expect(api.instrumentCatalog, state.instruments);
-        expect(state.lastError, contains('产品线不匹配'));
+        expect(state.lastError, contains('产品类型不一致'));
       },
     );
     test(
@@ -465,8 +493,7 @@ void main() {
       '${product.name} settling reductions require matching margin, direction and position capacity',
       () async {
         final api = _Api(mode: product);
-        final state = _State(api, mode: product)
-          ..session = actor
+        final state = _State(initialSession: actor, api, mode: product)
           ..positions = [position(mode: product)];
         addTearDown(state.dispose);
         for (final params in [
@@ -507,8 +534,7 @@ void main() {
       '${product.name} hedge closing direction is explicitly reduce-only just as Core normalizes it',
       () async {
         final api = _Api(mode: product);
-        final state = _State(api, mode: product)
-          ..session = actor
+        final state = _State(initialSession: actor, api, mode: product)
           ..positionMode = 'HEDGE'
           ..positions = [position(mode: product)];
         addTearDown(state.dispose);
@@ -536,8 +562,11 @@ void main() {
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetPhysicalSize);
           addTearDown(tester.view.resetDevicePixelRatio);
-          final state = _State(_Api(mode: product), mode: product)
-            ..session = actor;
+          final state = _State(
+            initialSession: actor,
+            _Api(mode: product),
+            mode: product,
+          );
           addTearDown(state.dispose);
           final price = TextEditingController(),
               quantity = TextEditingController();
@@ -625,8 +654,7 @@ void main() {
       '${product.name} settling delivery can close its existing position with a product-scoped reduce-only order',
       () async {
         final api = _Api(mode: product);
-        final state = _State(api, mode: product)
-          ..session = actor
+        final state = _State(initialSession: actor, api, mode: product)
           ..positions = [position(mode: product)];
         addTearDown(state.dispose);
         await state.closePosition(position(mode: product));
@@ -642,8 +670,13 @@ void main() {
       '${product.name} delivery persists an ordinary order before sending and survives a response lost before command ID',
       () async {
         final store = _Settings(), api = _Api(mode: product)..lost = true;
-        var state = _State(api, mode: product, store: store, status: 'TRADING')
-          ..session = actor;
+        var state = _State(
+          initialSession: actor,
+          api,
+          mode: product,
+          store: store,
+          status: 'TRADING',
+        );
         await state.placeOrder(
           side: 'BUY',
           orderType: 'LIMIT',
@@ -660,10 +693,15 @@ void main() {
         expect(key, isNotEmpty);
         expect(api.calls, 1);
         state.dispose();
-        state = _State(api, mode: product, store: store, status: 'TRADING');
+        state = _State(
+          api,
+          initialSession: actor,
+          mode: product,
+          store: store,
+          status: 'TRADING',
+        );
         addTearDown(state.dispose);
         await state.bootstrap();
-        state.session = actor;
         expect(state.pendingTradingCommand?.clientOrderId, key);
         await state.checkPendingTradingCommand();
         expect(state.tradingCommandPending, true);
@@ -680,8 +718,14 @@ void main() {
         const orderId = 9007199254740993;
         api.onCancel = () =>
             expect(store.values['pendingTradingOrders'], contains('$orderId'));
-        var state = _State(api, mode: product, store: store)..session = actor;
+        var state = _State(
+          initialSession: actor,
+          api,
+          mode: product,
+          store: store,
+        );
         final target = OrderModel.fromJson({
+          ...completeCoreRow('order', {}),
           'orderId': orderId,
           'instrumentId': '73',
           'symbol': delivery(mode: product).symbol,
@@ -691,10 +735,9 @@ void main() {
         expect(state.pendingTradingCommand?.cancelOrderId, orderId);
         expect(api.calls, 1);
         state.dispose();
-        state = _State(api, mode: product, store: store);
+        state = _State(api, initialSession: actor, mode: product, store: store);
         addTearDown(state.dispose);
         await state.bootstrap();
-        state.session = actor;
         expect(state.pendingTradingCommand?.cancelOrderId, orderId);
         await state.cancelOrder(target);
         expect(api.calls, 1);
@@ -715,15 +758,17 @@ void main() {
           final api = _Api(mode: product),
               store = _Settings()..rejectWrites = true;
           final state = _State(
+            initialSession: actor,
             api,
             mode: product,
             store: store,
             status: 'TRADING',
-          )..session = actor;
+          );
           addTearDown(state.dispose);
           if (cancel) {
             await state.cancelOrder(
               OrderModel.fromJson({
+                ...completeCoreRow('order', {}),
                 'orderId': 91,
                 'symbol': delivery(mode: product).symbol,
                 'status': 'ACCEPTED',
@@ -771,7 +816,11 @@ class _Api extends ApiClient {
     onCancel?.call();
     calls++;
     if (lost) throw const SocketException('lost cancellation reply');
-    return OrderModel.fromJson({'orderId': orderId, 'status': 'CANCELED'});
+    return OrderModel.fromJson({
+      ...completeCoreRow('order', {}),
+      'orderId': orderId,
+      'status': 'CANCELED',
+    });
   }
 
   @override
@@ -803,6 +852,7 @@ class _Api extends ApiClient {
     };
     if (lost) throw const SocketException('response lost');
     return OrderModel.fromJson({
+      ...completeCoreRow('order', {}),
       'orderId': 9007199254740993,
       'status': 'FILLED',
       'instrumentId': '73',
@@ -850,6 +900,7 @@ class _State extends AppState {
     String status = 'SETTLING',
     ProductMode mode = ProductMode.linearDelivery,
     Instrument? instrument,
+    super.initialSession,
   }) : super(
          apiClient: api,
          settingsStore: store ?? _Settings(),

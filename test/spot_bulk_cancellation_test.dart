@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -59,7 +60,7 @@ void main() {
     () async {
       final settings = _Settings()..failRemoval = true;
       final api = _Api()..targets = [_ids.first];
-      final state = _State(api, settings: settings)..session = _session;
+      final state = _State(initialSession: _session, api, settings: settings);
       await state.cancelOpenSpotOrders(onlyCurrentPair: false);
       expect(api.posts, hasLength(1));
       expect(state.pendingTradingCommand?.cancelPlan?.index, 1);
@@ -70,10 +71,13 @@ void main() {
       state.dispose();
 
       settings.failRemoval = false;
-      final restored = _State(api, settings: settings);
+      final restored = _State(
+        api,
+        initialSession: _session,
+        settings: settings,
+      );
       addTearDown(restored.dispose);
       await restored.bootstrap();
-      restored.session = _session;
       expect(restored.tradingCommandPending, isTrue);
       await restored.checkPendingTradingCommand();
       expect(restored.tradingCommandPending, isFalse);
@@ -109,7 +113,7 @@ void main() {
       final api = _Api()
         ..targets = List.generate(1205, (i) => i + 1)
         ..failed = 1;
-      final state = _State(api)..session = _session;
+      final state = _State(initialSession: _session, api);
       addTearDown(state.dispose);
       api.beforePost = () {
         expect(state.pendingTradingCommand?.cancelPlan?.issued, isTrue);
@@ -131,16 +135,15 @@ void main() {
     'lost reply survives restart, only queries issued batch and continues original fixed targets',
     () async {
       final settings = _Settings(), api = _Api()..loseFirst = true;
-      var state = _State(api, settings: settings)..session = _session;
+      var state = _State(initialSession: _session, api, settings: settings);
       await state.cancelOpenSpotOrders(onlyCurrentPair: false);
       final key = state.pendingTradingCommand!.cancelPlan!.batches.first.key;
       expect(api.scope, isNull);
       expect(api.posts.length, 1);
       state.dispose();
-      state = _State(api, settings: settings);
+      state = _State(api, initialSession: _session, settings: settings);
       addTearDown(state.dispose);
       await state.bootstrap();
-      state.session = _session;
       expect(state.pendingTradingCommand!.cancelPlan!.batches.first.key, key);
       await state.checkPendingTradingCommand();
       expect(state.tradingCommandPending, isTrue);
@@ -171,7 +174,7 @@ void main() {
       final api = _Api()
         ..targets = [_ids.first]
         ..loseFirst = true;
-      final state = _State(api)..session = _session;
+      final state = _State(initialSession: _session, api);
       addTearDown(state.dispose);
       await state.cancelOpenSpotOrders(onlyCurrentPair: false);
       api.terminal = true;
@@ -188,7 +191,7 @@ void main() {
       () async {
         final settings = _Settings()..failAt = checkpoint;
         final api = _Api()..targets = [_ids.first];
-        final state = _State(api, settings: settings)..session = _session;
+        final state = _State(initialSession: _session, api, settings: settings);
         addTearDown(state.dispose);
         await state.cancelOpenSpotOrders(onlyCurrentPair: false);
         expect(api.posts.length, checkpoint == 3 ? 1 : 0);
@@ -204,26 +207,30 @@ void main() {
     'account changes stop later batches and keep the old plan for its owner',
     () async {
       final api = _Api();
-      final state = _State(api)..session = _session;
+      final state = _State(initialSession: _session, api);
       addTearDown(state.dispose);
       api.beforePost = () async {
         await state.logout();
-        state.session = const AuthSession(
-          user: AuthUser(
-            userId: 2,
-            username: 'other',
-            email: '',
-            status: 'ACTIVE',
+        await signInAs(
+          state,
+          const AuthSession(
+            user: AuthUser(
+              userId: 2,
+              username: 'other',
+              email: '',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'other',
+            refreshToken: 'other',
           ),
-          accessToken: 'other',
-          refreshToken: 'other',
         );
       };
       await state.cancelOpenSpotOrders(onlyCurrentPair: false);
       expect(api.posts.length, 1);
       expect(state.pendingTradingCommand, isNull);
       expect(state.lastCancellationResult, isNull);
-      state.session = _session;
+      await state.logout();
+      await signInAs(state, _session);
       expect(state.tradingCommandPending, isTrue);
       api.beforePost = null;
       api.terminal = true;
@@ -236,7 +243,7 @@ void main() {
     'simultaneous recovery clicks do not duplicate the next batch',
     () async {
       final api = _Api()..loseFirst = true;
-      final state = _State(api)..session = _session;
+      final state = _State(initialSession: _session, api);
       addTearDown(state.dispose);
       await state.cancelOpenSpotOrders(onlyCurrentPair: false);
       api.terminal = true;
@@ -251,7 +258,7 @@ void main() {
   );
   test('empty target set produces no POST', () async {
     final api = _Api()..targets = [];
-    final state = _State(api)..session = _session;
+    final state = _State(initialSession: _session, api);
     addTearDown(state.dispose);
     await state.cancelOpenSpotOrders(onlyCurrentPair: false);
     expect(api.posts, isEmpty);
@@ -316,7 +323,7 @@ void main() {
         AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
         httpClient: http,
       )..setSession(_session);
-      final state = _State(api)..session = _session;
+      final state = _State(initialSession: _session, api);
       addTearDown(() async {
         state.dispose();
         http.close(force: true);
@@ -344,7 +351,7 @@ void main() {
         final api = _Api()
           ..targets = [_ids.first]
           ..failed = 1;
-        final state = _State(api)..session = _session;
+        final state = _State(initialSession: _session, api);
         addTearDown(state.dispose);
         await tester.pumpWidget(
           AppScope(
@@ -405,7 +412,7 @@ void main() {
   }
 }
 
-class _Api extends ApiClient {
+class _Api extends TestApiClient {
   _Api() : super(const AppConfig());
   List<int> targets = [..._ids];
   final posts = <List<int>>[], keys = <String>[];
@@ -475,7 +482,7 @@ class _Api extends ApiClient {
 }
 
 class _State extends AppState {
-  _State(ApiClient api, {ClientSettingsStore? settings})
+  _State(ApiClient api, {super.initialSession, ClientSettingsStore? settings})
     : super(
         apiClient: api,
         settingsStore: settings ?? _Settings(),
@@ -487,6 +494,8 @@ class _State extends AppState {
   }
   @override
   Future<void> refreshPrivateData() async {}
+  @override
+  Future<void> refreshProductAvailability() async {}
   @override
   Future<void> refreshInstruments({bool silent = false}) async {}
   @override

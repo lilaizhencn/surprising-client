@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,10 +14,16 @@ final catalog = [
     Instrument.fromJson({
       'instrumentId': '${100 + p.index}',
       'symbol': 'BTC-USDT',
+      'baseAsset': 'BTC',
+      'quoteAsset': 'USDT',
+      'settleAsset': 'USDT',
+      'status': 'TRADING',
       'instrumentType': p.isSpot
           ? 'SPOT'
           : p.isOption
           ? 'OPTION'
+          : p.isDelivery
+          ? 'DELIVERY'
           : 'PERPETUAL',
       'contractType': p.contractType,
       'priceTickUnits': 1000000 * (p.index + 1),
@@ -42,7 +49,7 @@ Map<String, dynamic> position(
   'entryPriceTicks': 100,
   'marginAsset': 'USDT',
 };
-Map<String, dynamic> snapshot(ProductMode p) => {
+Map<String, dynamic> snapshot(ProductMode p) => completeCoreSnapshot({
   'op': 'snapshot',
   'productLine': p.productLine,
   'userId': 1,
@@ -79,19 +86,19 @@ Map<String, dynamic> snapshot(ProductMode p) => {
       },
     ],
   },
-};
+});
 Map<String, dynamic> event(
   ProductMode p,
   String channel,
   int n,
   dynamic value,
-) => {
+) => completeCoreEvent({
   'op': 'event',
   'productLine': p.productLine,
   'userId': 1,
   'channel': channel,
   'data': {'version': version(n), 'entityId': 'user', 'value': value},
-};
+});
 
 void main() {
   test(
@@ -153,6 +160,36 @@ void main() {
   );
 
   test(
+    'bad trade history keeps the last tape and does not hide valid candles',
+    () async {
+      final state =
+          AppState(
+              config: const AppConfig(websocketUrl: ''),
+              seedInstruments: catalog,
+              apiClient: InvalidTradeHistoryApi(),
+            )
+            ..recentTrades = [
+              {
+                'tradeId': 'before-refresh',
+                'sequence': 1,
+                'price': 2,
+                'quantity': '0.01',
+              },
+            ];
+      addTearDown(state.dispose);
+      await state.refreshPublicData();
+      expect(state.candles, hasLength(1));
+      expect(state.candles.single.close, 2);
+      expect(state.recentTrades.single['tradeId'], 'before-refresh');
+      expect(
+        state.realtimeLog.any((line) => line.contains('最新成交的价格或数量无效')),
+        isTrue,
+      );
+      expect(state.loadingPublic, isFalse);
+    },
+  );
+
+  test(
     'depth gap only resubscribes its channel and waits for a replacement snapshot',
     () async {
       final transport = DepthProbe();
@@ -189,7 +226,9 @@ void main() {
       depth(10, type: 'SNAPSHOT');
       depth(12, previous: 11);
       depth(13, previous: 12);
-      expect(state.orderBook.sequence, 10);
+      expect(state.orderBook.sequence, 0);
+      expect(state.orderBook.bids, isEmpty);
+      expect(state.market.depthRecovering, isTrue);
       expect(transport.recovered, hasLength(1));
       expect(transport.recovered.single, {
         'channel': 'depth',
@@ -232,7 +271,7 @@ void main() {
       'late ${cancelTrigger ? "trigger" : "order"} cancellation cannot remove same IDs in another product',
       () async {
         final api = DeferredCancelApi();
-        final state = SelectionState(api: api)..session = session;
+        final state = SelectionState(initialSession: session, api: api);
         addTearDown(state.dispose);
         for (final p in [ProductMode.linear, ProductMode.option]) {
           final frame = snapshot(p);
@@ -253,6 +292,7 @@ void main() {
         if (cancelTrigger) {
           api.trigger.complete(
             TriggerOrderModel.fromJson({
+              ...completeCoreRow('trigger', {}),
               'userId': session.user.userId,
               'instrumentId': '101',
               'triggerOrderId': 2,
@@ -263,6 +303,7 @@ void main() {
         } else {
           api.order.complete(
             OrderModel.fromJson({
+              ...completeCoreRow('order', {}),
               'orderId': 1,
               'symbol': 'BTC-USDT',
               'status': 'CANCELED',
@@ -280,7 +321,7 @@ void main() {
   test(
     'all product pages isolate identical symbols, positions, orders, triggers and risk pushes',
     () async {
-      final state = SelectionState()..session = session;
+      final state = SelectionState(initialSession: session);
       addTearDown(state.dispose);
       for (final p in ProductMode.values) {
         state.handleRealtimeMessage(snapshot(p));
@@ -351,7 +392,7 @@ void main() {
   test(
     'wrong user events and late depth from another product cannot overwrite active page',
     () async {
-      final state = SelectionState()..session = session;
+      final state = SelectionState(initialSession: session);
       addTearDown(state.dispose);
       await state.selectMode(ProductMode.linear);
       state.handleRealtimeMessage(snapshot(ProductMode.linear));
@@ -392,7 +433,7 @@ void main() {
     'closing a different position keeps current market and uses current product metadata',
     () async {
       final api = CloseApi();
-      final state = SelectionState(api: api)..session = session;
+      final state = SelectionState(initialSession: session, api: api);
       addTearDown(state.dispose);
       await state.selectMode(ProductMode.linear);
       state.selectedSymbol = 'ETH-USDT';
@@ -418,14 +459,17 @@ void main() {
 }
 
 class SelectionState extends AppState {
-  SelectionState({ApiClient? api, RealtimeClient? realtime})
-    : super(
-        config: const AppConfig(websocketUrl: ''),
-        seedInstruments: catalog,
-        apiClient: api,
-        realtimeClient: realtime,
-        settingsStore: _RecoverySettings(),
-      );
+  SelectionState({
+    ApiClient? api,
+    RealtimeClient? realtime,
+    super.initialSession,
+  }) : super(
+         config: const AppConfig(websocketUrl: ''),
+         seedInstruments: catalog,
+         apiClient: api,
+         realtimeClient: realtime,
+         settingsStore: _RecoverySettings(),
+       );
   @override
   Future<void> refreshInstruments({bool silent = false}) async {}
   @override
@@ -459,6 +503,7 @@ class CloseApi extends ApiClient {
     product = productLine;
     reduce = reduceOnly;
     return OrderModel.fromJson({
+      ...completeCoreRow('order', {}),
       'orderId': 1,
       'symbol': symbol,
       'status': 'ACCEPTED',
@@ -516,11 +561,11 @@ class UnavailableBookApi extends ApiClient {
   }) async => [
     Candle.fromJson({
       'openTime': '2026-10-19T00:00:00Z',
-      'open': 1,
-      'high': 2,
-      'low': 1,
-      'close': 2,
-      'volume': 3,
+      'openPrice': 1,
+      'highPrice': 2,
+      'lowPrice': 1,
+      'closePrice': 2,
+      'baseVolume': 3,
     }),
   ];
   @override
@@ -528,7 +573,12 @@ class UnavailableBookApi extends ApiClient {
     String symbol, {
     String? productLine,
   }) async => [
-    {'tradeId': 'LINEAR_PERPETUAL:1:1:1:0', 'sequence': 1, 'price': 2},
+    {
+      'tradeId': 'LINEAR_PERPETUAL:1:1:1:0',
+      'sequence': 1,
+      'price': 2,
+      'quantity': '0.01',
+    },
   ];
 }
 
@@ -540,4 +590,19 @@ class _RecoverySettings implements ClientSettingsStore {
   Future<void> write(Map<String, String> next) async {
     values = {...next};
   }
+}
+
+class InvalidTradeHistoryApi extends UnavailableBookApi {
+  @override
+  Future<List<Map<String, dynamic>>> recentTrades(
+    String symbol, {
+    String? productLine,
+  }) async => [
+    {
+      'tradeId': 'bad-history',
+      'sequence': 2,
+      'price': 'NaN',
+      'quantity': '0.01',
+    },
+  ];
 }

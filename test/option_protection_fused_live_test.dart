@@ -119,7 +119,7 @@ void main() {
               ),
               httpClient: http,
             )..setSession(session);
-            return _State(api, settings, instrument)..session = session;
+            return _State(api, settings, instrument, initialSession: session);
           }
 
           try {
@@ -207,7 +207,6 @@ void main() {
             paused = false;
             state = make(instrument);
             await state.bootstrap();
-            state.session = session;
             expect(state.tradingCommandPending, true);
             for (var i = 0; i < 200 && state.tradingCommandPending; i++) {
               await state.checkPendingTradingCommand();
@@ -265,14 +264,18 @@ void main() {
 }
 
 class _State extends AppState {
-  _State(ApiClient api, _Settings settings, Instrument instrument)
-    : super(
-        apiClient: api,
-        settingsStore: settings,
-        sessionStore: _Sessions(),
-        config: const AppConfig(websocketUrl: ''),
-        seedInstruments: [instrument],
-      ) {
+  _State(
+    ApiClient api,
+    _Settings settings,
+    Instrument instrument, {
+    super.initialSession,
+  }) : super(
+         apiClient: api,
+         settingsStore: settings,
+         sessionStore: _Sessions(),
+         config: const AppConfig(websocketUrl: ''),
+         seedInstruments: [instrument],
+       ) {
     mode = ProductMode.option;
   }
   @override

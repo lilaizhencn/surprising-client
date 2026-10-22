@@ -77,14 +77,12 @@ void main() {
               ),
               isTrue,
             );
-            state =
-                AppState(
-                    config: config,
-                    apiClient: api,
-                    seedInstruments: [instrument],
-                  )
-                  ..mode = ProductMode.spot
-                  ..session = session;
+            state = AppState(
+              initialSession: session,
+              config: config,
+              apiClient: api,
+              seedInstruments: [instrument],
+            )..mode = ProductMode.spot;
             for (final brightness in Brightness.values) {
               tester.view.physicalSize = const Size(320, 900);
               tester.view.devicePixelRatio = 1;

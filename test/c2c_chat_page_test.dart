@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -37,7 +38,7 @@ Map<String, dynamic> messageJson(String request, String text) => {
   'status': 'SENT',
 };
 
-class ChatApi extends ApiClient {
+class ChatApi extends TestApiClient {
   ChatApi() : super(const AppConfig());
   bool enabled = true, loseResponse = false;
   int posts = 0;
@@ -132,14 +133,19 @@ class ChatRealtime extends RealtimeClient {
 
 class ChatState extends AppState {
   ChatState(ChatApi api, ChatRealtime realtime)
-    : super(apiClient: api, realtimeClient: realtime, offline: true) {
-    switchOwner(12);
-  }
-  void switchOwner(int owner) {
-    session = ownerSession(owner);
-    api.setSession(session);
-    notifyListeners();
-  }
+    : super(
+        apiClient: api,
+        realtimeClient: realtime,
+        config: const AppConfig(websocketUrl: ''),
+        seedInstruments: fallbackInstruments(),
+        sessionStore: MemorySessionStore(),
+        initialSession: ownerSession(12),
+      );
+
+  Future<void> switchOwner(int owner) => signInAs(this, ownerSession(owner));
+
+  @override
+  Future<void> refreshPrivateData() async {}
 }
 
 void main() {
@@ -399,7 +405,9 @@ void main() {
     );
     await tester.tap(find.text('发送'));
     await tester.pumpAndSettle();
-    state.switchOwner(13);
+    // The fixture is created by setUp outside the widget's fake clock. Run its
+    // secure-storage/authentication futures in their real async zone.
+    await tester.runAsync(() => state.switchOwner(13));
     await tester.pumpAndSettle();
     expect(find.text('private prior account message'), findsNothing);
     expect(find.text('登录账户已变化，请返回会话列表'), findsOneWidget);

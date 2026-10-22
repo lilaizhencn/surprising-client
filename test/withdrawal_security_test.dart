@@ -118,9 +118,12 @@ void main() {
     expect(state.withdrawalOutcomeLocked, isTrue);
     expect(state.withdrawalOutcomeUnknown, isTrue);
     expect(state.lastError, contains('结果未知'));
-    expect(settings.values['withdrawalLocked'], 'true');
-    expect(settings.values['withdrawalUnknown'], 'true');
-    expect(settings.values['withdrawalKey'], api.idempotencyKeys.single);
+    final pending = asMap(
+      asList(jsonDecode(settings.values['pendingWithdrawals']!)).single,
+    );
+    expect(pending['userId'], _session.user.userId);
+    expect(pending['status'], 'UNKNOWN');
+    expect(pending['key'], api.idempotencyKeys.single);
   });
 
   test('validates withdrawal address amount precision minimum and balance', () {
@@ -171,11 +174,11 @@ void main() {
       ..biometric = true;
     final state =
         AppState(
+            initialSession: _session,
             offline: true,
             sessionStore: store,
             settingsStore: _MemorySettingsStore(),
           )
-          ..session = _session
           ..biometricLoginEnabled = true
           ..biometricLoginAvailable = true;
 
@@ -232,11 +235,11 @@ void main() {
       ..biometric = true;
     final state =
         AppState(
+            initialSession: _session,
             offline: true,
             sessionStore: store,
             settingsStore: _MemorySettingsStore(),
           )
-          ..session = _session
           ..biometricLoginEnabled = true
           ..biometricLoginAvailable = true;
     await tester.pumpWidget(
@@ -273,11 +276,11 @@ AppState _withdrawalState({
   _MemorySettingsStore? settings,
 }) {
   return AppState(
+      initialSession: _session,
       offline: true,
       apiClient: api,
       settingsStore: settings ?? _MemorySettingsStore(),
     )
-    ..session = _session
     ..walletReady = true
     ..walletPortfolio = WalletPortfolio.fromJson({
       'generatedAt': '2026-08-06T00:00:00Z',
@@ -340,10 +343,18 @@ class _RecordingHttpClientRequest implements HttpClientRequest {
   @override
   void write(Object? object) => body.write(object);
 
+  late final Future<HttpClientResponse> _response = Future.value(
+    _RecordingHttpClientResponse(responseBody),
+  );
+
   @override
-  Future<HttpClientResponse> close() async {
-    return _RecordingHttpClientResponse(responseBody);
-  }
+  Future<HttpClientResponse> get done => _response;
+
+  @override
+  Future<HttpClientResponse> close() => _response;
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

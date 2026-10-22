@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'api.dart';
-import 'app.dart' show AppScope;
+import 'app_scope.dart';
 import 'app_state.dart';
 import 'c2c_chat_page.dart';
 import 'c2c_models.dart';
@@ -114,11 +114,19 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
         get('/orders', query: {'state': 'ALL'}),
       ]);
       final pendingBondKey = 'c2c.bond.${widget.owner}';
-      final pendingBondId = await C2cTradeRequest.storage.read(key: pendingBondKey);
+      final pendingBondId = await C2cTradeRequest.storage.read(
+        key: pendingBondKey,
+      );
       if (pendingBondId != null) {
-        final known = asMap(values[3]['bond'])['requestId'] == pendingBondId ? values[3]
-            : await get('/me/merchant-bond', query: {'requestId': pendingBondId});
-        if (known['bond'] != null) await C2cTradeRequest.storage.delete(key: pendingBondKey);
+        final known = asMap(values[3]['bond'])['requestId'] == pendingBondId
+            ? values[3]
+            : await get(
+                '/me/merchant-bond',
+                query: {'requestId': pendingBondId},
+              );
+        if (known['bond'] != null) {
+          await C2cTradeRequest.storage.delete(key: pendingBondKey);
+        }
       }
       final original = await C2cTradeRequest.load(widget.owner);
       if (!current || run != generation) return;
@@ -158,13 +166,19 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
   }
 
   Future<void> loadOffers([int? run]) async {
-    final request = ++offerRequest, requestedSide = side, requestedMarket = marketId;
+    final request = ++offerRequest,
+        requestedSide = side,
+        requestedMarket = marketId;
     try {
       final page = await get(
         '/ads',
         query: {'marketId': requestedMarket, 'side': requestedSide},
       );
-      if (current && request == offerRequest && requestedSide == side && requestedMarket == marketId && (run == null || run == generation)) {
+      if (current &&
+          request == offerRequest &&
+          requestedSide == side &&
+          requestedMarket == marketId &&
+          (run == null || run == generation)) {
         setState(() => offers = asList(page['items']).map(asMap).toList());
       }
     } catch (failure) {

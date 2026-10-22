@@ -59,3 +59,12 @@ accountState 中的 leverages 按 instrumentId + marginMode 合并；最近订�
 WS trades value 携带与可靠历史相同的 tradeId、instrumentId、eventTime。成交列表按 tradeId 去重，
 精确解析其中的日志位置、matcher 序号和成交索引排序，保留 REST 已有展示字段；不将 REST 导出
 sequence 与 WS coreSequence 比较。实时成交因此可以进入列表，多笔同毫秒成交不会相互覆盖。
+
+
+## 基线与会话恢复
+
+盘口由 `MarketDataState` 持有，每侧最多 50 档，价格、数量和序列严格校验。首次订阅及断档都等待有效快照；断档立即撤下旧盘口并显示恢复状态。只重订阅当前 depth，按 3 / 6 / 12 秒截止时间最多尝试三次，仍无基线则重连。有效空快照也结束恢复。
+
+私有快照先校验 account、positionMode、balances / reservations / positions / leverages 和 openOrders / triggerOrders / positionRisks，再原子接纳；坏快照或增量不推进 fence。缺失或过期的私有基线按产品重订阅 accountState，三次恢复失败才重连；未初始化产品不伪装成空账户。
+
+WebSocket 使用 20 秒 ping 存活检测。1008 会话拒绝触发令牌刷新，临时失败期间暂停旧令牌私有连接并保留公共行情；刷新重试有退避和上限。1012 服务恢复走普通退避重连。重连清除旧私有与盘口基线，重新认证、订阅后等待新的完整快照。

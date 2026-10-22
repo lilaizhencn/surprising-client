@@ -1,3 +1,5 @@
+import 'support/authentication.dart';
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,27 +35,33 @@ WalletPortfolio portfolio(double value) => WalletPortfolio.fromJson({
 
 void main() {
   test('one ready product can be valued while total remains unavailable', () {
-    final s = AppState(offline: true)..session = session;
+    final s = AppState(
+      initialSession: session,
+      sessionStore: MemorySessionStore(),
+      offline: true,
+    );
     addTearDown(s.dispose);
     s.handleRealtimeMessage({'op': 'authenticated', 'userId': 1});
-    s.handleRealtimeMessage({
-      'op': 'snapshot',
-      'userId': 1,
-      'productLine': 'LINEAR_PERPETUAL',
-      'data': {
-        'status': 'READY',
-        'snapshotVersion': '0000000000000000001:0000000000',
-        'account': {
-          'balances': [
-            {'asset': 'USDT', 'availableUnits': 700000000, 'lockedUnits': 0},
-          ],
-          'positions': [],
+    s.handleRealtimeMessage(
+      completeCoreSnapshot({
+        'op': 'snapshot',
+        'userId': 1,
+        'productLine': 'LINEAR_PERPETUAL',
+        'data': {
+          'status': 'READY',
+          'snapshotVersion': '0000000000000000001:0000000000',
+          'account': {
+            'balances': [
+              {'asset': 'USDT', 'availableUnits': 700000000, 'lockedUnits': 0},
+            ],
+            'positions': [],
+          },
+          'openOrders': [],
+          'triggerOrders': [],
+          'positionRisks': [],
         },
-        'openOrders': [],
-        'triggerOrders': [],
-        'positionRisks': [],
-      },
-    });
+      }),
+    );
     expect(s.productBalancesUsdt(product: ProductMode.linear), 7);
     expect(s.productBalancesUsdt(), isNull);
     s.privateViews[ProductMode.linear]!.receivedAt = DateTime.now().subtract(
@@ -65,11 +73,15 @@ void main() {
   testWidgets('overview counts shared funding and spot money once', (
     tester,
   ) async {
-    final s = AppState(apiClient: IncomeApi())
-      ..session = session
-      ..walletReady = true
-      ..walletPortfolio = portfolio(12)
-      ..assetsReady = true;
+    final s =
+        AppState(
+            initialSession: session,
+            sessionStore: MemorySessionStore(),
+            apiClient: IncomeApi(),
+          )
+          ..walletReady = true
+          ..walletPortfolio = portfolio(12)
+          ..assetsReady = true;
     for (final p in ProductMode.values) {
       s.valuedProducts.add(p);
       s.privateViews[p] = PrivateView()
@@ -152,7 +164,11 @@ void main() {
 
   test('funding balance survives a failed history endpoint', () async {
     final api = AccountApi()..failOrders = true;
-    final s = AppState(apiClient: api)..session = session;
+    final s = AppState(
+      initialSession: session,
+      sessionStore: MemorySessionStore(),
+      apiClient: api,
+    );
     addTearDown(s.dispose);
     final refresh = s.refreshWallet();
     api.walletRequests.single.complete(portfolio(15));
@@ -172,10 +188,14 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final s = AppState(apiClient: IncomeApi(overviewAvailable: false))
-          ..session = session
-          ..walletReady = true
-          ..walletPortfolio = portfolio(12);
+        final s =
+            AppState(
+                initialSession: session,
+                sessionStore: MemorySessionStore(),
+                apiClient: IncomeApi(overviewAvailable: false),
+              )
+              ..walletReady = true
+              ..walletPortfolio = portfolio(12);
         s.valuationRates[ValuationCurrency.cny] = 7;
         s.productBalances[ProductMode.linear] = [
           const ProductBalance(
@@ -257,7 +277,12 @@ void main() {
     tester,
   ) async {
     final api = AccountApi()..failKyc = false;
-    final state = AppState(offline: true, apiClient: api)..session = session;
+    final state = AppState(
+      initialSession: session,
+      sessionStore: MemorySessionStore(),
+      offline: true,
+      apiClient: api,
+    );
     addTearDown(state.dispose);
     await tester.pumpWidget(
       AppScope(
@@ -280,7 +305,12 @@ void main() {
     'security loads outside initState, preserves MFA when KYC fails, retries',
     (tester) async {
       final api = AccountApi();
-      final s = AppState(offline: true, apiClient: api)..session = session;
+      final s = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(s.dispose);
       await tester.pumpWidget(
         AppScope(
@@ -299,8 +329,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('身份认证 KYC · APPROVED'), findsOneWidget);
       expect(find.text('身份认证加载失败，请重试'), findsNothing);
-      s.session = null;
-      s.notifyListeners();
+      await s.logout();
       await tester.pumpAndSettle();
       expect(find.text('登录已失效，请重新登录'), findsOneWidget);
       expect(find.text('2FA 已启用'), findsNothing);
@@ -311,7 +340,12 @@ void main() {
     tester,
   ) async {
     final api = AccountApi()..pendingMfa = Completer();
-    final s = AppState(offline: true, apiClient: api)..session = session;
+    final s = AppState(
+      initialSession: session,
+      sessionStore: MemorySessionStore(),
+      offline: true,
+      apiClient: api,
+    );
     addTearDown(s.dispose);
     await tester.pumpWidget(
       AppScope(
@@ -321,8 +355,7 @@ void main() {
     );
     await tester.pump();
     expect(find.text('2FA 状态未获取'), findsOneWidget);
-    s.session = null;
-    s.notifyListeners();
+    await s.logout();
     await tester.pump();
     api.pendingMfa!.complete({'enabled': true});
     await tester.pumpAndSettle();
@@ -334,7 +367,11 @@ void main() {
     'wallet out of order results and post-dispose responses are ignored',
     () async {
       final api = AccountApi();
-      final s = AppState(apiClient: api)..session = session;
+      final s = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        apiClient: api,
+      );
       final old = s.refreshWallet();
       final latest = s.refreshWallet();
       api.walletRequests[1].complete(portfolio(9));
@@ -378,10 +415,20 @@ class AccountApi extends ApiClient {
         reauthenticationRequired: false,
       );
   @override
+  Future<Map<String, dynamic>> mfaRecoveryStatus() async => {
+    'remainingCodes': 0,
+  };
+  @override
+  Future<Map<String, dynamic>> kycProvider() async => {'provider': 'DISABLED'};
+  @override
   Future<Map<String, dynamic>> mfaStatus() async =>
       pendingMfa == null ? {'enabled': true} : pendingMfa!.future;
   @override
   Future<List<Map<String, dynamic>>> securityScenes() async => [];
+  @override
+  Future<List<Map<String, dynamic>>> devices() async => [];
+  @override
+  Future<List<Map<String, dynamic>>> loginIps() async => [];
   @override
   Future<List<Map<String, dynamic>>> apiKeys() async => [];
   @override

@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/app.dart';
@@ -9,9 +10,7 @@ AuthSession session(int id) => AuthSession(
   accessToken: 'qa-$id',
   refreshToken: 'qa-$id',
 );
-AppState state() => AppState(offline: true)
-  ..mode = ProductMode.spot
-  ..session = session(1);
+AppState state() => _PanelState(initialSession: session(1));
 void main() {
   for (final brightness in Brightness.values) {
     testWidgets(
@@ -22,13 +21,7 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final s = state();
-        s.accountRisk = const AccountRisk(
-          settleAsset: 'USDT',
-          equityUnits: 100,
-          maintenanceMarginUnits: 20,
-          marginRatioPpm: 200000,
-          status: 'NORMAL',
-        );
+        expect(s.accountRisk, isNull);
         addTearDown(s.dispose);
         await tester.pumpWidget(
           MaterialApp(
@@ -74,7 +67,8 @@ void main() {
     await tester.tap(updates);
     await tester.pumpAndSettle();
     expect(find.text('本次连接收到的最近 100 条订单更新'), findsOneWidget);
-    s.session = session(2);
+    await s.logout();
+    await signInAs(s, session(2));
     await show();
     expect(
       tester
@@ -102,7 +96,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   testWidgets('spot login invites account and order access', (tester) async {
-    final s = state()..session = null;
+    final s = _PanelState();
     addTearDown(s.dispose);
     await tester.pumpWidget(
       MaterialApp(
@@ -116,4 +110,18 @@ void main() {
     expect(find.text('持仓 (0)'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _PanelState extends AppState {
+  _PanelState({super.initialSession})
+    : super(
+        apiClient: TestApiClient(),
+        sessionStore: MemorySessionStore(),
+        config: const AppConfig(websocketUrl: ''),
+        seedInstruments: fallbackInstruments(),
+      ) {
+    mode = ProductMode.spot;
+  }
+  @override
+  Future<void> refreshPrivateData() async {}
 }

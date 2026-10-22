@@ -9,6 +9,27 @@ Flutter mobile client for Surprising Exchange.
 - Scrollable product tabs for spot, linear/inverse perpetuals, linear/inverse delivery and options; market list, candlestick, L2 order book and recent trades. Unconfigured products retain their page and show an explicit empty state.
 - Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed. TP/SL forms support mark/last/index sources and market/limit execution; versioned private snapshots update open triggers and recover state after private WebSocket reconnect.
 
+## 代码职责
+
+| 入口 / owner | 职责 |
+| --- | --- |
+| `app.dart`、`AppScope` | 应用根、导航、共享依赖；主题和语言独立通知，行情不重建 `MaterialApp` |
+| `AppState` | 协调产品选择、业务 owner、账户投影、风险详情读取及单条实时连接，不保存第二份业务状态 |
+| `auth/AuthState` | 登录、验证、生物锁、会话代次与串行安全存储；会话只读，正常启动从安全存储恢复并刷新 |
+| `trading/TradingOrderState` | 下单、撤单、改单、条件单、算法单及原请求恢复，持有未决身份与查询状态 |
+| `wallet/AccountTransferState` | 划转凭证、验证、提交与原请求恢复 |
+| `wallet/WalletState` | 资金账户、充值、提现规则与按用户隔离的提现凭证；退出不清除结果未知的财务身份 |
+| `MarketDataState` | 盘口、成交、K 线、价格与版本；断档基线恢复 |
+| `PrivateSnapshotRecovery` | 六产品私有首基线与坏快照的有界恢复；等待期间不复用旧 READY 状态 |
+| `AccountProjection`、`PortfolioIncomeState` | 精确只读权益投影、收益刷新与过期，不修改可用资金 |
+| `market/`、`trading/`、`wallet/`、`account/`、`auth/` | 各业务页面与交互；`ui/` 放共享样式、组件及导航约定 |
+
+网络响应在边界校验精确 int64、有限数值、产品身份及完整私有快照。缺金额或 scale 显示不可用，不补零或 1e8。HTTP 截止时间覆盖连接、响应头、完整 body 和解码；取消或销毁释放底层请求，写请求超时仍保留原幂等身份。普通响应上限 8 MiB、文件下载 20 MiB、C2C 附件 10 MiB。
+
+账户风险复用 `refreshRiskDetails`，在私有账户 READY 后读取既有 `/risk/account/latest`，与持仓风险共用请求代次和刷新定时器。按用户、会话、产品及结算资产隔离响应；已连接时每 5 秒刷新，15 秒未更新或私有账户失效即显示不可用，保留手动刷新入口。SPOT 不读取衍生品风险，也不补零。
+
+本轮验证（2026-10-22）：743 项 Flutter 测试通过，12 项依赖环境的测试跳过；最后的输入框样式另验 56 项通过。普通 `lib/main.dart` 应用在 Android、iOS 模拟器分别完成真实登录、现货及 U 本位永续各一笔 PostOnly 挂单与原单撤销；原单均 CANCELED、成交及费用为零，资金差额、冻结与预留均为零。实际检查原生键盘、价格/数量步进、深浅主题与放大字体，测试资源已释放。其他四产品的设备覆盖采用契约样本，真实交易及恢复由后端验证，不代表六产品全部手机流程或生产环境已验收。
+
 ## Local Backend
 
 Start the backend from `surprising-ex` and make sure these ports are reachable:
@@ -68,7 +89,7 @@ Android debug build was attempted with JDK 21; Gradle dependency downloads from 
 
 `test/mobile_audit_test.dart` covers six product tabs at 320px width, empty products, selection races, partial trigger submission, logout during a batch, disposed authentication forms and empty depth. `test/product_realtime_audit_test.dart` checks identical symbols across products, isolated-position risk matching, partial/terminal orders, active/terminal triggers, stale events, wrong users and delayed cancellations. Position identity follows the backend's `instrumentId + positionSide`; margin mode is mutable data, not part of the key.
 
-Final verification: analyzer clean, 78 unit/widget tests passed, and the iOS live product-tab integration test passed. Private authentication and subscriptions recovered successfully after reconnect; the active perpetual view received fresh periodic snapshots again.
+2026-09-30 verification: analyzer clean, 78 unit/widget tests passed, and the iOS live product-tab integration test passed. Private authentication and subscriptions recovered successfully after reconnect; the active perpetual view received fresh periodic snapshots again.
 
 ## Trading detail audit (2026-09-30)
 

@@ -1,5 +1,108 @@
 import 'models.dart';
 
+/// Translate displayed coin amounts into one immutable strategy intent.
+AlgoOrderDraft spotAlgoTerms({
+  required Instrument instrument,
+  required String type,
+  required String side,
+  required String price,
+  required String quantity,
+  required String childQuantity,
+  required String interval,
+  required String duration,
+  required bool market,
+  required bool postOnly,
+}) {
+  if (!instrument.isSpot ||
+      instrument.instrumentId.isEmpty ||
+      instrument.status != 'TRADING' ||
+      !['TWAP', 'ICEBERG'].contains(type) ||
+      !['BUY', 'SELL'].contains(side)) {
+    throw const FormatException('当前交易对不能创建现货策略');
+  }
+  final total = decimalIncrement(
+    quantity,
+    instrument.quantityStepUnits,
+    scaleUnits: instrument.baseScaleUnits ?? 0,
+  );
+  final child = decimalIncrement(
+    childQuantity,
+    instrument.quantityStepUnits,
+    scaleUnits: instrument.baseScaleUnits ?? 0,
+  );
+  final ticks = type == 'TWAP' && market
+      ? 0
+      : decimalIncrement(
+          price,
+          instrument.priceTickUnits,
+          scaleUnits: instrument.quoteScaleUnits ?? 0,
+        );
+  final seconds = int.tryParse(interval.trim()),
+      length = int.tryParse(duration.trim());
+  if (total == null ||
+      child == null ||
+      total <= 0 ||
+      child <= 0 ||
+      child > total ||
+      ticks == null ||
+      (ticks <= 0 && !(type == 'TWAP' && market))) {
+    throw const FormatException('请按价格和数量步长填写，总量须不小于单片数量');
+  }
+  if (seconds == null ||
+      length == null ||
+      seconds < 1 ||
+      seconds > 86400 ||
+      length < 5 ||
+      length > 86400 ||
+      length < seconds) {
+    throw const FormatException('间隔为 1～86400 秒，时长为 5～86400 秒且不小于间隔');
+  }
+  final min = instrument.minQuantitySteps, max = instrument.maxQuantitySteps;
+  if (min == null || max == null || min <= 0 || max < min) {
+    throw const FormatException('数量规格未就绪，请刷新交易对');
+  }
+  for (final steps in [child, if (total % child != 0) total % child]) {
+    if (steps < min || steps > max) {
+      throw const FormatException('单片及最后一片数量须符合交易对数量限制');
+    }
+    if (ticks > 0) {
+      final multiplier = instrument.notionalMultiplierUnits,
+          minimum = instrument.minNotionalUnits,
+          maximum = instrument.maxNotionalUnits;
+      if (multiplier == null ||
+          minimum == null ||
+          maximum == null ||
+          multiplier <= 0 ||
+          minimum <= 0 ||
+          maximum < minimum) {
+        throw const FormatException('金额规格未就绪，请刷新交易对');
+      }
+      final notional =
+          BigInt.from(ticks) * BigInt.from(steps) * BigInt.from(multiplier);
+      if (notional < BigInt.from(minimum) || notional > BigInt.from(maximum)) {
+        throw const FormatException('单片及最后一片金额须符合交易对金额限制');
+      }
+    }
+  }
+  final slices = total ~/ child + (total % child == 0 ? 0 : 1);
+  if (type == 'TWAP' && slices > (length + seconds - 1) ~/ seconds) {
+    throw const FormatException('单片数量过小，无法在指定时长内执行');
+  }
+  return AlgoOrderDraft(
+    algoType: type,
+    side: side,
+    priceTicks: ticks,
+    quantitySteps: total,
+    childQuantitySteps: child,
+    intervalSeconds: seconds,
+    durationSeconds: length,
+    marginMode: 'CROSS',
+    positionSide: 'NET',
+    reduceOnly: false,
+    postOnly: type == 'ICEBERG' && postOnly,
+  );
+}
+
 /// Exact spot sizing in exchange units. The trading core still admits the order.
 String? spotOrderQuantity({
   required Instrument instrument,

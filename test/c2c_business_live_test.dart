@@ -177,7 +177,11 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final session = AuthSession.fromJson(asMap(asMap(fixture['users'])[role]));
     api.setSession(session);
-    final state = AppState(apiClient: api, offline: true)..session = session;
+    final state = AppState(
+      initialSession: session,
+      apiClient: api,
+      offline: true,
+    );
     await tester.pumpWidget(
       AppScope(
         notifier: state,

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'app.dart' show AppScope;
+import 'app_scope.dart';
 import 'app_state.dart';
 import 'exchange_widgets.dart';
 import 'funding_records_page.dart';

@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -72,7 +73,7 @@ void main() {
       '${product.productLine} trigger receipts survive restart without enabling spot position protection',
       () async {
         final settings = _Settings(), api = _Api(product)..lose = true;
-        var state = _State(api, settings)..session = actor;
+        var state = _State(initialSession: actor, api, settings);
         final draft = TriggerOrderDraft(
           side: 'SELL',
           triggerType: 'TAKE_PROFIT',
@@ -93,9 +94,8 @@ void main() {
           await state.placeTriggerOrders([draft]);
           expect(api.posts.length, 1);
           state.dispose();
-          state = _State(api, settings);
+          state = _State(api, settings, initialSession: actor);
           await state.bootstrap();
-          state.session = actor;
           expect(state.pendingTradingCommand?.clientTriggerOrderId, original);
           await state.checkPendingTradingCommand();
           expect(state.tradingCommandPending, true);
@@ -121,10 +121,9 @@ void main() {
           9007199254740993,
         );
         state.dispose();
-        state = _State(api, settings);
+        state = _State(api, settings, initialSession: actor);
         addTearDown(state.dispose);
         await state.bootstrap();
-        state.session = actor;
         await state.checkPendingTradingCommand();
         expect(state.tradingCommandPending, true);
         api.terminal = true;
@@ -141,7 +140,7 @@ void main() {
       '${product.productLine} storage failure prevents trigger creation and cancellation',
       () async {
         final api = _Api(product), settings = _Settings()..fail = true;
-        final state = _State(api, settings)..session = actor;
+        final state = _State(initialSession: actor, api, settings);
         addTearDown(state.dispose);
         await state.placeTriggerOrders([leg('TAKE_PROFIT', 24690)]);
         await state.cancelTriggerOrder(
@@ -166,10 +165,11 @@ void main() {
         'SETTLING permits direct reductions but never sends a newly created condition',
         () async {
           final state = _State(
+            initialSession: actor,
             _Api(product),
             _Settings(),
             instrument: contract(product: product, status: 'SETTLING'),
-          )..session = actor;
+          );
           addTearDown(state.dispose);
           expect(
             state.selectedInstrument.canPlaceOrder(reduceOnly: true),
@@ -182,7 +182,11 @@ void main() {
       test(
         'delivery exposes one atomic pair instead of rejecting the product',
         () async {
-          final state = _State(_Api(product), _Settings())..session = actor;
+          final state = _State(
+            initialSession: actor,
+            _Api(product),
+            _Settings(),
+          );
           addTearDown(state.dispose);
           expect(await state.placeOco(pair()), 2);
           expect((state.api as _Api).posts.single['atomic'], true);
@@ -192,7 +196,7 @@ void main() {
         'a lost independent delivery request retains identity and stops later tiers',
         () async {
           final api = _Api(product)..lose = true, settings = _Settings();
-          final state = _State(api, settings)..session = actor;
+          final state = _State(initialSession: actor, api, settings);
           addTearDown(state.dispose);
           expect(await state.placeTriggerOrders(pair()), 0);
           expect(api.posts.length, 1);
@@ -211,7 +215,7 @@ void main() {
         'delivery OCO is durable across reconstruction and confirmation storage failure',
         () async {
           final api = _Api(product)..lose = true, settings = _Settings();
-          var state = _State(api, settings)..session = actor;
+          var state = _State(initialSession: actor, api, settings);
           expect(await state.placeOco(pair()), 0);
           expect(api.posts.length, 1);
           final original = state.pendingTradingCommand!.ocoTakeProfitClientId;
@@ -220,10 +224,9 @@ void main() {
             isNot(state.pendingTradingCommand!.ocoStopLossClientId),
           );
           state.dispose();
-          state = _State(api, settings);
+          state = _State(api, settings, initialSession: actor);
           addTearDown(state.dispose);
           await state.bootstrap();
-          state.session = actor;
           expect(state.pendingTradingCommand!.ocoTakeProfitClientId, original);
           await state.checkPendingTradingCommand();
           expect(state.tradingCommandPending, true);
@@ -246,7 +249,7 @@ void main() {
         'delivery normal atomic acknowledgment saves both identities before one request',
         () async {
           final api = _Api(product), settings = _Settings();
-          final active = _State(api, settings)..session = actor;
+          final active = _State(initialSession: actor, api, settings);
           addTearDown(active.dispose);
           api.before = () {
             final stored = asMap(
@@ -280,7 +283,7 @@ void main() {
         'a confirmed OCO whose storage update fails remains recoverable',
         () async {
           final api = _Api(product), settings = _Settings();
-          final state = _State(api, settings)..session = actor;
+          final state = _State(initialSession: actor, api, settings);
           addTearDown(state.dispose);
           api.before = () => settings.fail = true;
           expect(await state.placeOco(pair()), 0);
@@ -297,7 +300,7 @@ void main() {
         'delivery cancellation survives reconstruction with the exact original 64-bit trigger',
         () async {
           final api = _Api(product)..lose = true, settings = _Settings();
-          var state = _State(api, settings)..session = actor;
+          var state = _State(initialSession: actor, api, settings);
           final order = TriggerOrderModel.fromJson(
             api.order({'clientTriggerOrderId': 'old'}, id: 9007199254740993),
           );
@@ -307,10 +310,9 @@ void main() {
             9007199254740993,
           );
           state.dispose();
-          state = _State(api, settings);
+          state = _State(api, settings, initialSession: actor);
           addTearDown(state.dispose);
           await state.bootstrap();
-          state.session = actor;
           await state.checkPendingTradingCommand();
           expect(state.tradingCommandPending, true);
           api.terminal = true;
@@ -327,7 +329,7 @@ void main() {
         'delivery initial storage failure sends neither independent, OCO nor cancellation request',
         () async {
           final api = _Api(product), settings = _Settings()..fail = true;
-          final state = _State(api, settings)..session = actor;
+          final state = _State(initialSession: actor, api, settings);
           addTearDown(state.dispose);
           await state.placeTriggerOrders([pair().first]);
           await state.placeOco(pair());
@@ -342,7 +344,7 @@ void main() {
         'delivery malformed reply and unavailable lookup never clear or resend the intent',
         () async {
           final api = _Api(product)..badReply = true;
-          final state = _State(api, _Settings())..session = actor;
+          final state = _State(initialSession: actor, api, _Settings());
           addTearDown(state.dispose);
           expect(await state.placeOco(pair()), 0);
           expect(state.tradingCommandPending, true);
@@ -364,10 +366,11 @@ void main() {
             contract(product: product, expiry: '2020-01-01T00:00:00Z'),
           ]) {
             final state = _State(
+              initialSession: actor,
               _Api(product),
               _Settings(),
               instrument: instrument,
-            )..session = actor;
+            );
             expect(state.selectedInstrument.canPlaceTrigger(), false);
             expect(await state.placeTriggerOrders([pair().first]), 0);
             expect(await state.placeOco(pair()), 0);
@@ -380,7 +383,11 @@ void main() {
       test(
         'delivery keeps close side, hedge side, margin mode and quantity tied to the same position',
         () async {
-          final state = _State(_Api(product), _Settings())..session = actor;
+          final state = _State(
+            initialSession: actor,
+            _Api(product),
+            _Settings(),
+          );
           addTearDown(state.dispose);
           await state.placeOco([
             leg('TAKE_PROFIT', 24690, quantity: 5),
@@ -397,7 +404,7 @@ void main() {
         'delivery pending result stays bound to its product after the visible product changes',
         () async {
           final api = _Api(product)..lose = true, settings = _Settings();
-          final state = _State(api, settings)..session = actor;
+          final state = _State(initialSession: actor, api, settings);
           addTearDown(state.dispose);
           await state.placeOco(pair());
           state.mode = ProductMode.option;
@@ -415,10 +422,11 @@ void main() {
           (tester) async {
             final api = _Api(product);
             final state = _State(
+              initialSession: actor,
               api,
               _Settings(),
               instrument: contract(product: product, status: 'SETTLING'),
-            )..session = actor;
+            );
             tester.view.physicalSize = const Size(320, 1500);
             tester.view.devicePixelRatio = 1;
             addTearDown(() {
@@ -491,7 +499,7 @@ void _testOcoLayout(ProductMode product, Brightness brightness) {
     '${product.productLine} 320px $brightness OCO keeps exact scales and unknown requests',
     (tester) async {
       final api = _Api(product)..lose = true;
-      final state = _State(api, _Settings())..session = actor;
+      final state = _State(initialSession: actor, api, _Settings());
       tester.view.physicalSize = const Size(320, 1800);
       tester.view.devicePixelRatio = 1;
       addTearDown(() {
@@ -552,6 +560,7 @@ class _Api extends ApiClient {
   final List<Map<String, dynamic>> reads = [];
   FutureOr<void> Function()? before;
   Map<String, dynamic> order(Map<String, dynamic> body, {int id = 99}) => {
+    ...completeCoreRow('trigger', {}),
     'userId': 1,
     'instrumentId': '73',
     'symbol': contract(product: product).symbol,
@@ -620,18 +629,23 @@ class _Api extends ApiClient {
 }
 
 class _State extends AppState {
-  _State(_Api api, _Settings settings, {Instrument? instrument})
-    : super(
-        apiClient: api,
-        settingsStore: settings,
-        sessionStore: _Sessions(),
-        config: const AppConfig(websocketUrl: ''),
-        seedInstruments: [instrument ?? contract(product: api.product)],
-      ) {
+  _State(
+    _Api api,
+    _Settings settings, {
+    Instrument? instrument,
+    super.initialSession,
+  }) : super(
+         apiClient: api,
+         settingsStore: settings,
+         sessionStore: _Sessions(),
+         config: const AppConfig(websocketUrl: ''),
+         seedInstruments: [instrument ?? contract(product: api.product)],
+       ) {
     mode = api.product;
     positionMode = 'HEDGE';
     positions = [
       Position.fromJson({
+        ...completeCoreRow('position', {}),
         'instrumentId': '73',
         'symbol': selectedSymbol,
         'signedQuantitySteps': 4,

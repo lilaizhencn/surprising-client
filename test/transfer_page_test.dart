@@ -25,10 +25,11 @@ void main() {
             addTearDown(tester.view.resetDevicePixelRatio);
             final api = TransferApi();
             final state = AppState(
+              initialSession: session,
               offline: true,
               apiClient: api,
               settingsStore: MemorySettings(),
-            )..session = session;
+            );
             addTearDown(state.dispose);
             state.valuedProducts.add(ProductMode.spot);
             state.privateViews[ProductMode.spot] = PrivateView()

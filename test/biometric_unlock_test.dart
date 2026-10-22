@@ -88,10 +88,14 @@ void main() {
     tester,
   ) async {
     final store = MemoryBiometricStore();
-    final state = AppState(offline: true, sessionStore: store)
-      ..session = savedSession
-      ..biometricLoginEnabled = true
-      ..biometricSessionLocked = true;
+    final state =
+        AppState(
+            initialSession: savedSession,
+            offline: true,
+            sessionStore: store,
+          )
+          ..biometricLoginEnabled = true
+          ..biometricSessionLocked = true;
     addTearDown(state.dispose);
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -117,9 +121,11 @@ void main() {
     'return from background locks nested routes and sheets then resumes them',
     (tester) async {
       final store = MemoryBiometricStore();
-      final state = AppState(offline: true, sessionStore: store)
-        ..session = savedSession
-        ..biometricLoginEnabled = true;
+      final state = AppState(
+        initialSession: savedSession,
+        offline: true,
+        sessionStore: store,
+      )..biometricLoginEnabled = true;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
@@ -166,10 +172,11 @@ void main() {
   testWidgets(
     'inactive system UI is obscured without a new unlock requirement',
     (tester) async {
-      final state =
-          AppState(offline: true, sessionStore: MemoryBiometricStore())
-            ..session = savedSession
-            ..biometricLoginEnabled = true;
+      final state = AppState(
+        initialSession: savedSession,
+        offline: true,
+        sessionStore: MemoryBiometricStore(),
+      )..biometricLoginEnabled = true;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
@@ -187,10 +194,14 @@ void main() {
     tester,
   ) async {
     final store = MemoryBiometricStore();
-    final state = AppState(offline: true, sessionStore: store)
-      ..session = savedSession
-      ..biometricLoginEnabled = true
-      ..biometricSessionLocked = true;
+    final state =
+        AppState(
+            initialSession: savedSession,
+            offline: true,
+            sessionStore: store,
+          )
+          ..biometricLoginEnabled = true
+          ..biometricSessionLocked = true;
     addTearDown(state.dispose);
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -212,10 +223,10 @@ void main() {
     tester,
   ) async {
     final store = MemoryBiometricStore();
-    final state = BootstrapState(store, BiometricApi())
-      ..session = savedSession
-      ..biometricLoginEnabled = true
-      ..biometricSessionLocked = true;
+    final state =
+        BootstrapState(initialSession: savedSession, store, BiometricApi())
+          ..biometricLoginEnabled = true
+          ..biometricSessionLocked = true;
     addTearDown(state.dispose);
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -327,8 +338,7 @@ void main() {
   ) async {
     final store = MemoryBiometricStore();
     final api = BiometricApi();
-    final state = BootstrapState(store, api)
-      ..session = savedSession
+    final state = BootstrapState(initialSession: savedSession, store, api)
       ..biometricLoginEnabled = true;
     addTearDown(state.dispose);
     await tester.pumpWidget(
@@ -351,10 +361,14 @@ void main() {
     'a second foreground entry automatically retries a canceled prompt',
     (tester) async {
       final store = MemoryBiometricStore();
-      final state = AppState(offline: true, sessionStore: store)
-        ..session = savedSession
-        ..biometricLoginEnabled = true
-        ..biometricSessionLocked = true;
+      final state =
+          AppState(
+              initialSession: savedSession,
+              offline: true,
+              sessionStore: store,
+            )
+            ..biometricLoginEnabled = true
+            ..biometricSessionLocked = true;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
@@ -377,10 +391,10 @@ void main() {
     tester,
   ) async {
     final store = MemoryBiometricStore()..clearError = true;
-    final state = BootstrapState(store, BiometricApi())
-      ..session = savedSession
-      ..biometricLoginEnabled = true
-      ..biometricSessionLocked = true;
+    final state =
+        BootstrapState(initialSession: savedSession, store, BiometricApi())
+          ..biometricLoginEnabled = true
+          ..biometricSessionLocked = true;
     addTearDown(state.dispose);
     await tester.pumpWidget(
       SurprisingClientApp(state: state, bootstrap: false),
@@ -399,10 +413,14 @@ void main() {
     'native success during dialog dismissal waits for visible resume',
     (tester) async {
       final store = MemoryBiometricStore();
-      final state = AppState(offline: true, sessionStore: store)
-        ..session = savedSession
-        ..biometricLoginEnabled = true
-        ..biometricSessionLocked = true;
+      final state =
+          AppState(
+              initialSession: savedSession,
+              offline: true,
+              sessionStore: store,
+            )
+            ..biometricLoginEnabled = true
+            ..biometricSessionLocked = true;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
@@ -429,11 +447,15 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       final store = MemoryBiometricStore();
-      final state = AppState(offline: true, sessionStore: store)
-        ..session = savedSession
-        ..biometricLoginEnabled = true
-        ..biometricSessionLocked = true
-        ..clientTheme = theme;
+      final state =
+          AppState(
+              initialSession: savedSession,
+              offline: true,
+              sessionStore: store,
+            )
+            ..biometricLoginEnabled = true
+            ..biometricSessionLocked = true
+            ..clientTheme = theme;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
@@ -499,14 +521,17 @@ class MemoryBiometricStore implements SessionStore {
 
 // Exercise the real secure-session restore/activation logic without market I/O.
 class BootstrapState extends AppState {
-  BootstrapState(MemoryBiometricStore store, BiometricApi api)
-    : super(
-        config: const AppConfig(websocketUrl: ''),
-        apiClient: api,
-        sessionStore: store,
-        settingsStore: MemorySettings(),
-        seedInstruments: fallbackInstruments(),
-      );
+  BootstrapState(
+    MemoryBiometricStore store,
+    BiometricApi api, {
+    super.initialSession,
+  }) : super(
+         config: const AppConfig(websocketUrl: ''),
+         apiClient: api,
+         sessionStore: store,
+         settingsStore: MemorySettings(),
+         seedInstruments: fallbackInstruments(),
+       );
   @override
   Future<void> refreshInstruments({bool silent = false}) async {}
   @override

@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -18,7 +19,12 @@ void main() {
     'late deposit address cannot replace a newer network selection',
     () async {
       final api = AddressApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       final old = state.loadDepositAddress(chain: 'BTC', symbol: 'BTC');
       final next = state.loadDepositAddress(chain: 'ETH', symbol: 'ETH');
@@ -45,7 +51,12 @@ void main() {
     'disposed address request cannot restore data or notify the closed state',
     () async {
       final api = AddressApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       final request = state.loadDepositAddress(chain: 'BTC', symbol: 'BTC');
       state.dispose();
       api.pending.single.complete(
@@ -64,10 +75,12 @@ void main() {
     () async {
       final api = TransferPrecisionApi();
       final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
         offline: true,
         apiClient: api,
         settingsStore: MemorySettings(),
-      )..session = session;
+      );
       addTearDown(state.dispose);
       await state.transfer(
         sourceAccountType: 'FUNDING',
@@ -208,7 +221,12 @@ void main() {
     'late history response cannot overwrite a new category or survive logout',
     (tester) async {
       final api = RecordApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await tester.pumpWidget(
         MaterialApp(home: FundingRecordsPage(state: state)),
@@ -243,8 +261,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('参考号：NEW'), findsOneWidget);
       expect(find.text('参考号：OLD'), findsNothing);
-      state.session = null;
-      state.notifyListeners();
+      await state.logout();
       await tester.pump();
       expect(find.text('参考号：NEW'), findsNothing);
       expect(find.text('请先登录查看记录'), findsOneWidget);
@@ -255,17 +272,18 @@ void main() {
   ) async {
     final api = KycApi();
     final state = AppState(
+      initialSession: session,
+      sessionStore: MemorySessionStore(),
       offline: true,
       apiClient: api,
       settingsStore: MemorySettings(),
-    )..session = session;
+    );
     addTearDown(state.dispose);
     await tester.pumpWidget(
       MaterialApp(home: KycApplicationPage(state: state)),
     );
     await tester.pump();
-    state.session = null;
-    state.notifyListeners();
+    await state.logout();
     await tester.pump();
     api.countries.complete([
       {
@@ -282,7 +300,12 @@ void main() {
     'device data is cleared on logout and old reads cannot restore it',
     (tester) async {
       final api = DeviceApi();
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await tester.pumpWidget(
         MaterialApp(
@@ -291,8 +314,7 @@ void main() {
       );
       await tester.tap(find.text('设备与登录 IP'));
       await tester.pump(const Duration(milliseconds: 400));
-      state.session = null;
-      state.notifyListeners();
+      await state.logout();
       await tester.pump();
       api.pending.complete([
         {'deviceId': 'old', 'userAgent': 'PRIVATE OLD DEVICE'},
@@ -311,8 +333,12 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = SecurityApi()..failKyc = false;
-        final state = AppState(offline: true, apiClient: api)
-          ..session = session;
+        final state = AppState(
+          initialSession: session,
+          sessionStore: MemorySessionStore(),
+          offline: true,
+          apiClient: api,
+        );
         addTearDown(state.dispose);
         await tester.pumpWidget(
           AppScope(
@@ -339,8 +365,7 @@ void main() {
         await tester.tap(create);
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('api-secret')), findsOneWidget);
-        state.session = null;
-        state.notifyListeners();
+        await state.logout();
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('api-secret')), findsNothing);
         expect(tester.takeException(), isNull);
@@ -351,7 +376,12 @@ void main() {
     'cancelling session revocation does not report a successful logout',
     (tester) async {
       final api = SecurityApi()..failKyc = false;
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await tester.pumpWidget(
         AppScope(
@@ -375,7 +405,12 @@ void main() {
     'KYC-only page can continue provider verification without MFA endpoint',
     (tester) async {
       final api = ProviderApi()..failKyc = false;
-      final state = AppState(offline: true, apiClient: api)..session = session;
+      final state = AppState(
+        initialSession: session,
+        sessionStore: MemorySessionStore(),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(state.dispose);
       await tester.pumpWidget(
         AppScope(

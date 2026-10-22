@@ -59,14 +59,12 @@ void main() {
             final contract = await api.instrumentLatest(id!, mode);
             expect(contract.status, 'CLOSED');
             expect(contract.canPlaceOrder(reduceOnly: true), false);
-            state =
-                AppState(
-                    config: config,
-                    apiClient: api,
-                    seedInstruments: [contract],
-                  )
-                  ..mode = mode
-                  ..session = session;
+            state = AppState(
+              initialSession: session,
+              config: config,
+              apiClient: api,
+              seedInstruments: [contract],
+            )..mode = mode;
             await state.refreshInstruments();
             expect(state.selectedInstrument.instrumentId, id);
             expect(state.selectedInstrument.status, 'CLOSED');

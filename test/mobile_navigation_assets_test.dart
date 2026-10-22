@@ -17,14 +17,12 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final state =
-            AppState(
-                offline: true,
-                apiClient: AvailabilityApi(),
-                settingsStore: MemorySettings(),
-              )
-              ..session = session
-              ..clientTheme = theme;
+        final state = AppState(
+          initialSession: session,
+          offline: true,
+          apiClient: AvailabilityApi(),
+          settingsStore: MemorySettings(),
+        )..clientTheme = theme;
         addTearDown(state.dispose);
         await tester.pumpWidget(
           SurprisingClientApp(state: state, bootstrap: false),
@@ -91,7 +89,7 @@ void main() {
     'only explicit disabled products count as zero; unknown config cannot become zero',
     () async {
       final api = AvailabilityApi();
-      final state = AppState(apiClient: api)..session = session;
+      final state = AppState(initialSession: session, apiClient: api);
       addTearDown(state.dispose);
       await state.refreshProductAvailability();
       state.handleRealtimeMessage({

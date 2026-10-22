@@ -1,3 +1,5 @@
+import 'support/authentication.dart';
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +23,7 @@ void main() {
           body: PositionRow(
             state: state,
             position: Position.fromJson({
+              ...completeCoreRow('position', {}),
               'symbol': 'BTC-USDT-261225-100000-C',
               'positionSide': 'LONG',
               'marginMode': 'ISOLATED',
@@ -196,12 +199,15 @@ void main() {
       final state = TriggerState(api);
       addTearDown(state.dispose);
       final first = state.placeTriggerOrders([draft(), draft()]);
+      await Future<void>.delayed(Duration.zero);
       expect(state.submittingTriggers, isTrue);
       expect(await state.placeTriggerOrders([draft()]), 0);
       await Future<void>.delayed(Duration.zero);
       expect(api.calls, 1);
       api.first.complete(
         TriggerOrderModel.fromJson({
+          ...completeCoreRow('trigger', {}),
+          ...completeCoreRow('order', {}),
           ...api.firstRequest,
           'triggerOrderId': 99,
           'symbol': state.selectedSymbol,
@@ -225,9 +231,11 @@ void main() {
       final pending = state.placeTriggerOrders([draft(), draft()]);
       await Future<void>.delayed(Duration.zero);
       expect(api.calls, 1);
-      state.session = null;
+      await state.logout();
       api.first.complete(
         TriggerOrderModel.fromJson({
+          ...completeCoreRow('trigger', {}),
+          ...completeCoreRow('order', {}),
           ...api.firstRequest,
           'triggerOrderId': 99,
           'symbol': state.selectedSymbol,
@@ -311,19 +319,24 @@ class DelayedSelectionState extends AppState {
 
 class TriggerState extends AppState {
   TriggerState(ApiClient api)
-    : super(offline: true, apiClient: api, settingsStore: _RecoverySettings()) {
+    : super(
+        offline: true,
+        apiClient: api,
+        settingsStore: _RecoverySettings(),
+        sessionStore: MemorySessionStore(),
+        initialSession: const AuthSession(
+          user: AuthUser(
+            userId: 1,
+            username: 'test',
+            email: 'test@example.com',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'test',
+          refreshToken: 'refresh',
+        ),
+      ) {
     mode = ProductMode.linear;
     selectedSymbol = visibleInstruments.first.symbol;
-    session = const AuthSession(
-      user: AuthUser(
-        userId: 1,
-        username: 'test',
-        email: 'test@example.com',
-        status: 'ACTIVE',
-      ),
-      accessToken: 'test',
-      refreshToken: 'refresh',
-    );
     positions = [
       Position(
         instrumentId: selectedInstrument.instrumentId,
@@ -371,6 +384,11 @@ class TriggerApi extends ApiClient {
         'clientTriggerOrderId': clientTriggerOrderId,
         'side': side,
         'triggerType': triggerType,
+        'triggerPriceTicks': triggerPriceTicks,
+        'priceTicks': priceTicks,
+        'marginMode': marginMode,
+        'positionSide': positionSide,
+        'orderType': orderType,
         'quantitySteps': quantitySteps,
       };
       return first.future;
@@ -380,7 +398,7 @@ class TriggerApi extends ApiClient {
 }
 
 class DelayedResetState extends AppState {
-  DelayedResetState() : super(offline: true);
+  DelayedResetState() : super(offline: true, apiClient: ResetApi());
   final result = Completer<bool>();
   @override
   Future<bool> requestPasswordReset(String identifier) async => true;
@@ -411,5 +429,21 @@ class _RecoverySettings implements ClientSettingsStore {
   @override
   Future<void> write(Map<String, String> next) async {
     values = {...next};
+  }
+}
+
+class ResetApi extends ApiClient {
+  ResetApi() : super(const AppConfig());
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = false,
+  }) async {
+    expect(path, '/api/v1/auth/telegram/config');
+    return {'enabled': false};
   }
 }

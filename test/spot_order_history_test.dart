@@ -67,14 +67,12 @@ void main() {
     'history loads ended instrument metadata by permanent identity when absent from the trading catalog',
     (tester) async {
       final api = _HistoryApi();
-      final state =
-          AppState(
-              apiClient: api,
-              seedInstruments: [instrument(id: '869')],
-              config: const AppConfig(websocketUrl: ''),
-            )
-            ..mode = ProductMode.spot
-            ..session = session;
+      final state = AppState(
+        apiClient: api,
+        seedInstruments: [instrument(id: '869')],
+        config: const AppConfig(websocketUrl: ''),
+        initialSession: session,
+      )..mode = ProductMode.spot;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         MaterialApp(
@@ -155,14 +153,12 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final state =
-            AppState(
-                apiClient: _HistoryApi(),
-                seedInstruments: [instrument()],
-                config: const AppConfig(websocketUrl: ''),
-              )
-              ..mode = ProductMode.spot
-              ..session = session;
+        final state = AppState(
+          apiClient: _HistoryApi(),
+          seedInstruments: [instrument()],
+          config: const AppConfig(websocketUrl: ''),
+          initialSession: session,
+        )..mode = ProductMode.spot;
         addTearDown(state.dispose);
         await tester.pumpWidget(
           MaterialApp(
@@ -194,14 +190,12 @@ void main() {
     'invalid date range and product change cannot retain another product history',
     (tester) async {
       final api = _HistoryApi();
-      final state =
-          AppState(
-              apiClient: api,
-              seedInstruments: [instrument()],
-              config: const AppConfig(websocketUrl: ''),
-            )
-            ..mode = ProductMode.spot
-            ..session = session;
+      final state = AppState(
+        apiClient: api,
+        seedInstruments: [instrument()],
+        config: const AppConfig(websocketUrl: ''),
+        initialSession: session,
+      )..mode = ProductMode.spot;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         MaterialApp(
@@ -248,14 +242,12 @@ void main() {
     'editing an instrument draft cannot combine a new filter with the previous page cursor',
     (tester) async {
       final api = _HistoryApi();
-      final state =
-          AppState(
-              apiClient: api,
-              seedInstruments: [instrument()],
-              config: const AppConfig(websocketUrl: ''),
-            )
-            ..mode = ProductMode.spot
-            ..session = session;
+      final state = AppState(
+        apiClient: api,
+        seedInstruments: [instrument()],
+        config: const AppConfig(websocketUrl: ''),
+        initialSession: session,
+      )..mode = ProductMode.spot;
       addTearDown(state.dispose);
       await tester.pumpWidget(
         MaterialApp(

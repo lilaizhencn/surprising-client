@@ -1,3 +1,5 @@
+import 'support/authentication.dart';
+import 'support/core_snapshot_fixture.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -31,7 +33,7 @@ Instrument spot({String status = 'TRADING'}) => Instrument.fromJson({
   'notionalMultiplierUnits': 100,
   'changeId': 1,
 });
-const session = AuthSession(
+const actorSession = AuthSession(
   user: AuthUser(userId: 1, username: 'spot', email: '', status: 'ACTIVE'),
   accessToken: 'test',
   refreshToken: 'test',
@@ -52,6 +54,7 @@ Future<void> submitSpot(AppState state) => state.placeOrder(
 
 OrderModel cancelTarget({int id = 91, String status = 'ACCEPTED'}) =>
     OrderModel.fromJson({
+      ...completeCoreRow('order', {}),
       'orderId': id,
       'symbol': 'BTC-USDT',
       'instrumentId': '1',
@@ -99,7 +102,11 @@ void main() {
         () async {
           final settings = _MemorySettings();
           final api = _SpotApi();
-          final state = _SpotState(api, settings: settings)..session = session;
+          final state = _SpotState(
+            initialSession: actorSession,
+            api,
+            settings: settings,
+          );
           void failConfirmation() => settings.failWrites = true;
           api.beforePlace = failConfirmation;
           api.beforeCancel = failConfirmation;
@@ -141,10 +148,13 @@ void main() {
           state.dispose();
 
           settings.failWrites = false;
-          final restored = _SpotState(api, settings: settings);
+          final restored = _SpotState(
+            api,
+            initialSession: actorSession,
+            settings: settings,
+          );
           addTearDown(restored.dispose);
           await restored.bootstrap();
-          restored.session = session;
           expect(restored.tradingCommandPending, isTrue);
           await restored.checkPendingTradingCommand();
           expect(restored.tradingCommandPending, isFalse);
@@ -169,7 +179,11 @@ void main() {
     () async {
       final settings = _MemorySettings();
       final api = _SpotApi()..failure = const SocketException('lost response');
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(state.dispose);
       await submitSpot(state);
       final original = state.pendingTradingCommand;
@@ -213,7 +227,7 @@ void main() {
               message: 'amended',
             ),
           ));
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       await amendSpot(state);
       expect(state.tradingCommandPending, isTrue);
@@ -281,9 +295,9 @@ void main() {
               AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
               httpClient: http,
             )
-            ..setSession(session)
+            ..setSession(actorSession)
             ..instrumentCatalog = [spot()];
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(() async {
         state.dispose();
         http.close(force: true);
@@ -310,7 +324,11 @@ void main() {
         expect(saved['amendOrderId'], 91);
         expect(saved['amendRequestId'], api.lastAmend!['clientRequestId']);
       };
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       await amendSpot(state);
       final key = state.pendingTradingCommand?.amendRequestId;
       expect(key, startsWith('app-amend-'));
@@ -325,10 +343,13 @@ void main() {
       expect(api.amendments, 1);
       expect(api.calls, 0);
       state.dispose();
-      final restored = _SpotState(api, settings: settings);
+      final restored = _SpotState(
+        api,
+        initialSession: actorSession,
+        settings: settings,
+      );
       addTearDown(restored.dispose);
       await restored.bootstrap();
-      restored.session = session;
       expect(restored.pendingTradingCommand?.amendRequestId, key);
       await restored.checkPendingTradingCommand();
       expect(restored.tradingCommandPending, isTrue);
@@ -345,7 +366,11 @@ void main() {
     () async {
       final settings = _MemorySettings()..failWrites = true;
       final api = _SpotApi();
-      final active = _SpotState(api, settings: settings)..session = session;
+      final active = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(active.dispose);
       await amendSpot(active);
       expect(api.amendments, 0);
@@ -372,7 +397,7 @@ void main() {
       final api = _SpotApi()
         ..amendResponse = (Completer<AmendOrderResult>()
           ..complete(amendmentResult()));
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       await amendSpot(state);
       expect(state.tradingCommandPending, isFalse);
@@ -387,23 +412,33 @@ void main() {
     'late amendment response cannot mutate another user or notify a disposed state',
     () async {
       final api = _SpotApi()..amendResponse = Completer<AmendOrderResult>();
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       final sent = amendSpot(state);
       while (api.amendments == 0) {
         await Future<void>.delayed(Duration.zero);
       }
-      state.session = const AuthSession(
-        user: AuthUser(userId: 2, username: 'new', email: '', status: 'ACTIVE'),
-        accessToken: 'new',
-        refreshToken: 'new',
+      await state.logout();
+      await signInAs(
+        state,
+        const AuthSession(
+          user: AuthUser(
+            userId: 2,
+            username: 'new',
+            email: '',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'new',
+          refreshToken: 'new',
+        ),
       );
+      final newAccountNotice = state.lastNotice;
       api.amendResponse!.complete(amendmentResult());
       await sent;
-      expect(state.lastNotice, isNull);
+      expect(state.lastNotice, newAccountNotice);
       expect(state.openOrders, isEmpty);
       state.dispose();
       final lateApi = _SpotApi()..amendResponse = Completer<AmendOrderResult>();
-      final disposed = _SpotState(lateApi)..session = session;
+      final disposed = _SpotState(initialSession: actorSession, lateApi);
       final late = amendSpot(disposed);
       while (lateApi.amendments == 0) {
         await Future<void>.delayed(Duration.zero);
@@ -432,11 +467,13 @@ void main() {
             'result': {
               'cancelRequested': true,
               'originalOrder': {
+                ...completeCoreRow('order', {}),
                 'orderId': 91,
                 'instrumentId': '1',
                 'status': 'CANCELED',
               },
               'replacementOrder': {
+                ...completeCoreRow('order', {}),
                 'orderId': 9007199254740993,
                 'instrumentId': '1',
                 'status': 'ACCEPTED',
@@ -455,9 +492,9 @@ void main() {
               AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
               httpClient: http,
             )
-            ..setSession(session)
+            ..setSession(actorSession)
             ..instrumentCatalog = [spot()];
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(() async {
         state.dispose();
         http.close(force: true);
@@ -478,8 +515,7 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = _SpotApi();
-        final state = _SpotState(api)
-          ..session = session
+        final state = _SpotState(initialSession: actorSession, api)
           ..openOrders = [cancelTarget()];
         addTearDown(state.dispose);
         await tester.pumpWidget(
@@ -563,8 +599,8 @@ void main() {
       final api = ApiClient(
         AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
         httpClient: http,
-      )..setSession(session);
-      final state = _SpotState(api)..session = session;
+      )..setSession(actorSession);
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(() async {
         state.dispose();
         http.close(force: true);
@@ -601,7 +637,11 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = _SpotApi();
         final settings = _MemorySettings();
-        final state = _SpotState(api, settings: settings)..session = session;
+        final state = _SpotState(
+          initialSession: actorSession,
+          api,
+          settings: settings,
+        );
         state.openOrders = [cancelTarget()];
         addTearDown(state.dispose);
         await tester.pumpWidget(
@@ -679,7 +719,11 @@ void main() {
         expect(saved['cancelOrderId'], 91);
         expect(saved['productLine'], 'SPOT');
       };
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       await state.cancelOrder(cancelTarget());
       expect(state.pendingTradingCommand?.cancelOrderId, 91);
       await state.cancelOrder(cancelTarget(id: 92));
@@ -687,10 +731,13 @@ void main() {
       expect(api.cancellations, 1);
       expect(api.calls, 0);
       state.dispose();
-      final restored = _SpotState(api, settings: settings);
+      final restored = _SpotState(
+        api,
+        initialSession: actorSession,
+        settings: settings,
+      );
       addTearDown(restored.dispose);
       await restored.bootstrap();
-      restored.session = session;
       expect(restored.pendingTradingCommand?.cancelOrderId, 91);
       await restored.checkPendingTradingCommand();
       expect(restored.tradingCommandPending, isTrue);
@@ -708,7 +755,11 @@ void main() {
     () async {
       final settings = _MemorySettings()..failWrites = true;
       final api = _SpotApi();
-      final active = _SpotState(api, settings: settings)..session = session;
+      final active = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(active.dispose);
       await active.cancelOrder(cancelTarget());
       expect(api.cancellations, 0);
@@ -725,7 +776,7 @@ void main() {
     'spot cancellation keeps unavailable or mismatched queries pending and recovers a committed rejection',
     () async {
       final api = _SpotApi()..cancelFailure = PendingTradingCommand('cancel-1');
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       await state.cancelOrder(cancelTarget());
       api.queryFailure = ApiException(503, 'view unavailable');
@@ -749,25 +800,36 @@ void main() {
     'malformed cancellation replies stay pending and late responses cannot mutate another user or disposed state',
     () async {
       final api = _SpotApi()..cancelResponse = Completer<OrderModel>();
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       final sent = state.cancelOrder(cancelTarget());
       while (api.cancellations == 0) {
         await Future<void>.delayed(Duration.zero);
       }
-      state.session = const AuthSession(
-        user: AuthUser(userId: 2, username: 'new', email: '', status: 'ACTIVE'),
-        accessToken: 'new',
-        refreshToken: 'new',
+      await state.logout();
+      await signInAs(
+        state,
+        const AuthSession(
+          user: AuthUser(
+            userId: 2,
+            username: 'new',
+            email: '',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'new',
+          refreshToken: 'new',
+        ),
       );
+      final newAccountNotice = state.lastNotice;
       api.cancelResponse!.complete(cancelTarget(id: 92, status: 'CANCELED'));
       await sent;
-      expect(state.lastNotice, isNull);
+      expect(state.lastNotice, newAccountNotice);
       expect(state.lastError, isNull);
-      state.session = session;
+      await state.logout();
+      await signInAs(state, actorSession);
       expect(state.pendingTradingCommand?.cancelOrderId, 91);
       state.dispose();
       final disposedApi = _SpotApi()..cancelResponse = Completer<OrderModel>();
-      final disposed = _SpotState(disposedApi)..session = session;
+      final disposed = _SpotState(initialSession: actorSession, disposedApi);
       final late = disposed.cancelOrder(cancelTarget());
       while (disposedApi.cancellations == 0) {
         await Future<void>.delayed(Duration.zero);
@@ -784,7 +846,7 @@ void main() {
     'a committed rejected submission is recovered without an order entity',
     () async {
       final api = _SpotApi();
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       await submitSpot(state);
       api.queryFailure = ApiException(503, 'order view not initialized');
@@ -801,10 +863,8 @@ void main() {
   test(
     'malformed spot responses and unavailable or mismatched projections keep the original intent',
     () async {
-      final api = _SpotApi()
-        ..response = (Completer<OrderModel>()
-          ..complete(OrderModel.fromJson({})));
-      final state = _SpotState(api)..session = session;
+      final api = _SpotApi()..failure = const FormatException('委托回执不完整');
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       await submitSpot(state);
       expect(state.tradingCommandPending, isTrue);
@@ -830,7 +890,7 @@ void main() {
     'a late pending spot response does not notify a disposed state',
     () async {
       final api = _SpotApi()..response = Completer<OrderModel>();
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       final sent = submitSpot(state);
       for (var i = 0; api.calls == 0 && i < 20; i++) {
         await Future<void>.delayed(Duration.zero);
@@ -886,7 +946,7 @@ void main() {
       final api = ApiClient(
         AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
         httpClient: http,
-      )..setSession(session);
+      )..setSession(actorSession);
       api.onSessionRefreshed = (_) async {
         callbacks++;
       };
@@ -938,17 +998,24 @@ void main() {
         expect(saved['clientOrderId'], api.lastClientOrderId);
         expect(saved['instrumentId'], '1');
       };
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       await submitSpot(state);
       final clientId = state.pendingTradingCommand?.clientOrderId;
       expect(clientId, startsWith('app-'));
       await submitSpot(state);
       expect(api.calls, 1);
       state.dispose();
-      final restored = _SpotState(api, settings: settings);
+      final restored = _SpotState(
+        api,
+        initialSession: actorSession,
+        settings: settings,
+      );
       addTearDown(restored.dispose);
       await restored.bootstrap();
-      restored.session = session;
       expect(restored.pendingTradingCommand?.clientOrderId, clientId);
       await restored.checkPendingTradingCommand();
       expect(restored.tradingCommandPending, isTrue);
@@ -965,7 +1032,11 @@ void main() {
     () async {
       final api = _SpotApi()..failure = ApiException(400, 'invalid quantity');
       final settings = _MemorySettings()..failWrites = true;
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(state.dispose);
       await submitSpot(state);
       expect(api.calls, 0);
@@ -986,7 +1057,11 @@ void main() {
     () async {
       final api = _SpotApi()..response = Completer<OrderModel>();
       final settings = _MemorySettings();
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(state.dispose);
       final sent = submitSpot(state);
       for (var i = 0; api.calls == 0 && i < 20; i++) {
@@ -994,15 +1069,18 @@ void main() {
       }
       expect(api.calls, 1);
       await state.logout();
-      state.session = const AuthSession(
-        user: AuthUser(
-          userId: 2,
-          username: 'other',
-          email: '',
-          status: 'ACTIVE',
+      await signInAs(
+        state,
+        const AuthSession(
+          user: AuthUser(
+            userId: 2,
+            username: 'other',
+            email: '',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'other',
+          refreshToken: 'other',
         ),
-        accessToken: 'other',
-        refreshToken: 'other',
       );
       state.lastNotice = 'new user';
       api.response!.completeError(const SocketException('lost response'));
@@ -1014,7 +1092,8 @@ void main() {
       await submitSpot(state);
       final secondClientId = state.pendingTradingCommand?.clientOrderId;
       expect(secondClientId, isNotNull);
-      state.session = session;
+      await state.logout();
+      await signInAs(state, actorSession);
       expect(state.tradingCommandPending, isTrue);
       expect(state.pendingTradingCommand?.clientOrderId, isNot(secondClientId));
       expect(
@@ -1074,7 +1153,11 @@ void main() {
         AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
         httpClient: http,
       );
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(state.dispose);
       await submitSpot(state);
       expect(state.tradingCommandPending, isTrue);
@@ -1091,7 +1174,11 @@ void main() {
     () async {
       final api = _SpotApi()..failure = const SocketException('lost response');
       final settings = _MemorySettings();
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(state.dispose);
       await state.placeOrder(
         side: 'BUY',
@@ -1165,6 +1252,7 @@ void main() {
           home: Scaffold(
             body: OrderRow(
               order: OrderModel.fromJson({
+                ...completeCoreRow('order', {}),
                 'orderId': 1,
                 'symbol': 'BTC-USDT',
                 'status': 'FILLED',
@@ -1189,7 +1277,7 @@ void main() {
     'spot manual prices reach the API as exact ticks without a double round trip',
     () async {
       final api = _SpotApi();
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       await state.placeOrder(
         side: 'BUY',
@@ -1218,38 +1306,28 @@ void main() {
     'late spot terms cannot cross user identity or notify a disposed state',
     () async {
       final api = _TermsApi();
-      final state =
-          AppState(
-              apiClient: api,
-              seedInstruments: [spot()],
-              config: const AppConfig(websocketUrl: ''),
-            )
-            ..mode = ProductMode.spot
-            ..session = session;
+      final state = _TermsState(api, initialSession: actorSession);
       final request = state.refreshOrderTerms();
-      state.session = const AuthSession(
-        user: AuthUser(
-          userId: 2,
-          username: 'other',
-          email: '',
-          status: 'ACTIVE',
+      await state.logout();
+      await signInAs(
+        state,
+        const AuthSession(
+          user: AuthUser(
+            userId: 2,
+            username: 'other',
+            email: '',
+            status: 'ACTIVE',
+          ),
+          accessToken: 'other',
+          refreshToken: 'other',
         ),
-        accessToken: 'other',
-        refreshToken: 'other',
       );
       api.result.complete((takerFeeRatePpm: 1000, marketMaxSlippagePpm: 10000));
       await request;
       expect(state.spotOrderTerms, isNull);
       state.dispose();
       final lateApi = _TermsApi();
-      final disposed =
-          AppState(
-              apiClient: lateApi,
-              seedInstruments: [spot()],
-              config: const AppConfig(websocketUrl: ''),
-            )
-            ..mode = ProductMode.spot
-            ..session = session;
+      final disposed = _TermsState(lateApi, initialSession: actorSession);
       final late = disposed.refreshOrderTerms();
       disposed.dispose();
       lateApi.result.complete((
@@ -1319,6 +1397,7 @@ void main() {
             'outcome': 'TERMINAL',
             'code': 'NONE',
             'result': {
+              ...completeCoreRow('order', {}),
               'resultType': 'order',
               'orderId': 42,
               'instrumentId': '1',
@@ -1390,7 +1469,11 @@ void main() {
     () async {
       final api = _SpotApi();
       final settings = _MemorySettings();
-      final state = _SpotState(api, settings: settings)..session = session;
+      final state = _SpotState(
+        initialSession: actorSession,
+        api,
+        settings: settings,
+      );
       addTearDown(state.dispose);
       Future<void> place() => state.placeOrder(
         side: 'BUY',
@@ -1446,7 +1529,7 @@ void main() {
     'paused spot or conflicting execution policy never reaches order submission',
     () async {
       final api = _SpotApi();
-      final state = _SpotState(api)..session = session;
+      final state = _SpotState(initialSession: actorSession, api);
       addTearDown(state.dispose);
       for (final tif in ['GTC', 'GTX']) {
         await state.placeOrder(
@@ -1489,7 +1572,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = _SpotApi()
           ..failure = const SocketException('response lost');
-        final state = _SpotState(api)..session = session;
+        final state = _SpotState(initialSession: actorSession, api);
         addTearDown(state.dispose);
         await tester.pumpWidget(
           AppScope(
@@ -1582,7 +1665,7 @@ void main() {
 
 class _RealHttp extends HttpOverrides {}
 
-class _TermsApi extends ApiClient {
+class _TermsApi extends TestApiClient {
   _TermsApi() : super(const AppConfig());
   final result = Completer<({int takerFeeRatePpm, int marketMaxSlippagePpm})>();
   @override
@@ -1592,16 +1675,38 @@ class _TermsApi extends ApiClient {
   ) => result.future;
 }
 
-class _SpotState extends AppState {
-  bool termsReady = true;
-  _SpotState(ApiClient api, {ClientSettingsStore? settings})
+class _TermsState extends AppState {
+  _TermsState(ApiClient api, {required AuthSession initialSession})
     : super(
         apiClient: api,
-        settingsStore: settings ?? _MemorySettings(),
-        sessionStore: _EmptySessionStore(),
+        initialSession: initialSession,
+        sessionStore: MemorySessionStore(),
         seedInstruments: [spot()],
         config: const AppConfig(websocketUrl: ''),
       ) {
+    mode = ProductMode.spot;
+  }
+  @override
+  Future<void> refreshPrivateData() async {}
+  @override
+  Future<void> refreshProductAvailability() async {}
+  @override
+  Future<void> refreshAnnouncements() async {}
+}
+
+class _SpotState extends AppState {
+  bool termsReady = true;
+  _SpotState(
+    ApiClient api, {
+    super.initialSession = actorSession,
+    ClientSettingsStore? settings,
+  }) : super(
+         apiClient: api,
+         settingsStore: settings ?? _MemorySettings(),
+         sessionStore: _EmptySessionStore(),
+         seedInstruments: [spot()],
+         config: const AppConfig(websocketUrl: ''),
+       ) {
     mode = ProductMode.spot;
     balances = const [
       ProductBalance(
@@ -1640,7 +1745,21 @@ class _SpotState extends AppState {
   ({int takerFeeRatePpm, int marketMaxSlippagePpm})? get spotOrderTerms =>
       termsReady ? (takerFeeRatePpm: 1000, marketMaxSlippagePpm: 10000) : null;
   @override
-  Future<void> refreshPrivateData() async {}
+  Future<void> refreshPrivateData() async {
+    balances = const [
+      ProductBalance(
+        scaleUnits: 100000000,
+        accountType: 'SPOT',
+        asset: 'USDT',
+        availableUnits: 100000000,
+        lockedUnits: 0,
+        equityUnits: 100000000,
+      ),
+    ];
+  }
+
+  @override
+  Future<void> refreshProductAvailability() async {}
   @override
   Future<void> refreshInstruments({bool silent = false}) async {}
   @override
@@ -1651,7 +1770,7 @@ class _SpotState extends AppState {
   Future<void> refreshAnnouncements() async {}
 }
 
-class _SpotApi extends ApiClient {
+class _SpotApi extends TestApiClient {
   _SpotApi() : super(const AppConfig());
   int calls = 0, commandQueries = 0, submissionQueries = 0;
   int cancellations = 0, cancelQueries = 0;
@@ -1803,6 +1922,7 @@ class _SpotApi extends ApiClient {
       expect(query?['clientOrderId'], lastClientOrderId);
       if (!orderFound) throw ApiException(404, 'not found');
       return {
+        ...completeCoreRow('order', {}),
         'orderId': 42,
         'userId': recoveryUser ?? userId,
         'clientOrderId': query?['clientOrderId'],
@@ -1876,8 +1996,8 @@ class _AmendPayloadApi extends ApiClient {
     expect(path, '/api/v1/gateway/trading/amend');
     sent = body;
     return {
-      'originalOrder': {'orderId': 91},
-      'replacementOrder': {'orderId': 92},
+      'originalOrder': {...completeCoreRow('order', {}), 'orderId': 91},
+      'replacementOrder': {...completeCoreRow('order', {}), 'orderId': 92},
       'cancelRequested': true,
     };
   }

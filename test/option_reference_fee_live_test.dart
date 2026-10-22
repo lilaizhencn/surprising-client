@@ -34,9 +34,11 @@ void main() {
             );
             expect(instrument.optionType, 'PUT');
             expect(instrument.status, 'TRADING');
-            state = AppState(apiClient: api, seedInstruments: [instrument])
-              ..mode = ProductMode.option
-              ..session = session;
+            state = AppState(
+              initialSession: session,
+              apiClient: api,
+              seedInstruments: [instrument],
+            )..mode = ProductMode.option;
             await state.refreshOrderTerms();
             expect(
               state.optionOrderTerms,

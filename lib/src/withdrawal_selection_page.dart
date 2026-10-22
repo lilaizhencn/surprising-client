@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'app.dart' show AppScope, WithdrawalPage;
+import 'app_scope.dart';
+import 'wallet/withdrawal_page.dart' show WithdrawalPage;
 import 'exchange_widgets.dart';
 import 'funding_records_page.dart';
 import 'sensitive_screen.dart';

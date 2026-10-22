@@ -1,192 +1,41 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'models.dart';
+import 'market_data_state.dart';
+import 'account_projection.dart';
+import 'trading/trading_order_state.dart';
 import 'option_market.dart';
 import 'realtime_state.dart';
-import 'account_records.dart';
+import 'private_snapshot_recovery.dart';
 import 'session_store.dart';
-import 'spot_order.dart';
 import 'telegram_login.dart';
+import 'auth/auth_state.dart';
 import 'pending_transfer.dart';
+import 'wallet/account_transfer_state.dart';
+import 'wallet/wallet_state.dart';
+
+export 'wallet/wallet_state.dart'
+    show WithdrawalAssetRule, WithdrawalConfirmation;
 import 'portfolio_income.dart';
+import 'portfolio_income_state.dart';
 
-class WithdrawalAssetRule {
-  const WithdrawalAssetRule({
-    required this.chain,
-    required this.symbol,
-    required this.network,
-    required this.family,
-    required this.withdrawalEnabled,
-    this.decimals,
-    this.configuredMinimum,
-    this.fee,
-  });
-
-  final String chain;
-  final String symbol;
-  final String network;
-  final String family;
-  final bool withdrawalEnabled;
-  final int? decimals;
-  final String? configuredMinimum;
-  final String? fee;
-
-  String? get feeAmount => fee == null ? null : plainNonnegativeDecimal(fee!);
-  bool get hasValidFee => fee == null || feeAmount != null;
-
-  String? get minimumAmount {
-    final configured = configuredMinimum?.trim();
-    if (configured != null) return plainNonnegativeDecimal(configured);
-    final precision = decimals;
-    if (precision == null || precision < 0 || precision > 36) return null;
-    if (precision == 0) return '1';
-    return '0.${'0' * (precision - 1)}1';
-  }
-
-  String? receivedAmount(String amount) {
-    final configuredFee = feeAmount;
-    final input = amount.trim();
-    if (configuredFee == null ||
-        !RegExp(r'^(?:0|[1-9]\d*)(?:\.\d+)?$').hasMatch(input)) {
-      return null;
-    }
-    return _subtractDecimal(input, configuredFee);
-  }
-}
-
-class WithdrawalConfirmation {
-  const WithdrawalConfirmation({
-    required this.chain,
-    required this.network,
-    required this.symbol,
-    required this.toAddress,
-    required this.amount,
-    required this.status,
-    required this.reference,
-    this.fee,
-    this.receivedAmount,
-  });
-
-  final String chain;
-  final String network;
-  final String symbol;
-  final String toAddress;
-  final String amount;
-  final String status;
-  final String reference;
-  final String? fee;
-  final String? receivedAmount;
-}
-
-String? _nonEmpty(String? value) {
-  final normalized = value?.trim();
-  return normalized == null || normalized.isEmpty ? null : normalized;
-}
-
-int? _nullableInt(Object? value) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(asString(value));
-}
-
-String? _firstDecimal(Map<String, dynamic> values, List<String> keys) {
-  for (final key in keys) {
-    final value = values[key];
-    if (value == null) continue;
-    final normalized = asString(value).trim();
-    if (RegExp(r'^\d+(?:\.\d+)?$').hasMatch(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-
-String? _validateWithdrawalAddress(String value, String family) {
-  final address = value.trim();
-  if (address.isEmpty) return '请输入提币地址';
-  if (address.length < 10 ||
-      address.length > 256 ||
-      RegExp(r'\s').hasMatch(address)) {
-    return '提币地址格式不正确';
-  }
-  final normalizedFamily = family.trim().toUpperCase();
-  if ((normalizedFamily.contains('EVM') ||
-          normalizedFamily == 'ETH' ||
-          normalizedFamily == 'BSC') &&
-      !RegExp(r'^0x[0-9a-fA-F]{40}$').hasMatch(address)) {
-    return '请输入有效的 EVM 地址';
-  }
-  if (normalizedFamily.contains('BITCOIN') || normalizedFamily == 'BTC') {
-    final bech32 = RegExp(
-      r'^(?:bc1|tb1|bcrt1)[023456789acdefghjklmnpqrstuvwxyz]{11,87}$',
-    );
-    final base58 = RegExp(r'^[123mn][1-9A-HJ-NP-Za-km-z]{25,61}$');
-    if (!bech32.hasMatch(address.toLowerCase()) && !base58.hasMatch(address)) {
-      return '请输入有效的 Bitcoin 地址';
-    }
-  }
-  if (normalizedFamily.contains('TRON') &&
-      !RegExp(r'^T[1-9A-HJ-NP-Za-km-z]{33}$').hasMatch(address)) {
-    return '请输入有效的 Tron 地址';
-  }
-  if (normalizedFamily.contains('SOLANA') &&
-      !RegExp(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$').hasMatch(address)) {
-    return '请输入有效的 Solana 地址';
-  }
-  return null;
-}
-
-class _DecimalParts {
-  const _DecimalParts(this.units, this.scale);
-
-  final BigInt units;
-  final int scale;
-}
-
-_DecimalParts _decimalParts(String value) {
-  final pieces = value.trim().split('.');
-  final fraction = pieces.length == 2 ? pieces[1] : '';
-  final digits = '${pieces[0]}$fraction';
-  return _DecimalParts(BigInt.parse(digits), fraction.length);
-}
-
-int _compareDecimals(String left, String right) {
-  final leftParts = _decimalParts(left);
-  final rightParts = _decimalParts(right);
-  final scale = math.max(leftParts.scale, rightParts.scale);
-  final leftUnits =
-      leftParts.units * BigInt.from(10).pow(scale - leftParts.scale);
-  final rightUnits =
-      rightParts.units * BigInt.from(10).pow(scale - rightParts.scale);
-  return leftUnits.compareTo(rightUnits);
-}
-
-String _subtractDecimal(String left, String right) {
-  final leftParts = _decimalParts(left);
-  final rightParts = _decimalParts(right);
-  final scale = math.max(leftParts.scale, rightParts.scale);
-  final units =
-      leftParts.units * BigInt.from(10).pow(scale - leftParts.scale) -
-      rightParts.units * BigInt.from(10).pow(scale - rightParts.scale);
-  final negative = units.isNegative;
-  final digits = units.abs().toString().padLeft(scale + 1, '0');
-  if (scale == 0) return '${negative ? '-' : ''}$digits';
-  final integer = digits.substring(0, digits.length - scale);
-  final fraction = digits
-      .substring(digits.length - scale)
-      .replaceFirst(RegExp(r'0+$'), '');
-  return '${negative ? '-' : ''}$integer${fraction.isEmpty ? '' : '.$fraction'}';
-}
+typedef _AccountRiskScope = ({
+  int? userId,
+  int epoch,
+  String? token,
+  ProductMode product,
+  String asset,
+});
 
 class AppState extends ChangeNotifier {
   AppState({
     this.config = const AppConfig(),
     ApiClient? apiClient,
+    AuthSession? initialSession,
     RealtimeClient? realtimeClient,
     SessionStore? sessionStore,
     TelegramLoginStore? telegramLoginStore,
@@ -194,13 +43,22 @@ class AppState extends ChangeNotifier {
     this.offline = false,
     this.seedInstruments,
   }) : api = apiClient ?? ApiClient(config),
-       realtime = realtimeClient ?? RealtimeClient(config),
-       sessionStore = sessionStore ?? SecureSessionStore() {
+       realtime = realtimeClient ?? RealtimeClient(config) {
     this.settingsStore = settingsStore ?? SecureClientSettingsStore();
-    this.telegramLoginStore = telegramLoginStore ?? TelegramLoginStore();
+    auth = AuthState(
+      api: api,
+      initialSession: initialSession,
+      sessionStore: sessionStore ?? SecureSessionStore(),
+      telegramLoginStore: telegramLoginStore ?? TelegramLoginStore(),
+      offline: offline,
+      onSessionChanged: _authSessionChanged,
+      onSessionReady: _authSessionReady,
+      onFeedback: (error, notice) {
+        lastError = error;
+        lastNotice = notice;
+      },
+    )..addListener(notifyListeners);
     if (apiClient == null) api.deviceIdLoader = _persistentDeviceId;
-    api.onSessionRefreshed = _persistRefreshedSession;
-    api.onSessionExpired = _clearExpiredSession;
     final initialInstruments = offline
         ? fallbackInstruments()
         : seedInstruments ?? const <Instrument>[];
@@ -213,338 +71,122 @@ class AppState extends ChangeNotifier {
         ? fallbackOrderBook(initialInstruments.first)
         : OrderBook.empty(selectedSymbol);
     candles = offline ? fallbackCandles() : const [];
+    if (initialSession != null) {
+      _authSessionChanged(null, initialSession, AuthSessionChange.signedIn);
+    }
+    market.requestDepthSnapshot = _requestDepthSnapshot;
+    market.reconnectDepth = () => _scheduleRealtimeReconnect();
+    market.onDepthUnavailable = _scheduleRealtimeNotify;
+    market.onIssue = (message) {
+      _recordRealtimeIssue(message);
+      _scheduleRealtimeReconnect();
+    };
   }
 
   final AppConfig config;
   final ApiClient api;
   final RealtimeClient realtime;
-  final SessionStore sessionStore;
-  late final TelegramLoginStore telegramLoginStore;
+  late final AuthState auth;
+  SessionStore get sessionStore => auth.sessionStore;
+  TelegramLoginStore get telegramLoginStore => auth.telegramLoginStore;
   late final ClientSettingsStore settingsStore;
   final bool offline;
   final List<Instrument>? seedInstruments;
 
-  AuthSession? session;
-  LoginChallenge? pendingLoginChallenge;
-  List<Map<String, dynamic>> recentTrades = [];
-  bool submittingOrder = false;
-  CancellationSummary? lastCancellationResult;
-  // Per user so a late response cannot replace another account's unresolved order.
-  final Map<int, PendingTradingOrder> _pendingTradingOrders = {};
+  AuthSession? get session => auth.current;
+  LoginChallenge? get pendingLoginChallenge => auth.pendingLoginChallenge;
+  set pendingLoginChallenge(LoginChallenge? value) =>
+      auth.pendingLoginChallenge = value;
+  List<Map<String, dynamic>> get recentTrades => market.recentTrades;
+  set recentTrades(List<Map<String, dynamic>> values) =>
+      market.recentTrades = values;
+  late final TradingOrderState orders = TradingOrderState(
+    api: api,
+    settingsStore: settingsStore,
+    offline: offline,
+    context: () => (
+      userId: userId,
+      accessToken: session?.accessToken,
+      epoch: _accountEpoch,
+      selection: _selectionVersion,
+      product: mode,
+      symbol: selectedSymbol,
+      instrument: selectedInstrument,
+      positionMode: positionMode,
+      positions: positions,
+      instruments: instruments,
+      onlyCurrentPair: onlyCurrentTradingPair,
+      disabledProducts: disabledProducts,
+    ),
+    persist: ({PendingTradingOrder? completedTradingIntent}) =>
+        _writeSettings(completedTradingIntent: completedTradingIntent),
+    refreshPrivateData: refreshPrivateData,
+    onFeedback: (error, notice) {
+      lastError = error;
+      lastNotice = notice;
+    },
+  )..addListener(notifyListeners);
+
+  bool get submittingOrder => orders.submittingOrder;
+  set submittingOrder(bool value) => orders.submittingOrder = value;
+  CancellationSummary? get lastCancellationResult =>
+      orders.lastCancellationResult;
+  set lastCancellationResult(CancellationSummary? value) =>
+      orders.lastCancellationResult = value;
   PendingTradingOrder? get pendingTradingCommand =>
-      _pendingTradingOrders[userId];
-  bool get tradingCommandPending => pendingTradingCommand != null;
+      orders.pendingTradingCommand;
+  bool get tradingCommandPending => orders.tradingCommandPending;
   Future<void> _settingsWriteTail = Future<void>.value();
 
-  Future<void> checkPendingTradingCommand() async {
-    final pending = pendingTradingCommand;
-    if (pending == null || pending.userId != userId || submittingOrder) return;
-    final epoch = _walletSessionVersion;
-    bool current() =>
-        epoch == _walletSessionVersion && userId == pending.userId;
-    submittingOrder = true;
-    lastError = null;
-    notifyListeners();
-    try {
-      if (pending.cancelPlan != null) {
-        await _driveCancellationPlan(pending);
-        return;
-      }
-      bool? confirmed;
-      if (pending.clientTriggerOrderId != null ||
-          pending.cancelTriggerOrderId != null) {
-        final receipt = await api.get(
-          pending.cancelTriggerOrderId != null
-              ? '/api/v1/gateway/trading-trigger/cancellations/${pending.cancelTriggerOrderId}'
-              : '/api/v1/gateway/trading-trigger/submission',
-          userId: pending.userId,
-          productLine: pending.product.productLine,
-          query: {
-            'userId': '${pending.userId}',
-            if (pending.clientTriggerOrderId != null)
-              'clientTriggerOrderId': pending.clientTriggerOrderId!,
-          },
-        );
-        if (receipt['commandId'] is! String ||
-            asString(receipt['commandId']).isEmpty ||
-            (pending.commandId != null &&
-                receipt['commandId'] != pending.commandId)) {
-          throw const FormatException('条件单回执身份不匹配');
-        }
-        if (receipt['outcome'] == 'TERMINAL' &&
-            receipt['code'] is String &&
-            asString(receipt['code']).isNotEmpty) {
-          confirmed = receipt['code'] == 'NONE';
-        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
-            receipt['code'] != 'RESULT_UNKNOWN') {
-          throw const FormatException('条件单回执不完整');
-        }
-      } else if (pending.ocoTakeProfitClientId != null &&
-          pending.ocoStopLossClientId != null) {
-        final receipt = await api.get(
-          '/api/v1/gateway/trading-trigger/oco-submission',
-          userId: pending.userId,
-          productLine: pending.product.productLine,
-          query: {
-            'userId': '${pending.userId}',
-            'takeProfitClientId': pending.ocoTakeProfitClientId!,
-            'stopLossClientId': pending.ocoStopLossClientId!,
-          },
-        );
-        if (receipt['commandId'] is! String ||
-            asString(receipt['commandId']).isEmpty ||
-            (pending.commandId != null &&
-                receipt['commandId'] != pending.commandId)) {
-          throw const FormatException('OCO 回执身份不匹配');
-        }
-        if (receipt['outcome'] == 'TERMINAL' &&
-            receipt['code'] is String &&
-            asString(receipt['code']).isNotEmpty) {
-          confirmed = receipt['code'] == 'NONE';
-        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
-            receipt['code'] != 'RESULT_UNKNOWN') {
-          throw const FormatException('OCO 回执不完整');
-        }
-      } else if (pending.amendRequestId != null) {
-        final receipt = await api.get(
-          '/api/v1/gateway/trading/amendments',
-          userId: pending.userId,
-          productLine: pending.product.productLine,
-          query: {
-            'userId': '${pending.userId}',
-            'clientRequestId': pending.amendRequestId!,
-          },
-        );
-        if (receipt['commandId'] is! String ||
-            asString(receipt['commandId']).isEmpty ||
-            (pending.commandId != null &&
-                receipt['commandId'] != pending.commandId)) {
-          throw const FormatException('改单回执资料不匹配');
-        }
-        if (receipt['outcome'] == 'TERMINAL' &&
-            receipt['code'] is String &&
-            asString(receipt['code']).isNotEmpty) {
-          confirmed = receipt['code'] == 'NONE';
-        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
-            receipt['code'] != 'RESULT_UNKNOWN') {
-          throw const FormatException('改单回执资料不完整');
-        }
-      } else if (pending.cancelOrderId != null) {
-        final receipt = await api.get(
-          '/api/v1/gateway/trading/cancellations/${pending.cancelOrderId}',
-          userId: pending.userId,
-          productLine: pending.product.productLine,
-          query: {'userId': '${pending.userId}'},
-        );
-        final ids = asList(receipt['prospectiveOrderIds']);
-        if (receipt['commandId'] is! String ||
-            asString(receipt['commandId']).isEmpty ||
-            (pending.commandId != null &&
-                receipt['commandId'] != pending.commandId) ||
-            ids.length != 1 ||
-            asInt(ids.first) != pending.cancelOrderId) {
-          throw const FormatException('撤单回执资料不匹配');
-        }
-        if (receipt['outcome'] == 'TERMINAL' &&
-            receipt['code'] is String &&
-            asString(receipt['code']).isNotEmpty) {
-          confirmed = receipt['code'] == 'NONE';
-        } else if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
-            receipt['code'] != 'RESULT_UNKNOWN') {
-          throw const FormatException('撤单回执资料不完整');
-        }
-      } else if (pending.clientOrderId != null &&
-          pending.instrumentId != null) {
-        final receipt = await api.get(
-          '/api/v1/gateway/trading/submission',
-          userId: pending.userId,
-          productLine: pending.product.productLine,
-          query: {
-            'userId': '${pending.userId}',
-            'clientOrderId': pending.clientOrderId!,
-          },
-        );
-        if (asInt(receipt['userId']) != pending.userId ||
-            receipt['productLine'] != pending.product.productLine ||
-            receipt['clientOrderId'] != pending.clientOrderId) {
-          throw const FormatException('委托回执资料不匹配');
-        }
-        if (receipt['outcome'] == 'TERMINAL') {
-          if (receipt['instrumentId'] != pending.instrumentId ||
-              receipt['commandId'] is! String ||
-              asString(receipt['commandId']).isEmpty ||
-              (pending.commandId != null &&
-                  receipt['commandId'] != pending.commandId) ||
-              receipt['code'] is! String ||
-              asString(receipt['code']).isEmpty) {
-            throw const FormatException('委托回执资料不匹配');
-          }
-          confirmed = receipt['code'] == 'NONE';
-        }
-        if (confirmed == null) {
-          if (receipt['outcome'] != 'RESULT_UNKNOWN' ||
-              receipt['code'] != 'RESULT_UNKNOWN') {
-            throw const FormatException('委托回执资料不完整');
-          }
-          try {
-            final order = await api.get(
-              '/api/v1/gateway/trading/by-client-order-id',
-              userId: pending.userId,
-              productLine: pending.product.productLine,
-              query: {
-                'userId': '${pending.userId}',
-                'clientOrderId': pending.clientOrderId!,
-              },
-            );
-            if (asInt(order['userId']) != pending.userId ||
-                order['clientOrderId'] != pending.clientOrderId ||
-                asString(order['instrumentId']) != pending.instrumentId ||
-                asInt(order['orderId']) <= 0 ||
-                ![
-                  'PENDING_RESERVE',
-                  'ACCEPTED',
-                  'REJECTED',
-                  'CANCEL_REQUESTED',
-                  'CANCELED',
-                  'PARTIALLY_FILLED',
-                  'FILLED',
-                ].contains(order['status'])) {
-              throw const FormatException('委托恢复资料不匹配');
-            }
-            confirmed = order['status'] != 'REJECTED';
-          } on ApiException catch (error) {
-            if (error.statusCode != 404) rethrow;
-          }
-        }
-      }
-      if (confirmed == null &&
-          pending.clientTriggerOrderId == null &&
-          pending.cancelTriggerOrderId == null &&
-          pending.ocoTakeProfitClientId == null &&
-          pending.clientOrderId == null &&
-          pending.cancelOrderId == null &&
-          pending.amendRequestId == null &&
-          pending.commandId != null) {
-        final receipt = await api.get(
-          '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId!)}',
-          userId: pending.userId,
-          productLine: pending.product.productLine,
-        );
-        if (receipt['commandId'] != pending.commandId) {
-          throw const FormatException('委托回执不匹配');
-        }
-        // NOT_ACCEPTED here concerns the lookup, not the original trading command.
-        if (receipt['outcome'] == 'TERMINAL' &&
-            receipt['code'] is String &&
-            asString(receipt['code']).isNotEmpty) {
-          confirmed = receipt['code'] == 'NONE';
-        }
-      }
-      if (!current() || pendingTradingCommand != pending) return;
-      if (confirmed != null) {
-        if (!await _clearTradingIntent(pending)) {
-          if (current()) lastError = '无法保存委托确认结果，请再次查询原请求';
-          return;
-        }
-        if (!current()) return;
-        if (confirmed) {
-          lastNotice =
-              pending.clientTriggerOrderId != null ||
-                  pending.cancelTriggerOrderId != null
-              ? '条件单请求结果已确认，请查看最新条件单状态'
-              : pending.amendRequestId != null
-              ? '改单处理结果已确认，请查看原单和新委托状态'
-              : pending.cancelOrderId != null
-              ? '撤单处理结果已确认，请查看最新订单状态'
-              : '委托处理结果已确认，订单状态以最新账户数据为准';
-          await refreshPrivateData();
-        } else {
-          lastError =
-              pending.clientTriggerOrderId != null ||
-                  pending.cancelTriggerOrderId != null
-              ? '条件单请求被拒绝，请查看最新条件单状态'
-              : pending.amendRequestId != null
-              ? '改单请求被拒绝，请查看原单状态'
-              : pending.cancelOrderId != null
-              ? '撤单请求被拒绝，请查看最新订单状态'
-              : '委托未被接受，请检查订单状态';
-        }
-      } else {
-        lastNotice = '委托结果仍待确认，请勿重复提交';
-      }
-    } catch (error) {
-      if (current()) lastError = '查询委托结果失败：${clientErrorMessage(error)}';
-    } finally {
-      if (current()) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  bool submittingTriggers = false;
+  bool get submittingTriggers => orders.submittingTriggers;
+  set submittingTriggers(bool value) => orders.submittingTriggers = value;
   int _selectionVersion = 0;
   int _instrumentRequestVersion = 0;
-  AuthSession? pendingVerificationSession;
-  AuthSession? pendingBiometricSession;
-  bool biometricLoginAvailable = false;
-  bool biometricLoginEnabled = false;
-  bool biometricLoginUpdating = false;
-  bool biometricSessionLocked = false;
-  bool biometricUnlocking = false;
-  String? biometricUnlockError;
-  bool _biometricAppForeground = true;
-  bool _biometricAppBackgrounded = false;
-  int _biometricSessionVersion = 0;
-
-  bool get requiresBiometricUnlock =>
-      biometricSessionLocked || pendingBiometricSession != null;
-
-  bool get canUnlockBiometricSession =>
-      requiresBiometricUnlock &&
-      (pendingBiometricSession != null ||
-          (biometricLoginEnabled && session != null));
-
-  // Inactive includes the system biometric dialog. Only a real background
-  // transition locks an already active session; the UI also obscures inactive.
+  AuthSession? get pendingVerificationSession =>
+      auth.pendingVerificationSession;
+  set pendingVerificationSession(AuthSession? value) =>
+      auth.pendingVerificationSession = value;
+  AuthSession? get pendingBiometricSession => auth.pendingBiometricSession;
+  set pendingBiometricSession(AuthSession? value) =>
+      auth.pendingBiometricSession = value;
+  bool get biometricLoginAvailable => auth.biometricLoginAvailable;
+  set biometricLoginAvailable(bool value) =>
+      auth.biometricLoginAvailable = value;
+  bool get biometricLoginEnabled => auth.biometricLoginEnabled;
+  set biometricLoginEnabled(bool value) => auth.biometricLoginEnabled = value;
+  bool get biometricLoginUpdating => auth.biometricLoginUpdating;
+  set biometricLoginUpdating(bool value) => auth.biometricLoginUpdating = value;
+  bool get biometricSessionLocked => auth.biometricSessionLocked;
+  set biometricSessionLocked(bool value) => auth.biometricSessionLocked = value;
+  bool get biometricUnlocking => auth.biometricUnlocking;
+  set biometricUnlocking(bool value) => auth.biometricUnlocking = value;
+  String? get biometricUnlockError => auth.biometricUnlockError;
+  set biometricUnlockError(String? value) => auth.biometricUnlockError = value;
+  bool get requiresBiometricUnlock => auth.requiresBiometricUnlock;
+  bool get canUnlockBiometricSession => auth.canUnlockBiometricSession;
   void updateBiometricAppVisibility({
     required bool foreground,
     bool lockSession = false,
-  }) {
-    _biometricAppForeground = foreground;
-    _biometricAppBackgrounded = lockSession;
-    if (lockSession &&
-        biometricLoginEnabled &&
-        !biometricLoginUpdating &&
-        session != null &&
-        !biometricSessionLocked) {
-      biometricSessionLocked = true;
-      biometricUnlockError = null;
-      notifyListeners();
-    }
-  }
-
-  void _resetBiometricUnlock() {
-    ++_biometricSessionVersion;
-    biometricSessionLocked = false;
-    biometricUnlocking = false;
-    biometricUnlockError = null;
-    pendingBiometricSession = null;
-  }
+  }) => auth.updateBiometricAppVisibility(
+    foreground: foreground,
+    lockSession: lockSession,
+  );
 
   late List<Instrument> instruments;
   late String selectedSymbol;
   ProductMode mode = ProductMode.linear;
   String period = '1m';
-  late OrderBook orderBook;
-  String? _depthRecoveryKey;
-  late List<Candle> candles;
+  final MarketDataState market = MarketDataState();
+  OrderBook get orderBook => market.orderBook;
+  set orderBook(OrderBook book) => market.resetBook(book);
+  List<Candle> get candles => market.candles;
+  set candles(List<Candle> values) => market.candles = values;
   List<ProductBalance> balances = const [];
   ({int takerFeeRatePpm, int marketMaxSlippagePpm})? _orderTerms;
   String? _orderTermsIdentity;
   int _orderTermsRequest = 0;
   String get _currentOrderTermsIdentity =>
-      '$_walletSessionVersion:$userId:${mode.productLine}:${selectedInstrument.instrumentId}:${selectedInstrument.changeId}';
+      '$_accountEpoch:$userId:${mode.productLine}:${selectedInstrument.instrumentId}:${selectedInstrument.changeId}';
   ({int takerFeeRatePpm, int marketMaxSlippagePpm})? get spotOrderTerms =>
       mode.isSpot && _orderTermsIdentity == _currentOrderTermsIdentity
       ? _orderTerms
@@ -638,65 +280,107 @@ class AppState extends ChangeNotifier {
   }
 
   List<Position> positions = const [];
-  List<OrderModel> openOrders = const [];
-  String? openOrdersNextCursor;
-  bool openOrdersHasMore = false;
-  bool loadingMoreOpenOrders = false;
-  List<AlgoOrderModel> openAlgoOrders = const [];
-  bool loadingAlgoOrders = false;
-  String? algoOrdersError;
-  int _algoOrdersRequestVersion = 0;
-  Map<String, Instrument> _algoOrderInstruments = const {};
+  List<OrderModel> get openOrders => orders.openOrders;
+  set openOrders(List<OrderModel> values) => orders.openOrders = values;
+  String? get openOrdersNextCursor => orders.openOrdersNextCursor;
+  set openOrdersNextCursor(String? value) =>
+      orders.openOrdersNextCursor = value;
+  bool get openOrdersHasMore => orders.openOrdersHasMore;
+  set openOrdersHasMore(bool value) => orders.openOrdersHasMore = value;
+  bool get loadingMoreOpenOrders => orders.loadingMoreOpenOrders;
+  set loadingMoreOpenOrders(bool value) => orders.loadingMoreOpenOrders = value;
+  List<AlgoOrderModel> get openAlgoOrders => orders.openAlgoOrders;
+  set openAlgoOrders(List<AlgoOrderModel> values) =>
+      orders.openAlgoOrders = values;
+  bool get loadingAlgoOrders => orders.loadingAlgoOrders;
+  String? get algoOrdersError => orders.algoOrdersError;
+  List<TriggerOrderModel> get openTriggerOrders => orders.openTriggerOrders;
+  set openTriggerOrders(List<TriggerOrderModel> values) =>
+      orders.openTriggerOrders = values;
   Instrument? algoInstrumentFor(AlgoOrderModel order) =>
-      instruments
-          .where(
-            (i) =>
-                i.mode == order.product && i.instrumentId == order.instrumentId,
-          )
-          .firstOrNull ??
-      (order.product == mode
-          ? _algoOrderInstruments[order.instrumentId]
-          : null);
-  List<AlgoOrderModel> get visibleAlgoOrders => openAlgoOrders
-      .where(
-        (order) =>
-            order.userId == userId &&
-            order.product == mode &&
-            order.isOpen &&
-            (!onlyCurrentTradingPair ||
-                order.instrumentId == selectedInstrument.instrumentId),
-      )
-      .toList();
-
-  void _resetAlgoOrders() {
-    ++_algoOrdersRequestVersion;
-    openAlgoOrders = const [];
-    _algoOrderInstruments = const {};
-    loadingAlgoOrders = false;
-    algoOrdersError = null;
-  }
-
-  List<TriggerOrderModel> openTriggerOrders = const [];
+      orders.algoInstrumentFor(order);
+  List<AlgoOrderModel> get visibleAlgoOrders => orders.visibleAlgoOrders;
+  void _resetAlgoOrders() => orders.resetAlgoOrders();
   String positionMode = 'ONE_WAY';
   List<PositionRisk> positionRisks = const [];
   List<LiquidationOrder> liquidationOrders = const [];
-  WalletPortfolio walletPortfolio = WalletPortfolio.empty();
-  bool walletReady = false;
-  String? walletError;
-  String? walletOrdersError;
-  int _walletVersion = 0;
-  int _walletSessionVersion = 0;
-  int _depositAddressRequestVersion = 0;
-  int _walletPricesVersion = 0;
+  late final WalletState wallet = WalletState(
+    api: api,
+    offline: offline,
+    owner: () => (
+      userId: userId,
+      epoch: _accountEpoch,
+      accessToken: session?.accessToken,
+    ),
+    market: market,
+    catalog: () => instruments,
+    heldAssets: () => allProductBalances
+        .where((balance) => balance.equityUnits != 0)
+        .map((balance) => balance.asset),
+    settingsStore: settingsStore,
+    persist: ({PendingWithdrawal? completed}) =>
+        _writeSettings(completedWithdrawalIntent: completed),
+    onChanged: () {
+      lastError = wallet.error;
+      lastNotice = wallet.notice;
+      notifyListeners();
+    },
+  );
+  WalletPortfolio get walletPortfolio => wallet.portfolio;
+  set walletPortfolio(WalletPortfolio value) => wallet.portfolio = value;
+  bool get walletReady => wallet.ready;
+  set walletReady(bool value) => wallet.ready = value;
+  String? get walletError => wallet.loadError;
+  set walletError(String? value) => wallet.loadError = value;
+  String? get walletOrdersError => wallet.ordersError;
+  set walletOrdersError(String? value) => wallet.ordersError = value;
+  int _accountEpoch = 0;
   int _valuationVersion = 0;
   final Set<ProductMode> valuedProducts = {};
-  List<WalletOrderRecord> walletOrders = const [];
-  WalletDepositAddress? walletDepositAddress;
-  AccountRisk? accountRisk;
-  final Map<String, double> latestPrices = {};
-  final Map<String, int> markPrices = {};
-  final Map<String, Map<String, dynamic>> marketMetrics = {};
-  final Map<String, Map<String, dynamic>> _publicVersions = {};
+  List<WalletOrderRecord> get walletOrders => wallet.orders;
+  set walletOrders(List<WalletOrderRecord> values) => wallet.orders = values;
+  WalletDepositAddress? get walletDepositAddress => wallet.depositAddress;
+  set walletDepositAddress(WalletDepositAddress? value) =>
+      wallet.depositAddress = value;
+  AccountRisk? _accountRisk;
+  _AccountRiskScope? _loadedAccountRiskScope, _riskRequestScope;
+  Stopwatch? _accountRiskElapsed;
+  bool loadingAccountRisk = false;
+  String? accountRiskError;
+  _AccountRiskScope get _currentAccountRiskScope => (
+    userId: userId,
+    epoch: _accountEpoch,
+    token: session?.accessToken,
+    product: mode,
+    asset: selectedInstrument.settleAsset,
+  );
+  bool get _canReadAccountRisk =>
+      !offline &&
+      isLoggedIn &&
+      mode.isDerivative &&
+      !disabledProducts.contains(mode) &&
+      selectedInstrument.settleAsset.isNotEmpty &&
+      _privateAuthenticated &&
+      privateViews[mode]?.ready == true;
+  AccountRisk? get accountRisk =>
+      _canReadAccountRisk &&
+          _loadedAccountRiskScope == _currentAccountRiskScope &&
+          (_accountRiskElapsed?.elapsed ?? const Duration(seconds: 15)) <
+              const Duration(seconds: 15)
+      ? _accountRisk
+      : null;
+  void _clearAccountRisk() {
+    _accountRisk = null;
+    _loadedAccountRiskScope = null;
+    _accountRiskElapsed?.stop();
+    _accountRiskElapsed = null;
+    loadingAccountRisk = false;
+    accountRiskError = null;
+  }
+
+  Map<String, double> get latestPrices => market.latestPrices;
+  Map<String, int> get markPrices => market.markPrices;
+  Map<String, Map<String, dynamic>> get marketMetrics => market.metrics;
   final Map<ProductMode, PrivateView> privateViews = {};
   final Map<ProductMode, List<ProductBalance>> productBalances = {};
   Map<String, String> _balanceScales = {};
@@ -734,24 +418,82 @@ class AppState extends ChangeNotifier {
     unawaited(refreshAlgoOrders());
   }
 
-  Future<void> refreshPositionRiskDetails() async {
-    final id = userId, product = mode, token = session?.accessToken;
+  Future<void> refreshRiskDetails() async {
+    final scope = _currentAccountRiskScope;
+    if (!_canReadAccountRisk) {
+      _clearAccountRisk();
+      return;
+    }
+    if (loadingAccountRisk && _riskRequestScope == scope) return;
     final request = ++_riskDetailsVersion;
-    queriedPositionRisks = [];
-    if (offline || id == null || !product.isDerivative || positions.isEmpty) {
-      return;
-    }
-    final rows = await api.positionRisks(id, productLine: product.productLine);
-    if (request != _riskDetailsVersion ||
-        userId != id ||
-        session?.accessToken != token ||
-        mode != product) {
-      return;
-    }
-    queriedPositionRisks = rows;
+    _riskRequestScope = scope;
+    _riskDetailsTimer?.cancel();
+    loadingAccountRisk = true;
+    accountRiskError = null;
+    bool current() =>
+        !_disposed &&
+        request == _riskDetailsVersion &&
+        scope == _currentAccountRiskScope &&
+        _canReadAccountRisk;
     notifyListeners();
+    try {
+      final results = await Future.wait<Object?>([
+        api.accountRisk(
+          scope.userId!,
+          scope.asset,
+          accountType: scope.product.accountType,
+          productLine: scope.product.productLine,
+        ),
+        positions.isEmpty
+            ? Future<List<PositionRisk>>.value(const [])
+            : api.positionRisks(
+                scope.userId!,
+                productLine: scope.product.productLine,
+              ),
+      ]);
+      if (!current()) return;
+      final risk = results[0] as AccountRisk?;
+      if (risk != null && risk.settleAsset != scope.asset) {
+        throw const FormatException('账户风险结算资产不匹配');
+      }
+      _accountRisk = risk;
+      _loadedAccountRiskScope = scope;
+      _accountRiskElapsed?.stop();
+      _accountRiskElapsed = risk == null ? null : (Stopwatch()..start());
+      accountRiskError = risk == null ? '账户风险暂不可用，请刷新重试' : null;
+      queriedPositionRisks = results[1] as List<PositionRisk>;
+    } catch (_) {
+      if (!current()) return;
+      _accountRisk = null;
+      accountRiskError = '账户风险暂不可用，请刷新重试';
+    } finally {
+      if (request == _riskDetailsVersion) {
+        loadingAccountRisk = false;
+        if (current()) {
+          if (_realtimeConnected) {
+            _riskDetailsTimer = Timer(
+              const Duration(seconds: 5),
+              () => unawaited(refreshRiskDetails()),
+            );
+          }
+          notifyListeners();
+        }
+      }
+    }
   }
 
+  late final PrivateSnapshotRecovery _privateRecovery = PrivateSnapshotRecovery(
+    ready: (product) => privateViews[product]?.ready == true,
+    resubscribe: (product) {
+      for (final subscription in _privateSubscriptions.values) {
+        if (subscription['productLine'] == product.productLine &&
+            subscription['channel'] == 'accountState') {
+          realtime.resubscribe(subscription);
+        }
+      }
+    },
+    reconnect: () => _scheduleRealtimeReconnect(),
+  );
   bool _privateAuthenticated = false;
   Timer? _freshnessTimer;
   Timer? _announcementRefreshTimer;
@@ -762,13 +504,26 @@ class AppState extends ChangeNotifier {
       productBalances.values.expand((v) => v).toList();
   List<Instrument> get spotInstruments =>
       instruments.where((i) => i.isSpot).toList();
-  final Map<String, double> walletAssetPricesUsdt = {};
+  Map<String, double> get walletAssetPricesUsdt => wallet.pricesUsdt;
   ValuationCurrency valuationCurrency = ValuationCurrency.usdt;
   final Map<ValuationCurrency, double> valuationRates = {
     ValuationCurrency.usdt: 1,
   };
   ClientTheme clientTheme = ClientTheme.dark;
   ClientLanguage language = ClientLanguage.zhHans;
+  final ValueNotifier<(ClientTheme, ClientLanguage)> presentation =
+      ValueNotifier((ClientTheme.dark, ClientLanguage.zhHans));
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  void _updatePresentation() {
+    if (!_disposed) presentation.value = (clientTheme, language);
+  }
+
   List<Map<String, dynamic>> announcements = const [];
   List<Map<String, dynamic>> announcementBanners = const [];
   List<Map<String, dynamic>> announcementModals = const [];
@@ -779,28 +534,42 @@ class AppState extends ChangeNotifier {
   bool announcementsLoading = false;
   bool valuationLoading = false;
   bool loadingPublic = false;
-  bool loadingPrivate = false;
+  bool _loadingPrivate = false;
+  bool get loadingPrivate => _loadingPrivate || auth.loading;
+  set loadingPrivate(bool value) => _loadingPrivate = value;
   int _privateDataRequestVersion = 0;
-  final Map<int, PendingAccountTransfer> _pendingTransfers = {};
-  final Set<int> _transfersInFlight = {};
-  bool _transferIntentsRestored = false;
-  Future<bool>? _transferRestore;
-  PendingAccountTransfer? get pendingTransfer => _pendingTransfers[userId];
-  bool get transferSubmitting => _transfersInFlight.contains(userId);
-  bool get transferOutcomeLocked =>
-      pendingTransfer != null && !transferVerificationRequired;
-  bool get transferOutcomeTerminalFailure =>
-      pendingTransfer?.status == 'FAILED';
-  bool get transferVerificationRequired => pendingTransfer?.status == 'VERIFY';
-  bool withdrawalSubmitting = false;
-  bool withdrawalOutcomeLocked = false;
-  bool withdrawalOutcomeUnknown = false;
-  bool withdrawalVerificationRequired = false;
-  bool withdrawalTotpRequired = false;
-  bool withdrawalRulesLoading = false;
-  bool withdrawalRulesReady = false;
-  List<WithdrawalAssetRule> withdrawalRules = const [];
-  WithdrawalConfirmation? withdrawalConfirmation;
+  late final AccountTransferState transfers = AccountTransferState(
+    api: api,
+    settingsStore: settingsStore,
+    owner: () => (userId: userId, epoch: _accountEpoch),
+    persist: ({PendingAccountTransfer? completed}) =>
+        _writeSettings(completedTransferIntent: completed),
+    refreshAssets: refreshPrivateData,
+    onChanged: () {
+      lastError = transfers.error;
+      lastNotice = transfers.notice;
+      notifyListeners();
+    },
+  );
+  PendingAccountTransfer? get pendingTransfer => transfers.pending;
+  bool get transferSubmitting => transfers.submitting;
+  bool get transferOutcomeLocked => transfers.outcomeLocked;
+  bool get transferOutcomeTerminalFailure => transfers.terminalFailure;
+  bool get transferVerificationRequired => transfers.verificationRequired;
+  bool get withdrawalSubmitting => wallet.withdrawalSubmitting;
+  bool get withdrawalOutcomeLocked => wallet.withdrawalOutcomeLocked;
+  bool get withdrawalOutcomeUnknown => wallet.withdrawalOutcomeUnknown;
+  bool get withdrawalVerificationRequired =>
+      wallet.withdrawalVerificationRequired;
+  bool get withdrawalTotpRequired => wallet.withdrawalTotpRequired;
+  bool get withdrawalRulesLoading => wallet.rulesLoading;
+  bool get withdrawalRulesReady => wallet.rulesReady;
+  set withdrawalRulesReady(bool value) => wallet.rulesReady = value;
+  List<WithdrawalAssetRule> get withdrawalRules => wallet.rules;
+  set withdrawalRules(List<WithdrawalAssetRule> values) =>
+      wallet.rules = values;
+  WithdrawalConfirmation? get withdrawalConfirmation =>
+      wallet.withdrawalConfirmation;
   String? lastError;
   String? lastNotice;
   final List<String> realtimeLog = [];
@@ -809,18 +578,16 @@ class AppState extends ChangeNotifier {
   int _realtimeGeneration = 0;
   int _realtimeReconnectAttempts = 0;
   bool _realtimeConnected = false;
+  bool _realtimeSessionPaused = false;
+  int _realtimeAuthRetries = 0;
+  Timer? _realtimeAuthRetryTimer;
   final _publicSubscriptions = <String, Map<String, String>>{};
   final _privateSubscriptions = <String, Map<String, String>>{};
-  int _openOrdersRequestVersion = 0;
   int _announcementsRequestVersion = 0;
-  final Map<int, int> _triggerOrderEventVersions = {};
-  String? _withdrawalIdempotencyKey;
-  String? _withdrawalIntentFingerprint;
-  int? _withdrawalIntentUserId;
 
-  bool get isLoggedIn => session != null;
+  bool get isLoggedIn => auth.isLoggedIn;
 
-  int? get userId => session?.user.userId;
+  int? get userId => auth.userId;
 
   Instrument get selectedInstrument =>
       instruments
@@ -837,7 +604,7 @@ class AppState extends ChangeNotifier {
 
   double? latestPriceFor(Instrument instrument) {
     final direct = latestPrices[_priceKey(instrument.mode, instrument.symbol)];
-    if (direct != null && direct > 0) return direct;
+    if (direct != null && direct.isFinite && direct > 0) return direct;
     if (instrument.mode == mode &&
         instrument.symbol == selectedSymbol &&
         candles.isNotEmpty) {
@@ -847,8 +614,10 @@ class AppState extends ChangeNotifier {
       final bestBid = orderBook.bids.isNotEmpty ? orderBook.bids.first : null;
       final bestAsk = orderBook.asks.isNotEmpty ? orderBook.asks.first : null;
       if (bestBid != null && bestAsk != null) {
-        return instrument.priceFromTicks(
-          ((bestBid.priceTicks + bestAsk.priceTicks) / 2).round(),
+        return market.midpoint(
+          instrument,
+          bestBid.priceTicks,
+          bestAsk.priceTicks,
         );
       }
       if (bestBid != null) return instrument.priceFromTicks(bestBid.priceTicks);
@@ -859,93 +628,22 @@ class AppState extends ChangeNotifier {
 
   double? get valuationRate => valuationRates[valuationCurrency];
 
-  double? walletPortfolioUsdt(WalletPortfolio portfolio) {
-    var total = 0.0;
-    for (final asset in portfolio.assets) {
-      if (asset.totalBalance == 0) continue;
-      final price = asset.symbol.toUpperCase() == 'USDT'
-          ? 1.0
-          : walletAssetPricesUsdt[asset.symbol.toUpperCase()];
-      if (price == null || !price.isFinite || price <= 0) return null;
-      total += asset.totalBalance * price;
-    }
-    return total;
-  }
+  double? walletPortfolioUsdt(WalletPortfolio portfolio) =>
+      wallet.portfolioUsdt(portfolio);
 
-  PortfolioIncomeSummary? _portfolioIncome;
-  int? _incomeOwner;
-  Stopwatch? _incomeElapsed;
-  Timer? _incomeRefreshTimer, _incomeExpiryTimer;
-  int _incomeRequest = 0;
-  bool _incomeLoading = false;
+  late final PortfolioIncomeState _income = PortfolioIncomeState(
+    api,
+    owner: () => (userId: userId, epoch: _accountEpoch),
+    onChanged: notifyListeners,
+  );
 
   PortfolioIncome? portfolioIncome([String scope = 'overview']) =>
-      isLoggedIn && _incomeOwner == userId
-      ? _portfolioIncome?.fresh(scope, _incomeElapsed?.elapsed ?? Duration.zero)
-      : null;
+      isLoggedIn ? _income.current(scope) : null;
 
-  void _resetPortfolioIncome() {
-    ++_incomeRequest;
-    _incomeLoading = false;
-    _portfolioIncome = null;
-    _incomeOwner = null;
-    _incomeElapsed?.stop();
-    _incomeElapsed = null;
-    _incomeRefreshTimer?.cancel();
-    _incomeRefreshTimer = null;
-    _incomeExpiryTimer?.cancel();
-    _incomeExpiryTimer = null;
-  }
-
-  void _scheduleIncomeExpiry() {
-    _incomeExpiryTimer?.cancel();
-    final remaining = _portfolioIncome?.nextExpiry(
-      _incomeElapsed?.elapsed ?? Duration.zero,
-    );
-    if (remaining == null) return;
-    _incomeExpiryTimer = Timer(remaining, () {
-      notifyListeners();
-      _scheduleIncomeExpiry();
-    });
-  }
+  void _resetPortfolioIncome() => _income.reset();
 
   Future<void> refreshPortfolioIncome() async {
-    final id = userId, epoch = _walletSessionVersion;
-    if (offline || id == null || _incomeLoading) return;
-    final request = ++_incomeRequest;
-    bool current() =>
-        request == _incomeRequest &&
-        epoch == _walletSessionVersion &&
-        id == userId;
-    _incomeLoading = true;
-    _incomeRefreshTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
-      unawaited(refreshPortfolioIncome());
-    });
-    final elapsed = Stopwatch()..start();
-    try {
-      final result = await api.get('/api/v1/portfolio/income', userId: id);
-      final next = PortfolioIncomeSummary.fromJson(result);
-      if (!current()) {
-        elapsed.stop();
-        return;
-      }
-      _incomeElapsed?.stop();
-      _incomeElapsed = elapsed;
-      _portfolioIncome = next;
-      _incomeOwner = id;
-      _scheduleIncomeExpiry();
-    } catch (_) {
-      elapsed.stop();
-      if (!current()) return;
-      // A failed refresh never certifies zero or extends an older cut's age.
-      _portfolioIncome = null;
-      _incomeExpiryTimer?.cancel();
-    } finally {
-      if (current()) {
-        _incomeLoading = false;
-        notifyListeners();
-      }
-    }
+    if (!_disposed && !offline) await _income.refresh();
   }
 
   Set<ProductMode> disabledProducts = {};
@@ -958,11 +656,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshProductAvailability() async {
     if (offline) return;
-    final epoch = _walletSessionVersion;
+    final epoch = _accountEpoch;
     final request = ++_productAvailabilityVersion;
     bool current() =>
-        epoch == _walletSessionVersion &&
-        request == _productAvailabilityVersion;
+        epoch == _accountEpoch && request == _productAvailabilityVersion;
     try {
       final next = await api.disabledProducts();
       if (!current()) return;
@@ -1052,43 +749,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void>? _authenticationRestored;
-  Future<void> restoreAuthentication() => _authenticationRestored ??= () async {
-    if (offline) return;
-    await _restoreSettings();
-    await _restoreSession();
-  }();
+  Future<bool>? _settingsRestore;
+  bool _settingsLoaded = false;
+  Future<void> restoreAuthentication() async {
+    if (_disposed || offline) return;
+    if (!_settingsLoaded) {
+      final restoring = _settingsRestore ??= _restoreSettings();
+      final loaded = await restoring;
+      if (identical(_settingsRestore, restoring)) _settingsRestore = null;
+      if (!loaded || _disposed) return;
+      _settingsLoaded = true;
+    }
+    if (!_disposed) await auth.restore();
+  }
 
   Future<bool> resumeTelegramLogin(Uri link) async {
-    if (!TelegramLoginFlow.isReturnLink(link) || offline) return false;
-    final version = _telegramLoginVersion;
     await restoreAuthentication();
-    if (version != _telegramLoginVersion ||
-        loadingPrivate ||
-        session != null ||
-        pendingBiometricSession != null ||
-        pendingVerificationSession != null ||
-        pendingLoginChallenge != null) {
-      return false;
-    }
-    final flow = await telegramLoginStore.read(api);
-    if (flow == null ||
-        !flow.matches(link) ||
-        version != _telegramLoginVersion ||
-        loadingPrivate ||
-        session != null) {
-      return false;
-    }
-    await loginTelegram(
-      () => signInWithTelegram(
-        api: api,
-        openBrowser: (_) async => false,
-        cancelled: () => version + 1 != _telegramLoginVersion,
-        store: telegramLoginStore,
-        resume: flow,
-      ),
-    );
-    return true;
+    return !_disposed && await auth.resumeTelegramLogin(link);
   }
 
   Future<void> bootstrap() async {
@@ -1117,7 +794,7 @@ class AppState extends ChangeNotifier {
     return created;
   }
 
-  Future<void> _restoreSettings() async {
+  Future<bool> _restoreSettings() async {
     try {
       final values = await settingsStore.read();
       clientTheme = ClientTheme.fromCode(values['theme'] ?? 'dark');
@@ -1125,97 +802,19 @@ class AppState extends ChangeNotifier {
       valuationCurrency = ValuationCurrency.fromCode(
         values['valuationCurrency'] ?? 'USDT',
       );
-      _readPendingTransfers(values);
-      _withdrawalIdempotencyKey = _nonEmpty(values['withdrawalKey']);
-      _withdrawalIntentFingerprint = _nonEmpty(values['withdrawalFingerprint']);
-      _withdrawalIntentUserId = int.tryParse(values['withdrawalUserId'] ?? '');
-      withdrawalOutcomeLocked = values['withdrawalLocked'] == 'true';
-      withdrawalOutcomeUnknown = values['withdrawalUnknown'] == 'true';
-      final command = _nonEmpty(values['pendingTradingCommand']);
-      final commandUser = int.tryParse(values['pendingTradingUser'] ?? '');
-      final commandProduct = ProductMode.values
-          .where((p) => p.productLine == values['pendingTradingProduct'])
-          .firstOrNull;
-      if (command != null && commandUser != null && commandProduct != null) {
-        _pendingTradingOrders[commandUser] = PendingTradingOrder(
-          userId: commandUser,
-          product: commandProduct,
-          commandId: command,
-        );
-      }
-      for (final row in asList(
-        jsonDecode(values['pendingTradingOrders'] ?? '[]'),
-      )) {
-        final value = asMap(row);
-        final id = asInt(value['userId']);
-        final product = ProductMode.values
-            .where((p) => p.productLine == value['productLine'])
-            .firstOrNull;
-        final commandId = _nonEmpty(asString(value['commandId']));
-        final clientOrderId = _nonEmpty(asString(value['clientOrderId']));
-        final instrumentId = _nonEmpty(asString(value['instrumentId']));
-        final cancelOrderId = asInt(value['cancelOrderId']);
-        final amendRequestId = _nonEmpty(asString(value['amendRequestId']));
-        final amendOrderId = asInt(value['amendOrderId']);
-        final ocoTakeProfitClientId = _nonEmpty(
-          asString(value['ocoTakeProfitClientId']),
-        );
-        final ocoStopLossClientId = _nonEmpty(
-          asString(value['ocoStopLossClientId']),
-        );
-        final clientTriggerOrderId = _nonEmpty(
-          asString(value['clientTriggerOrderId']),
-        );
-        final cancelTriggerOrderId = asInt(value['cancelTriggerOrderId']);
-        final cancelPlan = value['cancelPlan'] == null
-            ? null
-            : CancellationPlan.fromJson(asMap(value['cancelPlan']));
-        if (id > 0 &&
-            product != null &&
-            ((product.isSpot && cancelPlan != null) ||
-                (product.tracksTriggerIntent &&
-                    instrumentId != null &&
-                    (clientTriggerOrderId != null ||
-                        cancelTriggerOrderId > 0)) ||
-                (product.tracksTriggerIntent &&
-                    instrumentId != null &&
-                    ocoTakeProfitClientId != null &&
-                    ocoStopLossClientId != null) ||
-                commandId != null ||
-                (product.isSpot &&
-                    amendRequestId != null &&
-                    amendOrderId > 0 &&
-                    clientOrderId != null &&
-                    instrumentId != null) ||
-                (product.tracksSingleOrderIntent && cancelOrderId > 0) ||
-                (product.tracksSingleOrderIntent &&
-                    clientOrderId != null &&
-                    instrumentId != null))) {
-          _pendingTradingOrders[id] = PendingTradingOrder(
-            userId: id,
-            product: product,
-            commandId: commandId,
-            clientOrderId: clientOrderId,
-            instrumentId: instrumentId,
-            cancelOrderId: cancelOrderId > 0 ? cancelOrderId : null,
-            cancelPlan: cancelPlan,
-            amendRequestId: amendRequestId,
-            amendOrderId: amendOrderId > 0 ? amendOrderId : null,
-            ocoTakeProfitClientId: ocoTakeProfitClientId,
-            ocoStopLossClientId: ocoStopLossClientId,
-            clientTriggerOrderId: clientTriggerOrderId,
-            cancelTriggerOrderId: cancelTriggerOrderId > 0
-                ? cancelTriggerOrderId
-                : null,
-          );
-        }
-      }
+      transfers.restoreFrom(values);
+      wallet.restoreFrom(values);
+      orders.restoreSettings(values);
+      _updatePresentation();
+      return true;
     } catch (_) {
       clientTheme = ClientTheme.dark;
       language = ClientLanguage.zhHans;
       valuationCurrency = ValuationCurrency.usdt;
-      _clearWithdrawalIntent();
+      lastError = '无法读取安全设置与资金恢复凭证，请重试';
     }
+    _updatePresentation();
+    return false;
   }
 
   void _persistSettings() {
@@ -1225,6 +824,7 @@ class AppState extends ChangeNotifier {
   Future<bool> _writeSettings({
     PendingTradingOrder? completedTradingIntent,
     PendingAccountTransfer? completedTransferIntent,
+    PendingWithdrawal? completedWithdrawalIntent,
   }) async {
     final previous = _settingsWriteTail;
     final completed = Completer<void>();
@@ -1232,17 +832,11 @@ class AppState extends ChangeNotifier {
     await previous;
     try {
       if (completedTradingIntent != null &&
-          !identical(
-            _pendingTradingOrders[completedTradingIntent.userId],
-            completedTradingIntent,
-          )) {
+          !orders.ownsIntent(completedTradingIntent)) {
         return false;
       }
       if (completedTransferIntent != null &&
-          !identical(
-            _pendingTransfers[completedTransferIntent.userId],
-            completedTransferIntent,
-          )) {
+          !transfers.matches(completedTransferIntent)) {
         return false;
       }
       final values = <String, String>{
@@ -1251,70 +845,49 @@ class AppState extends ChangeNotifier {
         'language': language.code,
         'valuationCurrency': valuationCurrency.code,
       };
-      final withdrawalKey = _withdrawalIdempotencyKey;
       // Preserve recovery receipts if a settings action precedes restoration.
-      if (!_transferIntentsRestored && !await restorePendingTransfers()) {
+      if (!orders.restored && !await orders.restore()) return false;
+      if (!transfers.restored && !await transfers.restore()) {
         return false;
       }
       values['pendingTransfers'] = jsonEncode(
-        _pendingTransfers.values
+        transfers.pendingSnapshot
             .where((pending) => !identical(pending, completedTransferIntent))
             .map((pending) => pending.toJson())
             .toList(),
       );
-      if (withdrawalKey != null) values['withdrawalKey'] = withdrawalKey;
-      final withdrawalFingerprint = _withdrawalIntentFingerprint;
-      if (withdrawalFingerprint != null) {
-        values['withdrawalFingerprint'] = withdrawalFingerprint;
+      if (!wallet.restored && !await wallet.restore()) return false;
+      if (completedWithdrawalIntent != null &&
+          !wallet.matches(completedWithdrawalIntent)) {
+        return false;
       }
-      final withdrawalUserId = _withdrawalIntentUserId;
-      if (withdrawalUserId != null) {
-        values['withdrawalUserId'] = '$withdrawalUserId';
-      }
-      values['pendingTradingOrders'] = jsonEncode(
-        _pendingTradingOrders.values
-            .where((pending) => !identical(pending, completedTradingIntent))
-            .map(
-              (pending) => {
-                'userId': pending.userId,
-                'productLine': pending.product.productLine,
-                'commandId': pending.commandId,
-                'clientOrderId': pending.clientOrderId,
-                'instrumentId': pending.instrumentId,
-                'cancelOrderId': pending.cancelOrderId,
-                'amendRequestId': pending.amendRequestId,
-                'amendOrderId': pending.amendOrderId,
-                'cancelPlan': pending.cancelPlan?.toJson(),
-                'ocoTakeProfitClientId': pending.ocoTakeProfitClientId,
-                'ocoStopLossClientId': pending.ocoStopLossClientId,
-                'clientTriggerOrderId': pending.clientTriggerOrderId,
-                'cancelTriggerOrderId': pending.cancelTriggerOrderId,
-              },
-            )
+      values['pendingWithdrawals'] = jsonEncode(
+        wallet.pendingSnapshot
+            .where((intent) => !identical(intent, completedWithdrawalIntent))
+            .map((intent) => intent.toJson())
             .toList(),
       );
-      if (withdrawalOutcomeLocked) values['withdrawalLocked'] = 'true';
-      if (withdrawalOutcomeUnknown) values['withdrawalUnknown'] = 'true';
+      values['pendingTradingOrders'] = jsonEncode(
+        orders.settingsRows(completed: completedTradingIntent),
+      );
       await settingsStore.write(values);
+      if (completedWithdrawalIntent != null &&
+          !wallet.completeSaved(completedWithdrawalIntent)) {
+        return false;
+      }
       // Keep the original request locked until durable removal succeeds, before
       // allowing the next queued settings save to observe the confirmed state.
       if (completedTradingIntent != null) {
-        if (!identical(
-          _pendingTradingOrders[completedTradingIntent.userId],
-          completedTradingIntent,
-        )) {
+        if (!orders.ownsIntent(completedTradingIntent)) {
           return false;
         }
-        _pendingTradingOrders.remove(completedTradingIntent.userId);
+        orders.completeSaved(completedTradingIntent);
       }
       if (completedTransferIntent != null) {
-        if (!identical(
-          _pendingTransfers[completedTransferIntent.userId],
-          completedTransferIntent,
-        )) {
+        if (!transfers.matches(completedTransferIntent)) {
           return false;
         }
-        _pendingTransfers.remove(completedTransferIntent.userId);
+        transfers.completeSaved(completedTransferIntent);
       }
       return true;
     } catch (_) {
@@ -1324,32 +897,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _matchWithdrawalIntentOwner(int activeUserId) async {
-    final intentUserId = _withdrawalIntentUserId;
-    if (intentUserId == null || intentUserId == activeUserId) return;
-    _clearWithdrawalIntent();
-    await _writeSettings();
-  }
-
-  void _clearWithdrawalIntent({bool clearConfirmation = true}) {
-    _withdrawalIdempotencyKey = null;
-    _withdrawalIntentFingerprint = null;
-    _withdrawalIntentUserId = null;
-    withdrawalOutcomeLocked = false;
-    withdrawalOutcomeUnknown = false;
-    withdrawalVerificationRequired = false;
-    withdrawalTotpRequired = false;
-    if (clearConfirmation) withdrawalConfirmation = null;
-  }
-
   void selectTheme(ClientTheme next) {
     clientTheme = next;
+    _updatePresentation();
     _persistSettings();
     notifyListeners();
   }
 
   void selectLanguage(ClientLanguage next) {
     language = next;
+    _updatePresentation();
     _persistSettings();
     unawaited(refreshAnnouncements());
     notifyListeners();
@@ -1495,236 +1052,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _restoreSession() async {
-    try {
-      biometricLoginAvailable = await sessionStore.canUseBiometrics();
-    } catch (_) {
-      // A capability check failure must not bypass an enabled local lock.
-      biometricLoginAvailable = false;
-    }
-    final stored = await sessionStore.readSession();
-    if (stored == null) return;
-    await _matchWithdrawalIntentOwner(stored.user.userId);
-    biometricLoginEnabled = await sessionStore.biometricEnabled();
-    if (biometricLoginEnabled) {
-      pendingBiometricSession = stored;
-      biometricSessionLocked = true;
-      biometricUnlockError = null;
-      notifyListeners();
-      return;
-    }
-    await _refreshStoredSession(stored);
-  }
-
-  Future<void> _refreshStoredSession(AuthSession stored) async {
-    final epoch = _walletSessionVersion;
-    final previous = session;
-    bool current() =>
-        epoch == _walletSessionVersion && identical(previous, session);
-    if (stored.refreshTokenExpired) {
-      await sessionStore.clear();
-      lastError = '登录状态已失效，请使用账号登录';
-      return;
-    }
-    try {
-      final refreshed = await api.refresh(stored.refreshToken);
-      if (!current()) return;
-      await _activateSession(refreshed, persist: true);
-      lastNotice = '已恢复登录状态';
-    } on ApiException catch (error) {
-      if (!current()) return;
-      if (error.statusCode == 401 || error.statusCode == 403) {
-        await sessionStore.clear();
-        lastError = '登录状态已失效，请重新登录';
-      } else {
-        lastNotice = '网络暂不可用，登录状态将在连接恢复后重试';
-      }
-    } catch (_) {
-      if (!current()) return;
-      lastNotice = '网络暂不可用，登录状态将在连接恢复后重试';
-    }
-  }
-
-  Future<void> _activateSession(
-    AuthSession next, {
-    required bool persist,
-  }) async {
-    if (userId != next.user.userId) _clearWalletData();
-    await _matchWithdrawalIntentOwner(next.user.userId);
-    session = next;
-    pendingBiometricSession = null;
-    api.setSession(next);
-    if (persist) await sessionStore.saveSession(next);
-    await refreshProductAvailability();
-    await _connectRealtime(forceReconnect: true);
-    await refreshPrivateData();
-    await refreshAnnouncements();
-  }
-
-  Future<bool> unlockBiometricSession() async {
-    if (!canUnlockBiometricSession ||
-        biometricUnlocking ||
-        !_biometricAppForeground) {
-      return false;
-    }
-    final version = _biometricSessionVersion;
-    final pending = pendingBiometricSession;
-    bool current() => version == _biometricSessionVersion;
-    biometricUnlocking = true;
-    biometricUnlockError = null;
-    notifyListeners();
-    try {
-      final accepted = await sessionStore.authenticateBiometric();
-      if (!current()) return false;
-      if (!accepted) {
-        biometricUnlockError = '验证已取消或未通过，请重试';
-        return false;
-      }
-      if (_biometricAppBackgrounded) return false;
-      if (pending != null) await _refreshStoredSession(pending);
-      if (!current()) return false;
-      if (session == null) {
-        biometricUnlockError = lastError ?? lastNotice ?? '登录状态无法恢复，请重试或使用账号登录';
-        return false;
-      }
-      // Native success may arrive during the dialog's inactive->resumed
-      // transition. The gate stays obscured until resumed. Actual background
-      // delivery, including a token refresh, must keep the account locked.
-      if (_biometricAppBackgrounded) return false;
-      biometricSessionLocked = false;
-      biometricUnlockError = null;
-      lastError = null;
-      notifyListeners();
-      return true;
-    } catch (error) {
-      if (current()) {
-        biometricUnlockError = '生物识别暂不可用，请重试或使用账号登录';
-      }
-      return false;
-    } finally {
-      if (current()) {
-        biometricUnlocking = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<bool> enableBiometricLogin() async {
-    if (session == null || biometricLoginUpdating) return false;
-    biometricLoginUpdating = true;
-    notifyListeners();
-    try {
-      await sessionStore.enableBiometric();
-      biometricLoginAvailable = true;
-      biometricLoginEnabled = true;
-      lastError = null;
-      lastNotice = '已启用生物识别登录';
-      notifyListeners();
-      return true;
-    } catch (error) {
-      lastError = '启用生物识别失败：${clientErrorMessage(error)}';
-      notifyListeners();
-      return false;
-    } finally {
-      biometricLoginUpdating = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> disableBiometricLogin() async {
-    final active = session;
-    if (active == null || !biometricLoginEnabled || biometricLoginUpdating) {
-      return false;
-    }
-    biometricLoginUpdating = true;
-    notifyListeners();
-    try {
-      await sessionStore.clear();
-      await sessionStore.saveSession(active);
-      biometricLoginEnabled = false;
-      _resetBiometricUnlock();
-      lastError = null;
-      lastNotice = '已关闭生物识别登录';
-      notifyListeners();
-      return true;
-    } catch (error) {
-      try {
-        biometricLoginEnabled = await sessionStore.biometricEnabled();
-      } catch (_) {
-        // Keep the last known state if secure storage cannot be read.
-      }
-      lastError = '关闭生物识别失败：${clientErrorMessage(error)}';
-      notifyListeners();
-      return false;
-    } finally {
-      biometricLoginUpdating = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> _persistRefreshedSession(AuthSession next) async {
-    _realtimeReconnectTimer?.cancel();
-    _realtimeReconnectTimer = null;
-    session = next;
-    api.setSession(next);
-    await sessionStore.saveSession(next);
-    await _connectRealtime(forceReconnect: true);
-    notifyListeners();
-  }
-
   void _clearWalletData() {
     _resetPortfolioIncome();
-    _resetAlgoOrders();
-    ++_walletSessionVersion;
-    submittingOrder = false;
-    submittingTriggers = false;
-    ++_walletVersion;
-    withdrawalRulesLoading = false;
-    ++_walletPricesVersion;
-    walletReady = false;
-    walletError = null;
-    walletOrdersError = null;
-    walletPortfolio = WalletPortfolio.empty();
-    walletOrders = const [];
-    walletAssetPricesUsdt.clear();
-    walletDepositAddress = null;
-    withdrawalRules = const [];
-    withdrawalRulesReady = false;
-  }
-
-  Future<void> _clearExpiredSession() async {
-    final wasLocked = requiresBiometricUnlock;
-    _resetBiometricUnlock();
-    biometricSessionLocked = wasLocked;
-    if (wasLocked) biometricUnlockError = '登录状态已失效，请使用账号登录';
-    _clearWalletData();
-    ++_openOrdersRequestVersion;
-    _realtimeReconnectTimer?.cancel();
-    _realtimeReconnectTimer = null;
-    _realtimeGeneration++;
-    _realtimeConnected = false;
-    await realtime.close();
-    await sessionStore.clear();
-    session = null;
-    lastCancellationResult = null;
-    api.setSession(null);
-    await _connectRealtime();
-    await refreshAnnouncements();
-    privateViews.clear();
-    _riskInputKey = '';
-    positionPnlUnits.clear();
-    queriedPositionRisks = [];
-    ++_riskDetailsVersion;
-    productBalances.clear();
-    valuedProducts.clear();
-    assetsReady = false;
-    balances = const [];
-    positions = const [];
-    openOrders = const [];
-    openTriggerOrders = const [];
-    pendingBiometricSession = null;
-    biometricLoginEnabled = false;
-    notifyListeners();
+    ++_accountEpoch;
+    orders.resetAccount();
+    wallet.clearAccountView();
   }
 
   Future<void> refreshInstruments({bool silent = false}) async {
@@ -1767,7 +1099,7 @@ class AppState extends ChangeNotifier {
           selectedInstrument.instrumentId != old.instrumentId ||
           selectedInstrument.changeId != old.changeId) {
         ++_publicRequestVersion;
-        ++_openOrdersRequestVersion;
+        orders.invalidateOpenOrders();
         orderBook = OrderBook.empty(selectedSymbol);
         candles = [];
         recentTrades = [];
@@ -1779,7 +1111,16 @@ class AppState extends ChangeNotifier {
       lastError = null;
     } catch (error) {
       if (request != _instrumentRequestVersion) return;
-      api.instrumentCatalog = instruments;
+      if (error is FormatException) {
+        instruments = const [];
+        selectedSymbol = '';
+        api.instrumentCatalog = const [];
+        orderBook = OrderBook.empty('');
+        candles = const [];
+        _subscribePublicSelected();
+      } else {
+        api.instrumentCatalog = instruments;
+      }
       if (silent) {
         _recordRealtimeIssue('加载交易对失败：${clientErrorMessage(error)}');
       } else {
@@ -1790,7 +1131,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _scheduleRealtimeNotify() {
-    if (_realtimeNotifyTimer?.isActive ?? false) return;
+    if (_disposed || (_realtimeNotifyTimer?.isActive ?? false)) return;
     _realtimeNotifyTimer = Timer(const Duration(milliseconds: 200), () {
       _realtimeNotifyTimer = null;
       notifyListeners();
@@ -1806,11 +1147,12 @@ class AppState extends ChangeNotifier {
     try {
       final symbol = selectedSymbol;
       final productLine = _productLineForSymbol(symbol);
-      final beforeTrades = _publicVersions['$productLine:$symbol:trades:'];
-      final beforeTicker = _publicVersions['$productLine:$symbol:bookTicker:'];
-      final beforeBook = _publicVersions['$productLine:$symbol:depth:'];
-      final beforeCandles =
-          _publicVersions['$productLine:$symbol:candles:$period'];
+      final beforeTrades = market.version('$productLine:$symbol:trades:');
+      final beforeTicker = market.version('$productLine:$symbol:bookTicker:');
+      final beforeBook = market.version('$productLine:$symbol:depth:');
+      final beforeCandles = market.version(
+        '$productLine:$symbol:candles:$period',
+      );
       final results = await Future.wait([
         api
             .orderBook(symbol, productLine: productLine)
@@ -1829,19 +1171,23 @@ class AppState extends ChangeNotifier {
       ]);
       if (requestVersion != _publicRequestVersion) return;
       final loadedTrades = results[2] as List<Map<String, dynamic>>;
-      recentTrades = mergeRecentTrades(loadedTrades, recentTrades);
+      if (loadedTrades.any((trade) => !market.validTrade(trade))) {
+        _recordRealtimeIssue('最新成交的价格或数量无效，已保留原成交记录');
+      } else {
+        recentTrades = mergeRecentTrades(loadedTrades, recentTrades);
+      }
       final loadedBook = results[0] as OrderBook?;
       if (loadedBook != null &&
           identical(
             beforeBook,
-            _publicVersions['$productLine:$symbol:depth:'],
+            market.version('$productLine:$symbol:depth:'),
           )) {
         orderBook = loadedBook;
       }
       final loadedCandles = results[1] as List<Candle>;
       if (identical(
         beforeCandles,
-        _publicVersions['$productLine:$symbol:candles:$period'],
+        market.version('$productLine:$symbol:candles:$period'),
       )) {
         candles = loadedCandles;
       } else {
@@ -1852,11 +1198,11 @@ class AppState extends ChangeNotifier {
       if (candles.isNotEmpty &&
           identical(
             beforeTicker,
-            _publicVersions['$productLine:$symbol:bookTicker:'],
+            market.version('$productLine:$symbol:bookTicker:'),
           ) &&
           identical(
             beforeTrades,
-            _publicVersions['$productLine:$symbol:trades:'],
+            market.version('$productLine:$symbol:trades:'),
           )) {
         latestPrices[_priceKey(mode, symbol)] = candles.last.close;
       }
@@ -1900,11 +1246,13 @@ class AppState extends ChangeNotifier {
     return known.length == 1 ? known.single : null;
   }
 
+  int? assetScaleUnits(String asset) => _balanceScaleFor(asset);
+
   Future<void> refreshBalanceScales() async {
-    final version = ++_balanceScalesVersion, epoch = _walletSessionVersion;
+    final version = ++_balanceScalesVersion, epoch = _accountEpoch;
     try {
       final scales = await api.assetScales();
-      if (version != _balanceScalesVersion || epoch != _walletSessionVersion) {
+      if (version != _balanceScalesVersion || epoch != _accountEpoch) {
         return;
       }
       _balanceScales = Map.unmodifiable(scales);
@@ -1919,10 +1267,10 @@ class AppState extends ChangeNotifier {
     if (offline || id == null) return;
     final generation = ++_privateDataRequestVersion;
     final selectedMode = mode;
-    final epoch = _walletSessionVersion, selection = _selectionVersion;
+    final epoch = _accountEpoch, selection = _selectionVersion;
     bool current() =>
         generation == _privateDataRequestVersion &&
-        epoch == _walletSessionVersion &&
+        epoch == _accountEpoch &&
         selection == _selectionVersion &&
         id == userId &&
         selectedMode == mode;
@@ -1935,6 +1283,7 @@ class AppState extends ChangeNotifier {
     final scalesRefresh = refreshBalanceScales();
     final orderTermsRefresh = refreshOrderTerms();
     final algoRefresh = refreshAlgoOrders();
+    final riskRefresh = refreshRiskDetails();
     try {
       final liquidations =
           await (selectedMode.isDerivative &&
@@ -1956,6 +1305,7 @@ class AppState extends ChangeNotifier {
       await scalesRefresh;
       await orderTermsRefresh;
       await algoRefresh;
+      await riskRefresh;
       if (current()) {
         loadingPrivate = false;
         notifyListeners();
@@ -1963,396 +1313,111 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshAlgoOrders() async {
-    final id = userId, product = mode, epoch = _walletSessionVersion;
-    if (offline || id == null) return;
-    if (disabledProducts.contains(product)) {
-      openAlgoOrders = [];
-      algoOrdersError = null;
-      loadingAlgoOrders = false;
-      return;
-    }
-    final request = ++_algoOrdersRequestVersion;
-    final filter = onlyCurrentTradingPair;
-    final instrument = selectedInstrument;
-    bool current() =>
-        request == _algoOrdersRequestVersion &&
-        epoch == _walletSessionVersion &&
-        userId == id &&
-        mode == product &&
-        onlyCurrentTradingPair == filter &&
-        (!filter || selectedInstrument.instrumentId == instrument.instrumentId);
-    loadingAlgoOrders = true;
-    algoOrdersError = null;
-    notifyListeners();
-    try {
-      if (filter && instrument.instrumentId.isEmpty) {
-        throw const FormatException('算法单交易对资料尚未就绪');
-      }
-      final rows = await api.openAlgoOrders(
-        id,
-        symbol: filter ? instrument.symbol : null,
-        productLine: product.productLine,
-      );
-      if (!current()) return;
-      if (rows.any(
-        (o) =>
-            o.userId != id ||
-            o.product != product ||
-            !o.isOpen ||
-            (filter && o.instrumentId != instrument.instrumentId),
-      )) {
-        throw const FormatException('算法单查询归属不匹配');
-      }
-      openAlgoOrders = rows;
-      final metadata = <String, Instrument>{};
-      bool metadataMissing = false;
-      for (final id in rows.map((o) => o.instrumentId).toSet()) {
-        if (instruments.any((i) => i.mode == product && i.instrumentId == id)) {
-          continue;
-        }
-        try {
-          final value = await api.instrumentLatest(id, product);
-          if (!current()) return;
-          if (value.instrumentId != id || value.mode != product) {
-            throw const FormatException('算法单合约资料归属不匹配');
-          }
-          metadata[id] = value;
-        } catch (_) {
-          if (!current()) return;
-          metadataMissing = true;
-        }
-      }
-      if (!current()) return;
-      _algoOrderInstruments = metadata;
-      if (metadataMissing) algoOrdersError = '部分合约资料未就绪，请刷新策略重试';
-    } catch (error) {
-      if (current()) {
-        openAlgoOrders = const [];
-        _algoOrderInstruments = const {};
-        algoOrdersError = '加载算法单失败：${clientErrorMessage(error)}';
-      }
-    } finally {
-      if (current()) {
-        loadingAlgoOrders = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> loadMoreOpenOrders() async {
-    final id = userId;
-    final cursor = openOrdersNextCursor;
-    if (offline ||
-        id == null ||
-        cursor == null ||
-        cursor.isEmpty ||
-        !openOrdersHasMore ||
-        loadingMoreOpenOrders) {
-      return;
-    }
-    final openOrdersRequestVersion = ++_openOrdersRequestVersion;
-    final symbol = selectedSymbol;
-    final productLine = mode.productLine;
-    loadingMoreOpenOrders = true;
-    notifyListeners();
-    try {
-      final nextPage = await api.openOrders(
-        id,
-        symbol: symbol,
-        productLine: productLine,
-        cursor: cursor,
-      );
-      if (openOrdersRequestVersion != _openOrdersRequestVersion) return;
-      final orderIds = openOrders.map((item) => item.orderId).toSet();
-      openOrders = [
-        ...openOrders,
-        ...nextPage.orders.where((item) => orderIds.add(item.orderId)),
-      ];
-      openOrdersNextCursor = nextPage.nextCursor;
-      openOrdersHasMore = nextPage.hasMore;
-      lastError = null;
-    } catch (error) {
-      if (openOrdersRequestVersion == _openOrdersRequestVersion) {
-        lastError = '加载更多委托失败：${clientErrorMessage(error)}';
-      }
-    } finally {
-      if (openOrdersRequestVersion == _openOrdersRequestVersion) {
-        loadingMoreOpenOrders = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<AuthSession?> login(String email, String password) async {
-    ++_telegramLoginVersion;
-    if (offline) return null;
-    loadingPrivate = true;
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    pendingLoginChallenge = null;
-    try {
-      final authenticated = await api.login(
-        username: email.trim(),
-        password: password,
-      );
-      await _acceptLogin(authenticated);
-      lastNotice = authenticated.requiresEmailVerification ? '请完成邮箱验证' : '登录成功';
-      return authenticated;
-    } on LoginChallenge catch (challenge) {
-      pendingLoginChallenge = challenge;
-      return null;
-    } catch (error) {
-      lastError = '登录失败：${clientErrorMessage(error)}';
-      return null;
-    } finally {
-      loadingPrivate = false;
-      notifyListeners();
-    }
-  }
-
-  int _telegramLoginVersion = 0;
-
+  Future<AuthSession?> login(String identifier, String password) =>
+      auth.login(identifier, password);
   Future<AuthSession?> loginTelegram(
     Future<AuthSession> Function() authenticate,
-  ) async {
-    if (offline) return null;
-    final version = ++_telegramLoginVersion;
-    final previousSession = session;
-    loadingPrivate = true;
-    lastError = null;
-    lastNotice = null;
-    pendingLoginChallenge = null;
-    notifyListeners();
-    try {
-      final authenticated = await authenticate();
-      if (version != _telegramLoginVersion || session != previousSession) {
-        return null;
-      }
-      await _acceptLogin(authenticated);
-      lastNotice = '登录成功';
-      return authenticated;
-    } on TelegramLoginCancelled {
-      return null;
-    } on LoginChallenge catch (challenge) {
-      if (version == _telegramLoginVersion && session == previousSession) {
-        pendingLoginChallenge = challenge;
-      }
-      return null;
-    } catch (error) {
-      if (version == _telegramLoginVersion) {
-        lastError = 'Telegram 登录失败：${clientErrorMessage(error)}';
-      }
-      return null;
-    } finally {
-      if (version == _telegramLoginVersion) {
-        loadingPrivate = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> _acceptLogin(AuthSession authenticated) async {
-    if (authenticated.accessToken.isEmpty ||
-        authenticated.refreshToken.isEmpty) {
-      throw StateError('登录响应缺少令牌');
-    }
-    pendingLoginChallenge = null;
-    if (authenticated.requiresEmailVerification) {
-      pendingVerificationSession = authenticated;
-      api.setSession(authenticated);
-    } else {
-      await _activateSession(authenticated, persist: true);
-    }
-  }
-
-  Future<bool> verifyLogin(Map<String, String> codes) async {
-    final challenge = pendingLoginChallenge;
-    if (challenge == null || challenge.expired) {
-      lastError = '验证已过期，请重新登录';
-      notifyListeners();
-      return false;
-    }
-    try {
-      await _acceptLogin(await api.verifyLogin(challenge, codes));
-      lastError = null;
-      notifyListeners();
-      return true;
-    } catch (error) {
-      lastError = '安全验证失败：${clientErrorMessage(error)}';
-      notifyListeners();
-      return false;
-    }
-  }
-
+  ) => auth.loginTelegram(authenticate);
   Future<AuthSession?> register(
-    String email,
+    String identifier,
     String password, {
     bool phone = false,
-  }) async {
-    if (offline) return null;
-    loadingPrivate = true;
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    try {
-      final created = await api.register(
-        password: password,
-        email: email.trim(),
-        phone: phone,
-      );
-      api.setSession(created);
-      if (created.requiresEmailVerification) {
-        pendingVerificationSession = created;
-        lastNotice = '注册成功，请先完成邮箱验证';
-        return created;
-      }
-      await _activateSession(created, persist: true);
-      lastNotice = '注册成功';
-      return session;
-    } catch (error) {
-      lastError = '注册失败：${clientErrorMessage(error)}';
-      return null;
-    } finally {
-      loadingPrivate = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> verifyPendingEmail(String code) async {
-    final pending = pendingVerificationSession;
-    if (pending == null) {
-      lastError = '验证会话已失效，请重新注册';
-      notifyListeners();
-      return false;
-    }
-    loadingPrivate = true;
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    try {
-      if (!await api.verifyEmail(pending, code.trim())) {
-        throw StateError('验证码无效或已过期');
-      }
-      await _activateSession(pending, persist: true);
-      pendingVerificationSession = null;
-      lastNotice = '邮箱验证成功';
-      return true;
-    } catch (error) {
-      lastError = '邮箱验证失败：${clientErrorMessage(error)}';
-      return false;
-    } finally {
-      loadingPrivate = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> resendPendingEmail() async {
-    final pending = pendingVerificationSession;
-    if (pending == null) {
-      lastError = '验证会话已失效，请重新注册';
-      notifyListeners();
-      return false;
-    }
-    try {
-      await api.resendEmailVerification(pending);
-      lastError = null;
-      lastNotice = '新的验证码已发送';
-      notifyListeners();
-      return true;
-    } catch (error) {
-      lastError = '验证码发送失败：${clientErrorMessage(error)}';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<bool> requestPasswordReset(String identifier) async {
-    try {
-      await api.forgotPassword(identifier.trim());
-      lastError = null;
-      lastNotice = '如果该邮箱已注册，验证码已发送';
-      notifyListeners();
-      return true;
-    } catch (error) {
-      lastError = '验证码发送失败：${clientErrorMessage(error)}';
-      notifyListeners();
-      return false;
-    }
-  }
-
+  }) => auth.register(identifier, password, phone: phone);
+  Future<bool> verifyLogin(Map<String, String> codes) =>
+      auth.verifyLogin(codes);
+  Future<bool> verifyPendingEmail(String code) => auth.verifyPendingEmail(code);
+  Future<bool> resendPendingEmail() => auth.resendPendingEmail();
+  Future<bool> requestPasswordReset(String identifier) =>
+      auth.requestPasswordReset(identifier);
   Future<bool> resetPassword({
     required String identifier,
     required String code,
     required String newPassword,
-  }) async {
-    try {
-      await api.resetPassword(
-        identifier: identifier.trim(),
-        code: code.trim(),
-        newPassword: newPassword,
-      );
-      lastError = null;
-      lastNotice = '密码已更新，请使用新密码登录';
-      notifyListeners();
-      return true;
-    } catch (error) {
-      lastError = '密码更新失败：${clientErrorMessage(error)}';
-      notifyListeners();
-      return false;
+  }) => auth.resetPassword(
+    identifier: identifier,
+    code: code,
+    newPassword: newPassword,
+  );
+  Future<bool> unlockBiometricSession() => auth.unlockBiometricSession();
+  Future<bool> enableBiometricLogin() => auth.enableBiometricLogin();
+  Future<bool> disableBiometricLogin() => auth.disableBiometricLogin();
+  Future<void> logout() => auth.logout();
+
+  void _authSessionChanged(
+    AuthSession? previous,
+    AuthSession? next,
+    AuthSessionChange change,
+  ) {
+    if (_disposed) return;
+    _realtimeReconnectTimer?.cancel();
+    _realtimeReconnectTimer = null;
+    _realtimeAuthRetryTimer?.cancel();
+    _realtimeSessionPaused = false;
+    _realtimeAuthRetries = 0;
+    ++_realtimeGeneration;
+    _realtimeConnected = false;
+    _privateAuthenticated = false;
+    _privateRecovery.reset();
+    _freshnessTimer?.cancel();
+    _riskDetailsTimer?.cancel();
+    for (final view in privateViews.values) {
+      view.status = 'STALE';
+    }
+    if (previous?.user.userId != next?.user.userId || next == null) {
+      _clearWalletData();
+      ++_privateDataRequestVersion;
+      privateViews.clear();
+      _riskInputKey = '';
+      positionPnlUnits.clear();
+      queriedPositionRisks = const [];
+      ++_riskDetailsVersion;
+      productBalances.clear();
+      valuedProducts.clear();
+      assetsReady = false;
+      balances = const [];
+      positions = const [];
+      positionRisks = const [];
+      _clearAccountRisk();
+      orders.resetAccount();
+    } else {
+      assetsReady = false;
+      valuedProducts.clear();
+    }
+    if (change == AuthSessionChange.signedOut ||
+        change == AuthSessionChange.expired) {
+      loadingPrivate = false;
     }
   }
 
-  Future<void> logout() async {
-    ++_telegramLoginVersion;
-    _resetBiometricUnlock();
-    _clearWalletData();
-    _realtimeReconnectTimer?.cancel();
-    _realtimeReconnectTimer = null;
-    _realtimeGeneration++;
-    _realtimeConnected = false;
-    _riskDetailsTimer?.cancel();
-    _freshnessTimer?.cancel();
-    _privateAuthenticated = false;
-    privateViews.clear();
-    _riskInputKey = '';
-    positionPnlUnits.clear();
-    queriedPositionRisks = [];
-    ++_riskDetailsVersion;
-    productBalances.clear();
-    valuedProducts.clear();
-    assetsReady = false;
-    await realtime.close();
-    api.setSession(null);
-    await sessionStore.clear();
-    session = null;
-    await _connectRealtime();
-    await refreshAnnouncements();
-    _openOrdersRequestVersion++;
-    pendingVerificationSession = null;
-    pendingBiometricSession = null;
-    biometricLoginEnabled = false;
-    balances = const [];
-    positions = const [];
-    openOrders = const [];
-    openOrdersNextCursor = null;
-    openOrdersHasMore = false;
-    loadingMoreOpenOrders = false;
-    openAlgoOrders = const [];
-    openTriggerOrders = const [];
-    _triggerOrderEventVersions.clear();
-    positionMode = 'ONE_WAY';
-    walletPortfolio = WalletPortfolio.empty();
-    walletOrders = const [];
-    walletAssetPricesUsdt.clear();
-    walletDepositAddress = null;
-    accountRisk = null;
-    positionRisks = const [];
-    liquidationOrders = const [];
-    _clearWithdrawalIntent();
-    await _writeSettings();
-    notifyListeners();
+  Future<void> _authSessionReady(
+    AuthSession? previous,
+    AuthSession? next,
+    AuthSessionChange change,
+    int revision,
+  ) async {
+    bool current() =>
+        !_disposed &&
+        auth.isCurrentRevision(revision) &&
+        identical(auth.current, next);
+    if (!current()) return;
+    if (next == null) {
+      await realtime.close();
+      if (!current()) return;
+      await _connectRealtime();
+      if (!current()) return;
+      await refreshAnnouncements();
+    } else if (change == AuthSessionChange.tokenRefreshed) {
+      await _connectRealtime(forceReconnect: true);
+    } else {
+      await refreshProductAvailability();
+      if (!current()) return;
+      await _connectRealtime(forceReconnect: true);
+      if (!current()) return;
+      await refreshPrivateData();
+      if (!current()) return;
+      await refreshAnnouncements();
+    }
+    if (current()) notifyListeners();
   }
 
   Future<void> selectMode(ProductMode nextMode) {
@@ -2383,18 +1448,19 @@ class AppState extends ChangeNotifier {
     String symbol, {
     required bool reconnect,
   }) async {
+    api.cancelPendingRequests();
     final selection = ++_selectionVersion;
     _riskInputKey = '';
     ++_riskDetailsVersion;
     queriedPositionRisks = [];
     ++_publicRequestVersion;
-    ++_openOrdersRequestVersion;
+    orders.invalidateOpenOrders();
     mode = nextMode;
     selectedSymbol = symbol;
     _optionReference = null;
     _scheduleOptionReference();
     recentTrades = [];
-    accountRisk = null;
+    _clearAccountRisk();
     _resetAlgoOrders();
     liquidationOrders = [];
     balances = const [];
@@ -2431,6 +1497,13 @@ class AppState extends ChangeNotifier {
     await refreshPublicData(silent: true);
   }
 
+  Future<void> checkPendingTradingCommand() =>
+      orders.checkPendingTradingCommand();
+
+  Future<void> refreshAlgoOrders() => orders.refreshAlgoOrders();
+
+  Future<void> loadMoreOpenOrders() => orders.loadMoreOpenOrders();
+
   Future<void> placeOrder({
     required String side,
     required String orderType,
@@ -2444,1223 +1517,47 @@ class AppState extends ChangeNotifier {
     String? bboPriceMode,
     Instrument? targetInstrument,
     String? priceText,
-  }) async {
-    if (submittingOrder || tradingCommandPending) return;
-    lastError = null;
-    lastNotice = null;
-    final instrument = targetInstrument ?? selectedInstrument;
-    final effectiveReduceOnly = instrument.effectiveReduceOnly(
-      reduceOnly: reduceOnly,
-      side: side,
-      positionMode: positionMode,
-      positionSide: positionSide,
-    );
-    final exactPrice = orderType != 'MARKET' && bboPriceMode == null
-        ? instrument.priceTicksFromText(priceText ?? '$price')
-        : null;
-    try {
-      validateOrderPolicy(orderType, timeInForce, postOnly, bboPriceMode);
-    } on FormatException catch (error) {
-      lastError = error.message;
-      notifyListeners();
-      return;
-    }
-    if (!instrument.canPlaceOrder(reduceOnly: effectiveReduceOnly)) {
-      lastError = instrument.isDelivery && instrument.status == 'SETTLING'
-          ? '合约结算中，仅允许减仓'
-          : instrument.status == 'PRE_TRADING'
-          ? '该交易对尚未开放交易'
-          : '该交易对已暂停交易';
-      notifyListeners();
-      return;
-    }
-    if (instrument.symbol.isEmpty ||
-        (instrument.isSpot && instrument.instrumentId.isEmpty) ||
-        quantitySteps <= 0 ||
-        (orderType != 'MARKET' &&
-            bboPriceMode == null &&
-            (!price.isFinite || price <= 0 || exactPrice == null))) {
-      lastError = '请输入有效的价格和数量';
-      notifyListeners();
-      return;
-    }
-    final effectivePositionSide = instrument.isSpot || positionMode == 'ONE_WAY'
-        ? 'NET'
-        : positionSide == 'NET'
-        ? (side == 'SELL' ? 'SHORT' : 'LONG')
-        : positionSide;
-    if (instrument.isExpiring && effectiveReduceOnly) {
-      final position = positions
-          .where(
-            (p) =>
-                p.instrumentId == instrument.instrumentId &&
-                p.marginMode == marginMode &&
-                (positionMode == 'ONE_WAY' ||
-                    p.positionSide == effectivePositionSide),
-          )
-          .firstOrNull;
-      if (position == null ||
-          position.signedQuantitySteps == 0 ||
-          (position.signedQuantitySteps > 0 ? 'SELL' : 'BUY') != side ||
-          BigInt.from(quantitySteps) >
-              BigInt.from(position.signedQuantitySteps).abs()) {
-        lastError = '减仓方向或数量与当前持仓不匹配，请刷新账户后重试';
-        notifyListeners();
-        return;
-      }
-    }
-    final id = userId;
-    if (id == null) {
-      lastError = '请先登录再下单';
-      notifyListeners();
-      return;
-    }
-    final epoch = _walletSessionVersion;
-    bool current() => epoch == _walletSessionVersion && userId == id;
-    final random = math.Random.secure();
-    final pendingIntent = instrument.mode.tracksSingleOrderIntent
-        ? PendingTradingOrder(
-            userId: id,
-            product: instrument.mode,
-            instrumentId: instrument.instrumentId,
-            clientOrderId:
-                'app-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}',
-          )
-        : null;
-    var issued = false;
-    var outcomeConfirmed = false;
-    submittingOrder = true;
-    notifyListeners();
-    try {
-      final productLine = instrument.mode.productLine;
-      final intent = pendingIntent;
-      if (intent != null) {
-        _pendingTradingOrders[id] = intent;
-        if (!await _writeSettings()) {
-          _pendingTradingOrders.remove(id);
-          if (current()) lastError = '无法保存委托恢复资料，未发送订单';
-          return;
-        }
-        if (!current()) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
-          return;
-        }
-      }
-      issued = true;
-      final order = await api.placeOrder(
-        userId: id,
-        symbol: instrument.symbol,
-        side: side,
-        orderType: orderType,
-        timeInForce: timeInForce,
-        priceTicks: orderType == 'MARKET' || bboPriceMode != null
-            ? 0
-            : exactPrice!,
-        quantitySteps: quantitySteps,
-        marginMode: instrument.isSpot ? 'CROSS' : marginMode,
-        positionSide: effectivePositionSide,
-        reduceOnly: !instrument.isSpot && effectiveReduceOnly,
-        postOnly: postOnly,
-        bboPriceMode: bboPriceMode,
-        productLine: productLine,
-        clientOrderId: intent?.clientOrderId,
-      );
-      if (order.orderId <= 0 ||
-          (instrument.mode.tracksSingleOrderIntent &&
-              ![
-                'PENDING_RESERVE',
-                'ACCEPTED',
-                'REJECTED',
-                'CANCEL_REQUESTED',
-                'CANCELED',
-                'PARTIALLY_FILLED',
-                'FILLED',
-              ].contains(order.status))) {
-        throw const FormatException('委托响应不完整，请查询原委托结果');
-      }
-      outcomeConfirmed = true;
-      if (intent != null && !await _clearTradingIntent(intent)) {
-        if (current()) lastError = '无法保存委托确认结果，请查询原委托结果';
-        return;
-      }
-      if (!current()) return;
-      if (order.status == 'REJECTED') {
-        lastError = '订单未被接受，请检查委托结果后重试';
-        return;
-      }
-      if (mode == instrument.mode &&
-          selectedSymbol == instrument.symbol &&
-          userId == id) {
-        _upsertOrder(order);
-      }
-      lastNotice = '订单已提交 #${order.orderId}';
-      await refreshPrivateData();
-    } on PendingTradingCommand catch (pending) {
-      _pendingTradingOrders[id] = PendingTradingOrder(
-        userId: id,
-        product: instrument.mode,
-        commandId: _nonEmpty(pending.commandId),
-        clientOrderId: pendingIntent?.clientOrderId,
-        instrumentId: pendingIntent?.instrumentId,
-      );
-      await _writeSettings();
-      if (current()) lastNotice = pending.message;
-    } catch (error) {
-      if (pendingIntent != null &&
-          issued &&
-          !outcomeConfirmed &&
-          !isDefinitiveOrderRejection(error)) {
-        if (current()) lastNotice = '委托结果待确认，请勿重复提交';
-      } else {
-        if (pendingIntent != null &&
-            identical(_pendingTradingOrders[id], pendingIntent) &&
-            !await _clearTradingIntent(pendingIntent)) {
-          if (current()) lastError = '无法保存委托确认结果，请查询原委托结果';
-          return;
-        }
-        if (current()) lastError = '下单失败：${clientErrorMessage(error)}';
-      }
-    } finally {
-      if (current()) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
+  }) => orders.placeOrder(
+    side: side,
+    orderType: orderType,
+    timeInForce: timeInForce,
+    price: price,
+    quantitySteps: quantitySteps,
+    marginMode: marginMode,
+    positionSide: positionSide,
+    reduceOnly: reduceOnly,
+    postOnly: postOnly,
+    bboPriceMode: bboPriceMode,
+    targetInstrument: targetInstrument,
+    priceText: priceText,
+  );
 
-  String _newCancellationKey() {
-    final random = math.Random.secure();
-    return 'app-cancel-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
-  }
-
-  Future<void> cancelOpenSpotOrders({required bool onlyCurrentPair}) async {
-    final id = userId;
-    if (id == null ||
-        mode != ProductMode.spot ||
-        submittingOrder ||
-        tradingCommandPending) {
-      return;
-    }
-    final instrument = onlyCurrentPair ? selectedInstrument.instrumentId : null;
-    if (onlyCurrentPair && (instrument == null || instrument.isEmpty)) {
-      lastError = '交易对资料未就绪，未发送撤单';
-      notifyListeners();
-      return;
-    }
-    final epoch = _walletSessionVersion;
-    bool current() => epoch == _walletSessionVersion && userId == id;
-    submittingOrder = true;
-    lastError = null;
-    lastNotice = null;
-    lastCancellationResult = null;
-    notifyListeners();
-    try {
-      final ids = await api.cancellationPlan(id, instrumentId: instrument);
-      if (!current()) return;
-      if (ids.isEmpty) {
-        lastNotice = '当前范围没有可撤销委托';
-        return;
-      }
-      final batches = <CancellationBatch>[];
-      for (var start = 0; start < ids.length; start += 50) {
-        batches.add(
-          CancellationBatch(
-            _newCancellationKey(),
-            ids.sublist(start, math.min(start + 50, ids.length)),
-          ),
-        );
-      }
-      final pending = PendingTradingOrder(
-        userId: id,
-        product: ProductMode.spot,
-        cancelPlan: CancellationPlan(
-          id: _newCancellationKey(),
-          batches: batches,
-          instrumentId: instrument,
-        ),
-      );
-      _pendingTradingOrders[id] = pending;
-      if (!await _writeSettings()) {
-        _pendingTradingOrders.remove(id);
-        if (current()) lastError = '无法保存批量撤单资料，未发送撤单';
-        return;
-      }
-      if (!current()) {
-        _pendingTradingOrders.remove(id);
-        await _writeSettings();
-        return;
-      }
-      await _driveCancellationPlan(pending);
-    } catch (error) {
-      if (current()) lastError = '批量撤单失败：${clientErrorMessage(error)}';
-    } finally {
-      if (current()) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> _driveCancellationPlan(PendingTradingOrder initial) async {
-    var pending = initial;
-    final epoch = _walletSessionVersion;
-    bool current() =>
-        epoch == _walletSessionVersion && userId == pending.userId;
-    bool owns() => identical(_pendingTradingOrders[pending.userId], pending);
-    try {
-      while (pending.cancelPlan!.index < pending.cancelPlan!.batches.length) {
-        if (!current() || !owns()) return;
-        final plan = pending.cancelPlan!, batch = plan.batches[plan.index];
-        late OrderBatchResult result;
-        if (plan.issued) {
-          Map<String, dynamic> receipt;
-          try {
-            receipt = await api.get(
-              '/api/v1/gateway/trading/cancellation-batches',
-              userId: pending.userId,
-              productLine: 'SPOT',
-              query: {'userId': '${pending.userId}', 'batchKey': batch.key},
-            );
-          } on ApiException catch (error) {
-            final parsed = asMap(jsonDecode(error.message));
-            if (parsed['outcome'] != 'TERMINAL') rethrow;
-            receipt = parsed;
-          }
-          if (receipt['commandId'] is! String ||
-              asString(receipt['commandId']).isEmpty ||
-              (pending.commandId != null &&
-                  receipt['commandId'] != pending.commandId)) {
-            throw const FormatException('批量撤单回执不匹配');
-          }
-          if (receipt['outcome'] == 'RESULT_UNKNOWN' ||
-              receipt['outcome'] == 'MATCHING_PENDING') {
-            if (current()) lastNotice = '批量撤单结果待确认，请确认后继续';
-            return;
-          }
-          final ids = asList(
-            receipt['prospectiveOrderIds'],
-          ).map(asInt).toList();
-          if (receipt['outcome'] != 'TERMINAL' ||
-              ids.length != batch.orderIds.length ||
-              !List.generate(
-                ids.length,
-                (i) => ids[i] == batch.orderIds[i],
-              ).every((same) => same)) {
-            throw const FormatException('批量撤单目标不匹配');
-          }
-          result = OrderBatchResult.fromCancellationJson(
-            asMap(receipt['result']),
-          );
-        } else {
-          final before = pending;
-          pending = PendingTradingOrder(
-            userId: pending.userId,
-            product: ProductMode.spot,
-            cancelPlan: plan.markIssued(),
-          );
-          if (!identical(_pendingTradingOrders[pending.userId], before)) return;
-          _pendingTradingOrders[pending.userId] = pending;
-          if (!await _writeSettings()) {
-            _pendingTradingOrders[pending.userId] = before;
-            throw const FormatException('未能保存批量撤单进度，未发送本批');
-          }
-          if (!current()) {
-            if (owns()) {
-              _pendingTradingOrders[pending.userId] = before;
-              await _writeSettings();
-            }
-            return;
-          }
-          try {
-            result = await api.cancelOrderBatch(
-              pending.userId,
-              batch.orderIds,
-              productLine: 'SPOT',
-              batchKey: batch.key,
-            );
-          } on PendingTradingCommand catch (command) {
-            if (!owns()) return;
-            pending = PendingTradingOrder(
-              userId: pending.userId,
-              product: ProductMode.spot,
-              cancelPlan: pending.cancelPlan,
-              commandId: _nonEmpty(command.commandId),
-            );
-            _pendingTradingOrders[pending.userId] = pending;
-            await _writeSettings();
-            if (current()) lastNotice = '批量撤单结果待确认，请确认后继续';
-            return;
-          } catch (error) {
-            if (!isDefinitiveOrderRejection(error)) rethrow;
-            String code = 'REQUEST_REJECTED';
-            if (error is ApiException) {
-              try {
-                final raw = asMap(jsonDecode(error.message));
-                code = _nonEmpty(asString(raw['code'])) ?? code;
-              } catch (_) {}
-            }
-            result = OrderBatchResult(
-              requested: batch.orderIds.length,
-              completed: 0,
-              failed: batch.orderIds.length,
-              results: List.generate(
-                batch.orderIds.length,
-                (i) => OrderBatchItem(index: i, success: false, message: code),
-              ),
-            );
-          }
-        }
-        if (!owns()) return;
-        final previous = pending, advanced = plan.advance(result);
-        pending = PendingTradingOrder(
-          userId: pending.userId,
-          product: ProductMode.spot,
-          cancelPlan: advanced,
-        );
-        _pendingTradingOrders[pending.userId] = pending;
-        if (!await _writeSettings()) {
-          _pendingTradingOrders[pending.userId] = previous;
-          throw const FormatException('未能保存已确认进度，请确认后继续');
-        }
-        if (current()) notifyListeners();
-      }
-      if (!owns()) return;
-      final plan = pending.cancelPlan!;
-      if (!await _clearTradingIntent(pending)) {
-        throw const FormatException('无法保存批量撤单确认结果，请确认后继续');
-      }
-      if (!current()) return;
-      lastCancellationResult = CancellationSummary(
-        pending.userId,
-        plan.requested,
-        plan.completed,
-        plan.failed,
-        plan.failures,
-      );
-      lastNotice =
-          '批量撤单已处理 ${plan.requested} 笔，成功 ${plan.completed} 笔，失败 ${plan.failed} 笔，请查看最新委托状态';
-      await refreshPrivateData();
-    } catch (error) {
-      if (current()) lastError = '批量撤单尚未确认：${clientErrorMessage(error)}';
-    }
-  }
+  Future<void> cancelOpenSpotOrders({required bool onlyCurrentPair}) =>
+      orders.cancelOpenSpotOrders(onlyCurrentPair: onlyCurrentPair);
 
   Future<void> amendSpotOrder(
     OrderModel order,
     Instrument instrument,
     String price,
     String quantity,
-  ) async {
-    final id = userId;
-    if (id == null || submittingOrder || tradingCommandPending) return;
-    lastError = null;
-    lastNotice = null;
-    late final ({int priceTicks, int quantitySteps}) terms;
-    try {
-      if (mode != ProductMode.spot) throw const FormatException('请切换至现货产品');
-      terms = spotAmendmentTerms(instrument, order, price, quantity);
-    } on FormatException catch (error) {
-      lastError = error.message;
-      notifyListeners();
-      return;
-    }
-    final epoch = _walletSessionVersion;
-    bool current() => epoch == _walletSessionVersion && userId == id;
-    final random = math.Random.secure();
-    final key =
-        'app-amend-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
-    final intent = PendingTradingOrder(
-      userId: id,
-      product: ProductMode.spot,
-      amendRequestId: key,
-      amendOrderId: order.orderId,
-      clientOrderId: key,
-      instrumentId: instrument.instrumentId,
-    );
-    bool issued = false, confirmed = false;
-    submittingOrder = true;
-    notifyListeners();
-    try {
-      _pendingTradingOrders[id] = intent;
-      if (!await _writeSettings()) {
-        if (_pendingTradingOrders[id] == intent) {
-          _pendingTradingOrders.remove(id);
-        }
-        if (current()) lastError = '无法保存改单恢复资料，未发送改单';
-        return;
-      }
-      if (!current()) {
-        if (_pendingTradingOrders[id] == intent) {
-          _pendingTradingOrders.remove(id);
-        }
-        await _writeSettings();
-        return;
-      }
-      issued = true;
-      final result = await api.amendOrder(
-        userId: id,
-        orderId: order.orderId,
-        priceTicks: terms.priceTicks,
-        quantitySteps: terms.quantitySteps,
-        newClientOrderId: key,
-        clientRequestId: key,
-        timeInForce: order.timeInForce,
-        postOnly: order.postOnly,
-        productLine: 'SPOT',
-      );
-      if (result.originalOrder.orderId != order.orderId ||
-          result.originalOrder.status != 'CANCELED' ||
-          result.replacementOrder.orderId <= 0 ||
-          result.replacementOrder.orderId == order.orderId ||
-          !result.cancelRequested ||
-          result.replacementOrder.symbol != instrument.symbol ||
-          ![
-            'ACCEPTED',
-            'PARTIALLY_FILLED',
-            'FILLED',
-            'CANCELED',
-            'REJECTED',
-          ].contains(result.replacementOrder.status)) {
-        throw const FormatException('改单响应不完整，请查询原改单结果');
-      }
-      confirmed = true;
-      if (!await _clearTradingIntent(intent)) {
-        if (current()) lastError = '无法保存改单确认结果，请查询原改单结果';
-        return;
-      }
-      if (!current()) return;
-      if (mode == ProductMode.spot && selectedSymbol == instrument.symbol) {
-        _upsertOrder(result.originalOrder);
-        _upsertOrder(result.replacementOrder);
-      }
-      if (result.replacementOrder.status == 'REJECTED') {
-        lastError = '新委托被拒绝，请查看原单和新委托状态';
-      } else {
-        lastNotice = '改单已处理，新委托 #${result.replacementOrder.orderId}';
-      }
-      await refreshPrivateData();
-    } on PendingTradingCommand catch (pending) {
-      if (_pendingTradingOrders[id] == intent) {
-        _pendingTradingOrders[id] = PendingTradingOrder(
-          userId: id,
-          product: ProductMode.spot,
-          amendRequestId: key,
-          amendOrderId: order.orderId,
-          clientOrderId: key,
-          instrumentId: instrument.instrumentId,
-          commandId: _nonEmpty(pending.commandId),
-        );
-        await _writeSettings();
-      }
-      if (current()) lastNotice = '改单结果待确认，请勿重复提交';
-    } catch (error) {
-      if (issued && !confirmed && !isDefinitiveOrderRejection(error)) {
-        if (current()) lastNotice = '改单结果待确认，请勿重复提交';
-      } else {
-        if (identical(_pendingTradingOrders[id], intent) &&
-            !await _clearTradingIntent(intent)) {
-          if (current()) lastError = '无法保存改单确认结果，请查询原改单结果';
-          return;
-        }
-        if (current()) lastError = '改单失败：${clientErrorMessage(error)}';
-      }
-    } finally {
-      if (current()) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
+  ) => orders.amendSpotOrder(order, instrument, price, quantity);
 
-  Future<void> cancelOrder(OrderModel order) async {
-    final id = userId;
-    if (id == null ||
-        order.orderId <= 0 ||
-        submittingOrder ||
-        tradingCommandPending) {
-      return;
-    }
-    final product = mode;
-    final epoch = _walletSessionVersion;
-    bool current() => epoch == _walletSessionVersion && userId == id;
-    final intent = product.tracksSingleOrderIntent
-        ? PendingTradingOrder(
-            userId: id,
-            product: product,
-            cancelOrderId: order.orderId,
-          )
-        : null;
-    bool issued = false, confirmed = false;
-    submittingOrder = true;
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    try {
-      if (intent != null) {
-        _pendingTradingOrders[id] = intent;
-        if (!await _writeSettings()) {
-          if (_pendingTradingOrders[id] == intent) {
-            _pendingTradingOrders.remove(id);
-          }
-          if (current()) lastError = '无法保存撤单恢复资料，未发送撤单';
-          return;
-        }
-        if (!current()) {
-          if (_pendingTradingOrders[id] == intent) {
-            _pendingTradingOrders.remove(id);
-          }
-          await _writeSettings();
-          return;
-        }
-      }
-      issued = true;
-      final cancelled = await api.cancelOrder(
-        id,
-        order.orderId,
-        productLine: product.productLine,
-      );
-      if (cancelled.orderId != order.orderId ||
-          ![
-            'CANCELED',
-            'CANCEL_REQUESTED',
-            'FILLED',
-          ].contains(cancelled.status)) {
-        throw const FormatException('撤单响应不完整，请查询原撤单结果');
-      }
-      confirmed = true;
-      if (intent != null && !await _clearTradingIntent(intent)) {
-        if (current()) lastError = '无法保存撤单确认结果，请查询原撤单结果';
-        return;
-      }
-      if (!current()) return;
-      if (mode == product && selectedSymbol == order.symbol) {
-        _upsertOrder(cancelled);
-      }
-      lastNotice = '撤单处理结果已确认 #${order.orderId}';
-      await refreshPrivateData();
-    } on PendingTradingCommand catch (pending) {
-      if (intent == null || _pendingTradingOrders[id] == intent) {
-        _pendingTradingOrders[id] = PendingTradingOrder(
-          userId: id,
-          product: product,
-          commandId: _nonEmpty(pending.commandId),
-          cancelOrderId: intent?.cancelOrderId,
-        );
-        await _writeSettings();
-      }
-      if (current()) lastNotice = '撤单结果待确认，请勿重复提交';
-    } catch (error) {
-      if (intent != null &&
-          issued &&
-          !confirmed &&
-          !isDefinitiveOrderRejection(error)) {
-        if (current()) lastNotice = '撤单结果待确认，请勿重复提交';
-      } else {
-        if (intent != null &&
-            identical(_pendingTradingOrders[id], intent) &&
-            !await _clearTradingIntent(intent)) {
-          if (current()) lastError = '无法保存撤单确认结果，请查询原撤单结果';
-          return;
-        }
-        if (current()) lastError = '撤单失败：${clientErrorMessage(error)}';
-      }
-    } finally {
-      if (current()) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<void> cancelOrder(OrderModel order) => orders.cancelOrder(order);
 
-  Future<void> placeAlgoOrder(AlgoOrderDraft draft) async {
-    final id = userId;
-    if (id == null) {
-      lastError = '请先登录再提交算法单';
-      notifyListeners();
-      return;
-    }
-    if (!_validAlgoDraft(draft)) {
-      lastError = '请先填写有效的算法单参数';
-      notifyListeners();
-      return;
-    }
-    try {
-      final order = await api.placeAlgoOrder(
-        userId: id,
-        symbol: selectedSymbol,
-        algoType: draft.algoType,
-        side: draft.side,
-        priceTicks: draft.priceTicks,
-        quantitySteps: draft.quantitySteps,
-        childQuantitySteps: draft.childQuantitySteps,
-        intervalSeconds: draft.intervalSeconds,
-        durationSeconds: draft.durationSeconds,
-        marginMode: draft.marginMode,
-        positionSide: draft.positionSide,
-        reduceOnly: draft.reduceOnly,
-        postOnly: draft.postOnly,
-        productLine: _productLineForSymbol(selectedSymbol),
-      );
-      _upsertAlgoOrder(order);
-      lastNotice = '算法单已提交 #${order.algoOrderId}';
-      await refreshPrivateData();
-    } catch (error) {
-      lastError = '提交算法单失败：${clientErrorMessage(error)}';
-    }
-    notifyListeners();
-  }
+  Future<bool> placeAlgoOrder(AlgoOrderDraft draft) =>
+      orders.placeAlgoOrder(draft);
 
-  bool _validAlgoDraft(AlgoOrderDraft draft) {
-    if (draft.quantitySteps <= 0 || draft.childQuantitySteps <= 0) {
-      return false;
-    }
-    if (draft.childQuantitySteps > draft.quantitySteps) return false;
-    if (draft.intervalSeconds <= 0 || draft.durationSeconds <= 0) return false;
-    if (draft.algoType == 'ICEBERG') return draft.priceTicks > 0;
-    return draft.algoType == 'TWAP';
-  }
+  Future<void> cancelAlgoOrder(AlgoOrderModel order) =>
+      orders.cancelAlgoOrder(order);
 
-  Future<void> cancelAlgoOrder(AlgoOrderModel order) async {
-    final id = userId;
-    final product = mode, epoch = _walletSessionVersion;
-    if (id == null || submittingOrder || tradingCommandPending) return;
-    if (order.userId != id ||
-        order.product != product ||
-        !order.isOpen ||
-        !visibleAlgoOrders.any(
-          (o) =>
-              o.algoOrderId == order.algoOrderId &&
-              o.instrumentId == order.instrumentId &&
-              o.clientAlgoOrderId == order.clientAlgoOrderId,
-        )) {
-      lastError = '算法单不属于当前查询，请刷新后重试';
-      notifyListeners();
-      return;
-    }
-    bool current() =>
-        epoch == _walletSessionVersion && userId == id && mode == product;
-    submittingOrder = true;
-    lastError = null;
-    notifyListeners();
-    try {
-      final cancelled = await api.cancelAlgoOrder(
-        id,
-        order.algoOrderId,
-        productLine: order.product.productLine,
-      );
-      if (!current()) return;
-      if (cancelled.userId != id ||
-          cancelled.product != product ||
-          cancelled.algoOrderId != order.algoOrderId ||
-          cancelled.instrumentId != order.instrumentId ||
-          cancelled.clientAlgoOrderId != order.clientAlgoOrderId ||
-          !const [
-            'CANCEL_REQUESTED',
-            'CANCELED',
-            'COMPLETED',
-            'FAILED',
-          ].contains(cancelled.status) ||
-          (cancelled.status != 'CANCEL_REQUESTED' &&
-              cancelled.activeQuantitySteps != 0)) {
-        throw const FormatException('算法单撤销结果不匹配，请刷新原策略');
-      }
-      // A read started before this command may still contain the pre-cancel parent.
-      ++_algoOrdersRequestVersion;
-      loadingAlgoOrders = false;
-      _upsertAlgoOrder(cancelled);
-      lastNotice = cancelled.status == 'CANCEL_REQUESTED'
-          ? '算法单取消中，请刷新确认子单状态 #${order.algoOrderId}'
-          : cancelled.status == 'CANCELED'
-          ? '算法单撤销已确认 #${order.algoOrderId}'
-          : '算法单已结束（${cancelled.status}）#${order.algoOrderId}';
-    } catch (error) {
-      if (current()) {
-        lastError = '算法单撤销结果未确认，请刷新原策略：${clientErrorMessage(error)}';
-      }
-    } finally {
-      // The same account may change product while this command is in flight.
-      if (epoch == _walletSessionVersion && userId == id) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<int> placeOco(List<TriggerOrderDraft> drafts) =>
+      orders.placeOco(drafts);
 
-  /// 一次原子 OCO 意图：先保存两腿身份，再发送一次；未知结果只查 realtime 回执。
-  Future<int> placeOco(List<TriggerOrderDraft> drafts) async {
-    if (submittingTriggers || submittingOrder || tradingCommandPending) {
-      return 0;
-    }
-    lastError = null;
-    lastNotice = null;
-    final instrument = selectedInstrument;
-    final id = userId;
-    final tp = drafts.where((d) => d.triggerType == 'TAKE_PROFIT').firstOrNull;
-    final sl = drafts.where((d) => d.triggerType == 'STOP_LOSS').firstOrNull;
-    if (id == null ||
-        !instrument.mode.isDerivative ||
-        !instrument.canPlaceTrigger() ||
-        drafts.length != 2 ||
-        tp == null ||
-        sl == null ||
-        !_validTriggerDraft(tp) ||
-        !_validTriggerDraft(sl) ||
-        tp.side != sl.side ||
-        tp.marginMode != sl.marginMode ||
-        tp.positionSide != sl.positionSide ||
-        tp.quantitySteps != sl.quantitySteps ||
-        tp.priceSource != sl.priceSource ||
-        (tp.side == 'SELL'
-            ? tp.triggerPriceTicks <= sl.triggerPriceTicks
-            : tp.triggerPriceTicks >= sl.triggerPriceTicks)) {
-      lastError = '请填写当前可交易合约的有效 TP/SL 双腿参数';
-      notifyListeners();
-      return 0;
-    }
-    final position = positions
-        .where(
-          (p) =>
-              p.instrumentId == instrument.instrumentId &&
-              p.marginMode == tp.marginMode &&
-              p.positionSide == tp.positionSide &&
-              p.signedQuantitySteps != 0,
-        )
-        .firstOrNull;
-    if (position == null ||
-        (position.signedQuantitySteps > 0 ? 'SELL' : 'BUY') != tp.side ||
-        tp.quantitySteps > position.signedQuantitySteps.abs()) {
-      lastError = '止盈止损必须对应当前仓位，数量不能超过可平仓数量';
-      notifyListeners();
-      return 0;
-    }
-    final epoch = _walletSessionVersion;
-    bool current() => epoch == _walletSessionVersion && userId == id;
-    final random = math.Random.secure();
-    final key = List.generate(
-      16,
-      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-    ).join();
-    final intent = PendingTradingOrder(
-      userId: id,
-      product: instrument.mode,
-      instrumentId: instrument.instrumentId,
-      ocoTakeProfitClientId: 'app-tp-$key',
-      ocoStopLossClientId: 'app-sl-$key',
-    );
-    Map<String, dynamic> leg(TriggerOrderDraft draft, String clientId) => {
-      'userId': id,
-      'instrumentId': instrument.instrumentId,
-      'clientTriggerOrderId': clientId,
-      'ocoGroupId': 'app-oco-$key',
-      'side': draft.side,
-      'triggerType': draft.triggerType,
-      'triggerPriceTicks': draft.triggerPriceTicks,
-      'priceSource': draft.priceSource,
-      'orderType': draft.orderType,
-      'timeInForce': draft.orderType == 'MARKET' ? 'IOC' : 'GTC',
-      'priceTicks': draft.orderType == 'MARKET' ? 0 : draft.priceTicks,
-      'quantitySteps': draft.quantitySteps,
-      'marginMode': draft.marginMode,
-      'positionSide': draft.positionSide,
-    };
-    final requested = [
-      leg(tp, intent.ocoTakeProfitClientId!),
-      leg(sl, intent.ocoStopLossClientId!),
-    ];
-    var issued = false;
-    submittingTriggers = true;
-    submittingOrder = true;
-    notifyListeners();
-    try {
-      _pendingTradingOrders[id] = intent;
-      if (!await _writeSettings()) {
-        _pendingTradingOrders.remove(id);
-        if (current()) lastError = '无法保存 OCO 恢复资料，未发送委托';
-        return 0;
-      }
-      if (!current()) {
-        _pendingTradingOrders.remove(id);
-        await _writeSettings();
-        return 0;
-      }
-      issued = true;
-      final result = await api.placeTriggerOrderBatch(
-        id,
-        requested,
-        atomic: true,
-        productLine: instrument.mode.productLine,
-      );
-      if (result.requested != 2 ||
-          result.completed != 2 ||
-          result.failed != 0 ||
-          result.results.length != 2 ||
-          result.results.map((r) => r.index).toSet().length != 2) {
-        throw const FormatException('OCO 响应不完整');
-      }
-      for (final item in result.results) {
-        if (!item.success ||
-            item.index < 0 ||
-            item.index > 1 ||
-            item.order == null ||
-            item.order!.userId != id ||
-            item.order!.triggerOrderId <= 0 ||
-            item.order!.clientTriggerOrderId !=
-                requested[item.index]['clientTriggerOrderId'] ||
-            ![
-              'PENDING',
-              'TRIGGERING',
-              'TRIGGERED',
-              'TRIGGER_FAILED',
-              'CANCELED',
-              'EXPIRED',
-            ].contains(item.order!.status) ||
-            item.order!.instrumentId != instrument.instrumentId ||
-            item.order!.ocoGroupId != 'app-oco-$key') {
-          throw const FormatException('OCO 响应身份不匹配');
-        }
-      }
-      if (!await _clearTradingIntent(intent)) throw StateError('无法保存 OCO 确认结果');
-      if (!current()) return 2;
-      if (mode == instrument.mode && selectedSymbol == instrument.symbol) {
-        for (final item in result.results) {
-          _upsertTriggerOrder(item.order!);
-        }
-      }
-      lastNotice = '止盈止损双腿已一起接受，一腿触发后另一腿撤销';
-      await refreshPrivateData();
-      return 2;
-    } catch (error) {
-      if (!issued) {
-        if (_pendingTradingOrders[id] == intent) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
-        }
-        if (current()) lastError = 'OCO 未发送：${clientErrorMessage(error)}';
-      } else if (isDefinitiveOrderRejection(error)) {
-        await _clearTradingIntent(intent);
-        if (current()) lastError = 'OCO 未接受：${clientErrorMessage(error)}';
-      } else if (current()) {
-        lastNotice = 'OCO 结果待确认，请查询原请求，勿重复提交';
-      }
-      return 0;
-    } finally {
-      if (current()) {
-        submittingTriggers = false;
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<int> placeTriggerOrders(List<TriggerOrderDraft> drafts) =>
+      orders.placeTriggerOrders(drafts);
 
-  Future<int> placeTriggerOrders(List<TriggerOrderDraft> drafts) async {
-    if (submittingTriggers) return 0;
-    lastError = null;
-    lastNotice = null;
-    final symbol = selectedSymbol;
-    final instrument = selectedInstrument;
-    final product = mode;
-    final id = userId;
-    final token = session?.accessToken;
-    final epoch = _walletSessionVersion;
-    bool current() => userId == id && epoch == _walletSessionVersion;
-    if (id == null) {
-      lastError = '请先登录再提交止盈止损';
-      notifyListeners();
-      return 0;
-    }
-    if (!instrument.canPlaceTrigger() ||
-        tradingCommandPending ||
-        submittingOrder) {
-      lastError = '合约不可交易或存在待确认委托';
-      notifyListeners();
-      return 0;
-    }
-    final validDrafts = drafts.where(_validTriggerDraft).toList();
-    if (validDrafts.isEmpty || validDrafts.length != drafts.length) {
-      lastError = '请先填写有效的触发价和数量';
-      notifyListeners();
-      return 0;
-    }
-    for (final draft in validDrafts) {
-      final position = positions
-          .where(
-            (p) =>
-                (instrument.mode.tracksTriggerIntent
-                    ? p.instrumentId == instrument.instrumentId
-                    : p.symbol == symbol) &&
-                p.marginMode == draft.marginMode &&
-                p.positionSide == draft.positionSide &&
-                p.signedQuantitySteps != 0,
-          )
-          .firstOrNull;
-      if (position == null ||
-          (position.signedQuantitySteps > 0 ? 'SELL' : 'BUY') != draft.side ||
-          draft.quantitySteps > position.signedQuantitySteps.abs()) {
-        lastError = '止盈止损必须对应当前仓位，数量不能超过可平仓数量';
-        notifyListeners();
-        return 0;
-      }
-    }
-    final created = <TriggerOrderModel>[];
-    submittingTriggers = true;
-    if (instrument.mode.tracksTriggerIntent) submittingOrder = true;
-    notifyListeners();
-    try {
-      for (final draft in validDrafts) {
-        if (!current()) {
-          throw StateError('登录状态已变化，已停止后续提交');
-        }
-        created.add(
-          instrument.mode.tracksTriggerIntent
-              ? await _placeTrackedTrigger(id, instrument, draft, current)
-              : await api.placeTriggerOrder(
-                  userId: id,
-                  instrumentId: instrument.instrumentId,
-                  side: draft.side,
-                  triggerType: draft.triggerType,
-                  triggerPriceTicks: draft.triggerPriceTicks,
-                  activationPriceTicks: draft.activationPriceTicks,
-                  callbackRatePpm: draft.callbackRatePpm,
-                  priceSource: draft.priceSource,
-                  orderType: draft.orderType,
-                  priceTicks: draft.priceTicks,
-                  quantitySteps: draft.quantitySteps,
-                  marginMode: draft.marginMode,
-                  positionSide: draft.positionSide,
-                  productLine: product.productLine,
-                ),
-        );
-        if (userId == id &&
-            session?.accessToken == token &&
-            mode == product &&
-            selectedSymbol == symbol) {
-          _upsertTriggerOrder(created.last);
-          notifyListeners();
-        }
-      }
-      if (current()) {
-        lastNotice = '止盈止损已提交 ${created.length} 档';
-        await refreshPrivateData();
-      }
-    } catch (error) {
-      if (current()) {
-        if (instrument.mode.tracksTriggerIntent && tradingCommandPending) {
-          lastNotice = '已确认 ${created.length} 档；当前档结果待确认，其余未发送，请查询原请求';
-        } else {
-          lastError =
-              '已提交 ${created.length} 档，其余未发送：${clientErrorMessage(error)}';
-        }
-        await refreshPrivateData();
-      }
-    } finally {
-      if (current()) {
-        submittingTriggers = false;
-        if (instrument.mode.tracksTriggerIntent) submittingOrder = false;
-      }
-    }
-    notifyListeners();
-    return created.length;
-  }
-
-  Future<bool> _clearTradingIntent(PendingTradingOrder intent) =>
-      _writeSettings(completedTradingIntent: intent);
-
-  Future<TriggerOrderModel> _placeTrackedTrigger(
-    int id,
-    Instrument instrument,
-    TriggerOrderDraft draft,
-    bool Function() current,
-  ) async {
-    final random = math.Random.secure();
-    final key = List.generate(
-      16,
-      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-    ).join();
-    final intent = PendingTradingOrder(
-      userId: id,
-      product: instrument.mode,
-      instrumentId: instrument.instrumentId,
-      clientTriggerOrderId: 'app-trigger-$key',
-    );
-    var issued = false;
-    _pendingTradingOrders[id] = intent;
-    try {
-      if (!await _writeSettings()) throw StateError('无法保存条件单恢复资料，未发送委托');
-      if (!current()) throw StateError('账户已变化，未发送委托');
-      issued = true;
-      final order = await api.placeTriggerOrder(
-        userId: id,
-        instrumentId: instrument.instrumentId,
-        clientTriggerOrderId: intent.clientTriggerOrderId,
-        side: draft.side,
-        triggerType: draft.triggerType,
-        triggerPriceTicks: draft.triggerPriceTicks,
-        quantitySteps: draft.quantitySteps,
-        marginMode: draft.marginMode,
-        positionSide: draft.positionSide,
-        activationPriceTicks: draft.activationPriceTicks,
-        callbackRatePpm: draft.callbackRatePpm,
-        priceSource: draft.priceSource,
-        orderType: draft.orderType,
-        priceTicks: draft.priceTicks,
-        productLine: instrument.mode.productLine,
-      );
-      if (order.userId != id ||
-          order.triggerOrderId <= 0 ||
-          order.instrumentId != intent.instrumentId ||
-          order.clientTriggerOrderId != intent.clientTriggerOrderId ||
-          order.side != draft.side ||
-          order.triggerType != draft.triggerType ||
-          order.quantitySteps != draft.quantitySteps ||
-          ![
-            'PENDING',
-            'TRIGGERING',
-            'TRIGGERED',
-            'TRIGGER_FAILED',
-            'CANCELED',
-            'EXPIRED',
-          ].contains(order.status)) {
-        throw const FormatException('条件单响应身份或状态不匹配');
-      }
-      if (!await _clearTradingIntent(intent)) throw StateError('无法保存条件单确认结果');
-      return order;
-    } catch (error) {
-      if (!issued) {
-        if (identical(_pendingTradingOrders[id], intent)) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
-        }
-      } else if (isDefinitiveOrderRejection(error)) {
-        await _clearTradingIntent(intent);
-      }
-      rethrow;
-    }
-  }
-
-  bool _validTriggerDraft(TriggerOrderDraft draft) {
-    if (!['MARK', 'LAST', 'INDEX'].contains(draft.priceSource) ||
-        !['MARKET', 'LIMIT'].contains(draft.orderType) ||
-        (draft.orderType == 'LIMIT' && draft.priceTicks <= 0)) {
-      return false;
-    }
-    if (![
-          'TAKE_PROFIT',
-          'STOP_LOSS',
-          'TRAILING_STOP',
-        ].contains(draft.triggerType) ||
-        draft.quantitySteps <= 0) {
-      return false;
-    }
-    if (draft.triggerType == 'TRAILING_STOP') {
-      if (draft.orderType != 'MARKET') return false;
-      final callbackRate = draft.callbackRatePpm;
-      return draft.triggerPriceTicks >= 0 &&
-          (draft.activationPriceTicks == null ||
-              draft.activationPriceTicks! >= 0) &&
-          callbackRate != null &&
-          callbackRate >= 1000 &&
-          callbackRate <= 100000;
-    }
-    return draft.triggerPriceTicks > 0;
-  }
-
-  Future<void> cancelTriggerOrder(TriggerOrderModel order) async {
-    final id = userId;
-    if (id == null) return;
-    final product = mode;
-    if (product.tracksTriggerIntent) {
-      await _cancelTrackedTrigger(id, order);
-      return;
-    }
-    final token = session?.accessToken;
-    try {
-      final cancelled = await api.cancelTriggerOrder(
-        id,
-        order.triggerOrderId,
-        productLine: product.productLine,
-      );
-      if (mode == product &&
-          selectedSymbol == order.symbol &&
-          session?.accessToken == token &&
-          userId == id) {
-        _upsertTriggerOrder(cancelled);
-      }
-      lastNotice = '条件单撤销已提交 #${order.triggerOrderId}';
-      await refreshPrivateData();
-    } catch (error) {
-      lastError = '撤销条件单失败：${clientErrorMessage(error)}';
-    }
-    notifyListeners();
-  }
-
-  Future<void> _cancelTrackedTrigger(int id, TriggerOrderModel order) async {
-    if (submittingOrder ||
-        submittingTriggers ||
-        tradingCommandPending ||
-        order.triggerOrderId <= 0 ||
-        order.instrumentId.isEmpty) {
-      return;
-    }
-    final product = mode;
-    final epoch = _walletSessionVersion;
-    bool current() => userId == id && epoch == _walletSessionVersion;
-    final intent = PendingTradingOrder(
-      userId: id,
-      product: product,
-      instrumentId: order.instrumentId,
-      cancelTriggerOrderId: order.triggerOrderId,
-    );
-    var issued = false;
-    submittingOrder = true;
-    lastError = null;
-    lastNotice = null;
-    _pendingTradingOrders[id] = intent;
-    notifyListeners();
-    try {
-      if (!await _writeSettings()) throw StateError('无法保存撤销恢复资料，未发送请求');
-      if (!current()) throw StateError('账户已变化，未发送请求');
-      issued = true;
-      final cancelled = await api.cancelTriggerOrder(
-        id,
-        order.triggerOrderId,
-        productLine: product.productLine,
-      );
-      if (cancelled.userId != id ||
-          cancelled.triggerOrderId != order.triggerOrderId ||
-          cancelled.instrumentId != order.instrumentId ||
-          cancelled.status != 'CANCELED') {
-        throw const FormatException('条件单撤销响应不匹配');
-      }
-      if (!await _clearTradingIntent(intent)) throw StateError('无法保存撤销确认结果');
-      if (current()) {
-        if (mode == product) _upsertTriggerOrder(cancelled);
-        lastNotice = '条件单撤销已确认 #${order.triggerOrderId}';
-        await refreshPrivateData();
-      }
-    } catch (error) {
-      if (!issued) {
-        if (identical(_pendingTradingOrders[id], intent)) {
-          _pendingTradingOrders.remove(id);
-          await _writeSettings();
-        }
-      } else if (isDefinitiveOrderRejection(error)) {
-        await _clearTradingIntent(intent);
-      }
-      if (current()) {
-        if (tradingCommandPending) {
-          lastNotice = '条件单撤销结果待确认，请查询原请求，勿重复撤销';
-        } else {
-          lastError = '撤销条件单未接受：${clientErrorMessage(error)}';
-        }
-      }
-    } finally {
-      if (current()) {
-        submittingOrder = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<void> cancelTriggerOrder(TriggerOrderModel order) =>
+      orders.cancelTriggerOrder(order);
 
   Future<void> changePositionMode(String nextMode) async {
     final id = userId;
@@ -3693,13 +1590,19 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final quantity = BigInt.from(position.signedQuantitySteps).abs();
+    if (quantity > BigInt.from(9223372036854775807)) {
+      lastError = '持仓数量超出单笔上限，请分批平仓';
+      notifyListeners();
+      return;
+    }
     await placeOrder(
       targetInstrument: instrument,
       side: position.signedQuantitySteps >= 0 ? 'SELL' : 'BUY',
       orderType: 'MARKET',
       timeInForce: 'IOC',
       price: 0,
-      quantitySteps: position.signedQuantitySteps.abs(),
+      quantitySteps: quantity.toInt(),
       marginMode: position.marginMode,
       positionSide: instrument.isSpot || positionMode == 'ONE_WAY'
           ? 'NET'
@@ -3709,37 +1612,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  void _readPendingTransfers(Map<String, String> values) {
-    final raw = jsonDecode(values['pendingTransfers'] ?? '[]');
-    if (raw is! List || raw.length > 128) {
-      throw const FormatException('划转恢复资料无效');
-    }
-    final restored = <int, PendingAccountTransfer>{};
-    for (final row in raw) {
-      if (row is! Map) throw const FormatException('划转恢复资料无效');
-      final pending = PendingAccountTransfer.fromJson(asMap(row));
-      if (restored.containsKey(pending.userId)) {
-        throw const FormatException('划转恢复资料重复');
-      }
-      restored[pending.userId] = pending;
-    }
-    for (final entry in restored.entries) {
-      _pendingTransfers.putIfAbsent(entry.key, () => entry.value);
-    }
-    _transferIntentsRestored = true;
-  }
-
-  Future<bool> restorePendingTransfers() {
-    if (_transferIntentsRestored) return Future.value(true);
-    return _transferRestore ??= () async {
-      try {
-        _readPendingTransfers(await settingsStore.read());
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }();
-  }
+  Future<bool> restorePendingTransfers() => transfers.restore();
 
   Future<void> transfer({
     required String sourceAccountType,
@@ -3749,426 +1622,45 @@ class AppState extends ChangeNotifier {
     String? amountText,
     String? emailCode,
     String? totpCode,
-  }) async {
-    final id = userId, epoch = _walletSessionVersion;
-    bool current() => id == userId && epoch == _walletSessionVersion;
-    if (id == null) {
-      lastError = '请先登录再划转';
-      notifyListeners();
-      return;
-    }
-    if (transferSubmitting || transferOutcomeLocked) return;
-    if (sourceAccountType == targetAccountType ||
-        !productAccountTypes.contains(sourceAccountType) ||
-        !productAccountTypes.contains(targetAccountType)) {
-      lastError = '请选择不同的划出和划入账户';
-      notifyListeners();
-      return;
-    }
-    _transfersInFlight.add(id);
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    PendingAccountTransfer? pending;
-    try {
-      final scales = await api.assetScales();
-      if (!current()) return;
-      final units = exactAmountUnits(
-        amountText ?? '$amount',
-        scales[asset.toUpperCase()] ?? '',
-      );
-      if (!await restorePendingTransfers()) {
-        throw StateError('无法读取原划转凭证，请检查安全存储后重试');
-      }
-      if (!current()) return;
-      final original = _pendingTransfers[id];
-      if (original != null) {
-        if (original.status != 'VERIFY' ||
-            original.source != sourceAccountType ||
-            original.target != targetAccountType ||
-            original.asset != asset.toUpperCase() ||
-            original.amountUnits != units) {
-          lastError = '请先确认原划转结果';
-          return;
-        }
-        pending = original;
-      } else {
-        pending = PendingAccountTransfer.create(
-          userId: id,
-          source: sourceAccountType,
-          target: targetAccountType,
-          asset: asset.toUpperCase(),
-          amountUnits: units,
-        );
-        _pendingTransfers[id] = pending;
-      }
-      if (!await _writeSettings()) {
-        // No HTTP request has been sent; retain the original identity for a safe retry.
-        if (current()) {
-          lastError = '无法安全保存划转凭证，未发送请求，请检查安全存储';
-        }
-        return;
-      }
-      if (!current()) return;
-      await _submitPendingTransfer(
-        pending,
-        emailCode: emailCode,
-        totpCode: totpCode,
-      );
-    } catch (error) {
-      if (current()) {
-        lastError = error is FormatException
-            ? error.message
-            : clientErrorMessage(error);
-      }
-    } finally {
-      _transfersInFlight.remove(id);
-      if (current()) notifyListeners();
-    }
-  }
+  }) => transfers.submit(
+    sourceAccountType: sourceAccountType,
+    targetAccountType: targetAccountType,
+    asset: asset,
+    amountText: amountText ?? '$amount',
+    emailCode: emailCode,
+    totpCode: totpCode,
+  );
 
-  /// An explicit recovery action resends only the durably stored command. A 404
-  /// or missing receipt never permits replacing an uncertain monetary command.
-  Future<void> resumePendingTransfer({
-    String? emailCode,
-    String? totpCode,
-  }) async {
-    final pending = pendingTransfer;
-    final epoch = _walletSessionVersion;
-    bool current() =>
-        epoch == _walletSessionVersion && userId == pending?.userId;
-    if (pending == null || transferSubmitting || pending.status == 'FAILED') {
-      return;
-    }
-    _transfersInFlight.add(pending.userId);
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    try {
-      if (!await _writeSettings()) {
-        if (current()) {
-          lastError = '无法安全保存划转凭证，未发送请求，请检查安全存储';
-        }
-        return;
-      }
-      if (epoch != _walletSessionVersion || userId != pending.userId) return;
-      await _submitPendingTransfer(
-        pending,
-        emailCode: emailCode,
-        totpCode: totpCode,
-      );
-    } finally {
-      _transfersInFlight.remove(pending.userId);
-      if (epoch == _walletSessionVersion && userId == pending.userId) {
-        notifyListeners();
-      }
-    }
-  }
+  Future<void> resumePendingTransfer({String? emailCode, String? totpCode}) =>
+      transfers.resume(emailCode: emailCode, totpCode: totpCode);
 
-  Future<void> _submitPendingTransfer(
-    PendingAccountTransfer pending, {
-    String? emailCode,
-    String? totpCode,
-  }) async {
-    final epoch = _walletSessionVersion;
-    bool current() =>
-        epoch == _walletSessionVersion && userId == pending.userId;
-    try {
-      final result = await api.transfer(
-        userId: pending.userId,
-        sourceAccountType: pending.source,
-        targetAccountType: pending.target,
-        asset: pending.asset,
-        amountUnits: pending.amountUnits,
-        idempotencyKey: pending.key,
-        emailCode: emailCode,
-        totpCode: totpCode,
-      );
-      if (!identical(_pendingTransfers[pending.userId], pending)) return;
-      final status = asString(
-        result['status'],
-        fallback: 'UNKNOWN',
-      ).toUpperCase();
-      final transferId = asString(result['transferId']).trim();
-      if (status == 'COMPLETED') {
-        if (!await _writeSettings(completedTransferIntent: pending)) {
-          if (current()) lastError = '划转已完成，但恢复凭证未能清除，请继续确认原请求';
-          return;
-        }
-        if (current()) {
-          lastNotice = '划转已完成${transferId.isEmpty ? '' : '，流水号 $transferId'}';
-          await refreshPrivateData();
-        }
-      } else {
-        _pendingTransfers[pending.userId] = pending.withStatus(
-          const {'FAILED', 'PENDING', 'SOURCE_DEBITED'}.contains(status)
-              ? status
-              : 'UNKNOWN',
-        );
-        await _writeSettings();
-        if (current()) {
-          lastError = status == 'FAILED'
-              ? '划转未完成${transferId.isEmpty ? '' : '，流水号 $transferId'}，请查看资金记录'
-              : '划转处理中${transferId.isEmpty ? '' : '，流水号 $transferId'}，请勿重复提交';
-        }
-      }
-    } catch (error) {
-      if (!identical(_pendingTransfers[pending.userId], pending)) return;
-      if (error is ApiException && error.statusCode == 428) {
-        _pendingTransfers[pending.userId] = pending.withStatus('VERIFY');
-        await _writeSettings();
-        if (!current()) return;
-        try {
-          final challenge = await api.issueSecurityChallenge('LARGE_TRANSFER');
-          if (current()) {
-            lastNotice =
-                '大额划转需要验证，验证码已发送至 ${asString(challenge['destination'])}';
-          }
-        } catch (_) {
-          if (current()) lastError = '验证码发送失败，请稍后重试';
-        }
-      } else {
-        _pendingTransfers[pending.userId] = pending.withStatus('UNKNOWN');
-        await _writeSettings();
-        if (current()) lastError = '划转结果未知，请勿重复提交，请确认原划转';
-      }
-    }
-  }
+  Future<void> resetTransferIntent() => transfers.resetFailedIntent();
 
-  Future<void> resetTransferIntent() async {
-    final pending = pendingTransfer;
-    if (pending == null || pending.status != 'FAILED' || transferSubmitting) {
-      return;
-    }
-    if (!await _writeSettings(completedTransferIntent: pending)) {
-      lastError = '无法清除原划转凭证，请检查安全存储';
-    } else {
-      lastError = null;
-    }
-    notifyListeners();
-  }
-
-  Future<void> refreshWallet() async {
-    final id = userId;
-    if (offline || id == null) return;
-    final version = ++_walletVersion;
-    bool current() => version == _walletVersion && id == userId;
-    walletReady = false;
-    walletError = null;
-    walletOrdersError = null;
-    notifyListeners();
-    try {
-      final results = await Future.wait([
-        api.walletPortfolio(id),
-        api
-            .walletOrders(id)
-            .then<List<WalletOrderRecord>?>((rows) => rows)
-            .catchError((_) => null),
-      ]);
-      if (!current()) return;
-      walletPortfolio = results[0] as WalletPortfolio;
-      walletOrders = results[1] as List<WalletOrderRecord>? ?? const [];
-      walletOrdersError = results[1] == null ? '资金记录加载失败，请重试' : null;
-      await refreshWalletAssetPrices();
-      if (!current()) return;
-      walletReady = true;
-    } catch (_) {
-      if (current()) walletError = '资金账户加载失败，请重试';
-    } finally {
-      if (current()) notifyListeners();
-    }
-  }
-
-  Future<void> refreshWalletAssetPrices() async {
-    if (offline) return;
-    final version = ++_walletPricesVersion;
-    final id = userId;
-    final assets = {
-      ...walletPortfolio.assets
-          .where((asset) => asset.totalBalance != 0)
-          .map((asset) => asset.symbol.toUpperCase()),
-      ...allProductBalances
-          .where((balance) => balance.equityUnits != 0)
-          .map((balance) => balance.asset.toUpperCase()),
-    };
-    if (assets.isEmpty) {
-      walletAssetPricesUsdt.clear();
-      return;
-    }
-    final prices = await Future.wait(
-      assets.map((asset) => _loadWalletAssetPrice(asset)),
-    );
-    if (version != _walletPricesVersion || id != userId) return;
-    walletAssetPricesUsdt
-      ..clear()
-      ..addEntries(prices.whereType<MapEntry<String, double>>());
-  }
-
-  Future<MapEntry<String, double>?> _loadWalletAssetPrice(String asset) async {
-    if (asset == 'USDT') return const MapEntry<String, double>('USDT', 1);
-    Instrument? spotInstrument;
-    for (final instrument in instruments) {
-      if (instrument.mode == ProductMode.spot &&
-          instrument.baseAsset.toUpperCase() == asset &&
-          instrument.quoteAsset.toUpperCase() == 'USDT' &&
-          instrument.status == 'TRADING') {
-        spotInstrument = instrument;
-        break;
-      }
-    }
-    if (spotInstrument == null) return null;
-    final cached =
-        latestPrices[_priceKey(ProductMode.spot, spotInstrument.symbol)];
-    if (cached != null && cached.isFinite && cached > 0) {
-      return MapEntry(asset, cached);
-    }
-    try {
-      final loaded = await api.candles(
-        spotInstrument.symbol,
-        '1m',
-        productLine: ProductMode.spot.productLine,
-      );
-      if (loaded.isEmpty || loaded.last.close <= 0) return null;
-      final price = loaded.last.close;
-      latestPrices[_priceKey(ProductMode.spot, spotInstrument.symbol)] = price;
-      return MapEntry(asset, price);
-    } catch (_) {
-      return null;
-    }
-  }
-
+  Future<void> refreshWallet() => wallet.refresh();
+  Future<void> refreshWalletAssetPrices() => wallet.refreshAssetPrices();
   Future<void> loadDepositAddress({
     required String chain,
     required String symbol,
     bool forceNew = false,
-  }) async {
-    final id = userId;
-    if (id == null) {
-      lastError = '请先登录再获取充值地址';
-      notifyListeners();
-      return;
-    }
-    final version = ++_depositAddressRequestVersion;
-    final epoch = _walletSessionVersion, identity = session?.accessToken;
-    bool current() =>
-        version == _depositAddressRequestVersion &&
-        epoch == _walletSessionVersion &&
-        id == userId &&
-        identity == session?.accessToken;
-    try {
-      final address = await api.walletDepositAddress(
-        id,
-        chain: chain,
-        symbol: symbol,
-        forceNew: forceNew,
-      );
-      if (!current()) return;
-      walletDepositAddress = address;
-      lastNotice = forceNew ? '已生成新充值地址' : '充值地址已加载';
-      await refreshWallet();
-    } catch (error) {
-      if (!current()) return;
-      lastError = '获取充值地址失败：${clientErrorMessage(error)}';
-    }
-    if (current()) notifyListeners();
-  }
-
-  Future<void> refreshWithdrawalRules() async {
-    final id = userId;
-    if (offline || id == null || withdrawalRulesLoading) return;
-    final epoch = _walletSessionVersion, identity = session?.accessToken;
-    bool current() =>
-        epoch == _walletSessionVersion &&
-        id == userId &&
-        identity == session?.accessToken;
-    withdrawalRulesLoading = true;
-    notifyListeners();
-    try {
-      final rules = _withdrawalRulesFrom(await api.walletChains(id));
-      if (!current()) return;
-      withdrawalRules = rules;
-      withdrawalRulesReady = true;
-      lastError = null;
-    } catch (error) {
-      if (!current()) return;
-      withdrawalRules = const [];
-      withdrawalRulesReady = false;
-      lastError = '加载提币规则失败：${clientErrorMessage(error)}';
-    } finally {
-      if (current()) {
-        withdrawalRulesLoading = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  WithdrawalAssetRule? withdrawalRuleFor(String chain, String symbol) {
-    final normalizedChain = chain.trim().toUpperCase();
-    final normalizedSymbol = symbol.trim().toUpperCase();
-    for (final rule in withdrawalRules) {
-      if (rule.chain.toUpperCase() == normalizedChain &&
-          rule.symbol.toUpperCase() == normalizedSymbol) {
-        return rule;
-      }
-    }
-    return null;
-  }
-
+  }) => wallet.loadDepositAddress(
+    chain: chain,
+    symbol: symbol,
+    forceNew: forceNew,
+  );
+  Future<void> refreshWithdrawalRules() => wallet.refreshWithdrawalRules();
+  WithdrawalAssetRule? withdrawalRuleFor(String chain, String symbol) =>
+      wallet.withdrawalRuleFor(chain, symbol);
   String? validateWithdrawal({
     required String chain,
     required String symbol,
     required String toAddress,
     required String amount,
-  }) {
-    if (session == null) return '请先登录再提币';
-    if (!withdrawalRulesReady) return '提币规则暂不可用，请刷新后重试';
-    if (!walletReady) return '可用余额暂不可用，请刷新后重试';
-    final normalizedChain = chain.trim().toUpperCase();
-    final normalizedSymbol = symbol.trim().toUpperCase();
-    if (normalizedChain.isEmpty || normalizedSymbol.isEmpty) {
-      return '请选择提币资产和网络';
-    }
-    final rule = withdrawalRuleFor(normalizedChain, normalizedSymbol);
-    if (rule == null || !rule.withdrawalEnabled) return '当前网络暂不支持提币';
-    if (rule.family.trim().isEmpty) return '网络类型尚未同步，请刷新后重试';
-    if (!rule.hasValidFee) return '提币手续费资料暂不可用，请刷新后重试';
-    if (rule.configuredMinimum != null && rule.minimumAmount == null) {
-      return '最低提币数量资料暂不可用，请刷新后重试';
-    }
-    final addressError = _validateWithdrawalAddress(
-      toAddress,
-      rule.family.isEmpty ? normalizedChain : rule.family,
-    );
-    if (addressError != null) return addressError;
-
-    final rawAmount = amount.trim();
-    final match = RegExp(r'^(?:0|[1-9]\d*)(?:\.(\d+))?$').firstMatch(rawAmount);
-    if (match == null) return '请输入有效的提币数量';
-    if (_compareDecimals(rawAmount, '0') <= 0) {
-      return '提币数量必须大于 0';
-    }
-    final fractionDigits = match.group(1)?.length ?? 0;
-    final precision = rule.decimals;
-    if (precision == null) return '提币精度尚未同步，请刷新后重试';
-    if (fractionDigits > precision) {
-      return '$normalizedSymbol 最多支持 $precision 位小数';
-    }
-    final minimum = rule.minimumAmount;
-    if (minimum != null && _compareDecimals(rawAmount, minimum) < 0) {
-      return '最低提币数量为 $minimum $normalizedSymbol';
-    }
-    final available = _withdrawalAvailableBalance(normalizedSymbol);
-    if (available == null) return '可用余额暂不可用，请刷新后重试';
-    if (_compareDecimals(rawAmount, available) > 0) {
-      return '提币数量超过可用余额';
-    }
-    final received = rule.receivedAmount(rawAmount);
-    if (received != null && _compareDecimals(received, '0') <= 0) {
-      return '提币数量必须大于手续费';
-    }
-    return null;
-  }
-
+  }) => wallet.validateWithdrawal(
+    chain: chain,
+    symbol: symbol,
+    toAddress: toAddress,
+    amount: amount,
+  );
   Future<void> withdrawWallet({
     required String chain,
     required String symbol,
@@ -4176,277 +1668,26 @@ class AppState extends ChangeNotifier {
     required String amount,
     String? emailCode,
     String? totpCode,
-  }) async {
-    final id = userId;
-    if (id == null) {
-      lastError = '请先登录再提币';
-      notifyListeners();
-      return;
-    }
-    if (withdrawalSubmitting || withdrawalOutcomeLocked) return;
-    final validation = validateWithdrawal(
-      chain: chain,
-      symbol: symbol,
-      toAddress: toAddress,
-      amount: amount,
-    );
-    if (validation != null) {
-      lastError = validation;
-      notifyListeners();
-      return;
-    }
-    final normalizedChain = chain.trim().toUpperCase();
-    final normalizedSymbol = symbol.trim().toUpperCase();
-    final normalizedAddress = toAddress.trim();
-    final normalizedAmount = amount.trim();
-    final fingerprint = [
-      normalizedChain,
-      normalizedSymbol,
-      normalizedAddress,
-      normalizedAmount,
-    ].join('|');
-    if (_withdrawalIntentUserId != id ||
-        (_withdrawalIntentFingerprint != null &&
-            _withdrawalIntentFingerprint != fingerprint)) {
-      _clearWithdrawalIntent();
-    }
-    _withdrawalIntentUserId = id;
-    _withdrawalIntentFingerprint = fingerprint;
-    final idempotencyKey = _withdrawalIdempotencyKey ??=
-        _newWithdrawalIdempotencyKey(id);
-    if (!await _writeSettings()) {
-      _clearWithdrawalIntent();
-      lastError = '无法安全保存提币幂等凭证，请检查安全存储后重试';
-      notifyListeners();
-      return;
-    }
-    withdrawalSubmitting = true;
-    lastError = null;
-    lastNotice = null;
-    notifyListeners();
-    try {
-      final result = await api.walletWithdraw(
-        id,
-        chain: normalizedChain,
-        symbol: normalizedSymbol,
-        toAddress: normalizedAddress,
-        amount: normalizedAmount,
-        idempotencyKey: idempotencyKey,
-        emailCode: emailCode,
-        totpCode: totpCode,
-      );
-      final status = asString(
-        result['status'],
-        fallback: 'PENDING',
-      ).toUpperCase();
-      final reference = asString(
-        result['withdrawalId'] ?? result['id'] ?? result['orderNo'],
-      ).trim();
-      final rule = withdrawalRuleFor(normalizedChain, normalizedSymbol);
-      final fee =
-          _firstDecimal(result, const ['fee', 'withdrawalFee', 'networkFee']) ??
-          rule?.feeAmount;
-      final received =
-          _firstDecimal(result, const [
-            'receivedAmount',
-            'netAmount',
-            'creditedAmount',
-          ]) ??
-          rule?.receivedAmount(normalizedAmount);
-      withdrawalConfirmation = WithdrawalConfirmation(
-        chain: normalizedChain,
-        network: rule?.network ?? '',
-        symbol: normalizedSymbol,
-        toAddress: normalizedAddress,
-        amount: normalizedAmount,
-        status: status,
-        reference: reference,
-        fee: fee,
-        receivedAmount: received,
-      );
-      withdrawalOutcomeLocked = true;
-      withdrawalOutcomeUnknown = false;
-      withdrawalVerificationRequired = false;
-      withdrawalTotpRequired = false;
-      await _writeSettings();
-      lastNotice = '提币请求已受理${reference.isEmpty ? '' : '，编号 $reference'}';
-      await refreshWallet();
-    } catch (error) {
-      if (error is ApiException && error.statusCode == 428) {
-        if (error.message.toLowerCase().contains('kyc')) {
-          _clearWithdrawalIntent();
-          await _writeSettings();
-          lastError = '提币前需要先完成有效的实名认证';
-        } else {
-          withdrawalVerificationRequired = true;
-          await requestWithdrawalChallenge();
-        }
-      } else if (_withdrawalResultIsUnknown(error)) {
-        withdrawalOutcomeLocked = true;
-        withdrawalOutcomeUnknown = true;
-        await _writeSettings();
-        lastError = '提币结果未知，请勿重复提交；请先核对提币记录';
-      } else {
-        _clearWithdrawalIntent();
-        await _writeSettings();
-        lastError = '提币未受理：${clientErrorMessage(error)}';
-      }
-    } finally {
-      withdrawalSubmitting = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> requestWithdrawalChallenge() async {
-    if (session == null) return;
-    try {
-      final responses = await Future.wait([
-        api.issueSecurityChallenge('WITHDRAWAL'),
-        api.mfaStatus(),
-      ]);
-      final challenge = responses[0];
-      final mfa = responses[1];
-      final totp = asMap(mfa['totp']);
-      withdrawalTotpRequired =
-          mfa['enabled'] == true ||
-          totp['bound'] == true ||
-          totp['enabled'] == true;
-      lastError = null;
-      final destination = asString(challenge['destination']).trim();
-      lastNotice = destination.isEmpty ? '邮箱验证码已发送' : '邮箱验证码已发送至 $destination';
-    } catch (error) {
-      lastError = '发送提币验证码失败：${clientErrorMessage(error)}';
-    }
-    notifyListeners();
-  }
-
-  Future<void> resetWithdrawalIntent() async {
-    if (withdrawalSubmitting || withdrawalOutcomeUnknown) return;
-    _clearWithdrawalIntent();
-    lastError = null;
-    lastNotice = null;
-    await _writeSettings();
-    notifyListeners();
-  }
-
-  String? _withdrawalAvailableBalance(String symbol) {
-    for (final asset in walletPortfolio.assets) {
-      if (asset.symbol.toUpperCase() != symbol) continue;
-      return asset.availableAmount;
-    }
-    return null;
-  }
-
-  String? withdrawalMaximum(String chain, String symbol) {
-    final decimals = withdrawalRuleFor(chain, symbol)?.decimals;
-    final available = _withdrawalAvailableBalance(symbol);
-    if (decimals == null ||
-        decimals < 0 ||
-        decimals > 36 ||
-        available == null) {
-      return null;
-    }
-    final parts = available.split('.');
-    final fraction = parts.length == 1 ? '' : parts[1];
-    final bounded = fraction.substring(0, math.min(fraction.length, decimals));
-    return plainNonnegativeDecimal(
-      '${parts.first}${bounded.isEmpty ? '' : '.$bounded'}',
-    );
-  }
-
-  List<WithdrawalAssetRule> _withdrawalRulesFrom(
-    List<Map<String, dynamic>> chains,
-  ) {
-    final rules = <String, WithdrawalAssetRule>{};
-    for (final chain in chains) {
-      final chainCode = asString(chain['chain']).trim().toUpperCase();
-      if (chainCode.isEmpty) continue;
-      final network = asString(chain['network']).trim();
-      final family = asString(chain['family']).trim();
-      final enabled =
-          chain['withdrawalEnabled'] == true ||
-          chain['withdrawEnabled'] == true;
-      final tokens = asList(chain['tokens']).map(asMap).toList();
-      for (final token in tokens) {
-        final symbol = asString(token['symbol']).trim().toUpperCase();
-        if (symbol.isEmpty) continue;
-        rules['$chainCode/$symbol'] = WithdrawalAssetRule(
-          chain: chainCode,
-          symbol: symbol,
-          network: network,
-          family: family,
-          withdrawalEnabled: enabled && token['platformEnabled'] != false,
-          decimals: _nullableInt(token['decimals']),
-          configuredMinimum: _firstDecimal(token, const [
-            'minWithdraw',
-            'minimumWithdrawal',
-            'minimumWithdrawalAmount',
-          ]),
-          fee: _firstDecimal(token, const [
-            'withdrawalFee',
-            'withdrawFee',
-            'networkFee',
-          ]),
-        );
-      }
-      final assetSymbols = <String>{
-        ...asList(chain['assetSymbols'])
-            .map(asString)
-            .map((value) => value.trim().toUpperCase())
-            .where((value) => value.isNotEmpty),
-        asString(chain['nativeSymbol']).trim().toUpperCase(),
-      };
-      for (final symbol in assetSymbols.where((value) => value.isNotEmpty)) {
-        rules.putIfAbsent(
-          '$chainCode/$symbol',
-          () => WithdrawalAssetRule(
-            chain: chainCode,
-            symbol: symbol,
-            network: network,
-            family: family,
-            withdrawalEnabled: enabled,
-            decimals: _nullableInt(
-              symbol == asString(chain['nativeSymbol']).trim().toUpperCase()
-                  ? chain['nativeDecimals'] ?? chain['decimals']
-                  : null,
-            ),
-            configuredMinimum: _firstDecimal(chain, const [
-              'minWithdraw',
-              'minimumWithdrawal',
-              'minimumWithdrawalAmount',
-            ]),
-            fee: _firstDecimal(chain, const [
-              'withdrawalFee',
-              'withdrawFee',
-              'networkFee',
-            ]),
-          ),
-        );
-      }
-    }
-    return rules.values.toList(growable: false);
-  }
-
-  bool _withdrawalResultIsUnknown(Object error) {
-    if (error is! ApiException) return true;
-    return error.statusCode == 408 || error.statusCode >= 500;
-  }
-
-  String _newWithdrawalIdempotencyKey(int id) {
-    final random = math.Random.secure();
-    final entropy = List<int>.generate(16, (_) => random.nextInt(256));
-    final encoded = entropy
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join();
-    return 'app-withdraw-$id-$encoded';
-  }
+  }) => wallet.withdrawWallet(
+    chain: chain,
+    symbol: symbol,
+    toAddress: toAddress,
+    amount: amount,
+    emailCode: emailCode,
+    totpCode: totpCode,
+  );
+  Future<void> requestWithdrawalChallenge() =>
+      wallet.requestWithdrawalChallenge();
+  Future<void> resetWithdrawalIntent() => wallet.resetWithdrawalIntent();
+  String? withdrawalMaximum(String chain, String symbol) =>
+      wallet.withdrawalMaximum(chain, symbol);
 
   Future<void> _connectPublicRealtime() async {
     await _connectRealtime();
   }
 
   Future<void> _connectRealtime({bool forceReconnect = false}) async {
-    if (offline || config.websocketUrl.trim().isEmpty) return;
+    if (_disposed || offline || config.websocketUrl.trim().isEmpty) return;
     if (_realtimeConnected && !forceReconnect) {
       _syncRealtimeSubscriptions();
       return;
@@ -4455,9 +1696,11 @@ class AppState extends ChangeNotifier {
     _realtimeConnected = false;
     if (forceReconnect) await realtime.close();
     if (connectGeneration != _realtimeGeneration) return;
-    _publicVersions.clear();
+    market.resetVersions();
+    _privateRecovery.reset();
+    markPrices.clear();
     _privateAuthenticated = false;
-    final current = session;
+    final current = _realtimeSessionPaused ? null : session;
     if (current != null) {
       privateViews.clear();
       _riskInputKey = '';
@@ -4472,7 +1715,7 @@ class AppState extends ChangeNotifier {
       openOrders = const [];
       openTriggerOrders = const [];
       positionRisks = const [];
-      accountRisk = null;
+      _clearAccountRisk();
       _riskDetailsTimer?.cancel();
       _freshnessTimer?.cancel();
       _freshnessTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -4489,12 +1732,13 @@ class AppState extends ChangeNotifier {
         accessToken: current?.accessToken,
         onEvent: (message) {
           if (connectGeneration != _realtimeGeneration ||
-              current?.accessToken != session?.accessToken) {
+              (current != null &&
+                  current.accessToken != session?.accessToken)) {
             return;
           }
           if (current != null &&
               message['op'] == 'authenticated' &&
-              asInt(message['userId']) == current.user.userId) {
+              parseInt64(message['userId']) == current.user.userId) {
             _privateAuthenticated = true;
           }
           handleRealtimeMessage(message);
@@ -4502,27 +1746,91 @@ class AppState extends ChangeNotifier {
         onError: (error) {
           if (connectGeneration != _realtimeGeneration) return;
           _recordRealtimeIssue('实时 WebSocket：${clientErrorMessage(error)}');
+          if (error is FormatException) {
+            _scheduleRealtimeReconnect(connectGeneration);
+          }
           notifyListeners();
         },
-        onDone: () => _scheduleRealtimeReconnect(connectGeneration),
+        onDone: () {
+          if (realtime.closeCode == 1008 && current != null) {
+            unawaited(_refreshRealtimeSession(connectGeneration));
+          } else {
+            _scheduleRealtimeReconnect(connectGeneration);
+          }
+        },
       );
       if (connectGeneration != _realtimeGeneration ||
-          current?.accessToken != session?.accessToken) {
+          (current != null && current.accessToken != session?.accessToken)) {
         return;
       }
       _realtimeConnected = true;
-      _realtimeReconnectAttempts = 0;
+      if (!_realtimeSessionPaused) _realtimeReconnectAttempts = 0;
       _subscribePrivateSelected();
       _subscribePublicSelected();
       _syncRealtimeSubscriptions();
+      market.awaitDepthSnapshot(mode, selectedSymbol);
+      if (current != null) {
+        for (final product in ProductMode.values) {
+          if (!disabledProducts.contains(product) &&
+              privateViews[product]?.status != 'INITIALIZING') {
+            _privateRecovery.awaitSnapshot(product);
+          }
+        }
+      }
     } catch (error) {
       if (connectGeneration != _realtimeGeneration ||
-          current?.accessToken != session?.accessToken) {
+          (current != null && current.accessToken != session?.accessToken)) {
         return;
       }
       _recordRealtimeIssue('实时连接失败：${clientErrorMessage(error)}');
       notifyListeners();
       _scheduleRealtimeReconnect(connectGeneration);
+    }
+  }
+
+  Future<void> _refreshRealtimeSession(int generation) async {
+    if (_disposed || generation != _realtimeGeneration) return;
+    final previous = session;
+    if (previous == null) return;
+    _realtimeSessionPaused = true;
+    _privateAuthenticated = false;
+    _realtimeConnected = false;
+    for (final view in privateViews.values) {
+      view.status = 'STALE';
+    }
+    _materializePrivate();
+    notifyListeners();
+    try {
+      if (previous.refreshTokenExpired) {
+        await auth.expire();
+        return;
+      }
+      final next = await api.refresh(previous.refreshToken);
+      if (_disposed || !identical(session, previous)) return;
+      await auth.persistRefreshedSession(next);
+    } catch (error) {
+      if (_disposed || !identical(session, previous)) return;
+      if (error is ApiException && [401, 403].contains(error.statusCode)) {
+        await auth.expire();
+        return;
+      }
+      _recordRealtimeIssue('登录状态暂不可验证，私有实时已暂停：${clientErrorMessage(error)}');
+      await _connectRealtime(forceReconnect: true);
+      if (_disposed || !identical(session, previous)) return;
+      if (++_realtimeAuthRetries <= 3) {
+        _realtimeAuthRetryTimer?.cancel();
+        _realtimeAuthRetryTimer = Timer(
+          _reconnectDelay(_realtimeAuthRetries),
+          () {
+            if (!_disposed && identical(session, previous)) {
+              unawaited(_refreshRealtimeSession(_realtimeGeneration));
+            }
+          },
+        );
+      } else {
+        lastError = '登录状态验证失败，请连接恢复后重新登录；私有操作暂不可用';
+        notifyListeners();
+      }
     }
   }
 
@@ -4536,9 +1844,12 @@ class AppState extends ChangeNotifier {
         expectedGeneration != _realtimeGeneration) {
       return;
     }
-    if (offline || (_realtimeReconnectTimer?.isActive ?? false)) return;
+    if (_disposed || offline || (_realtimeReconnectTimer?.isActive ?? false)) {
+      return;
+    }
     _realtimeConnected = false;
     _privateAuthenticated = false;
+    market.awaitDepthSnapshot(mode, selectedSymbol);
     for (final view in privateViews.values) {
       view.status = 'STALE';
     }
@@ -4610,7 +1921,8 @@ class AppState extends ChangeNotifier {
     }
     for (final entry in privateViews.entries) {
       for (final position in entry.value.rows('position')) {
-        if (asInt(position['signedQuantitySteps']) != 0) {
+        final quantity = parseInt64(position['signedQuantitySteps']);
+        if (quantity != null && quantity != 0) {
           add('mark', entry.key, asString(position['symbol']));
         }
       }
@@ -4672,84 +1984,48 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final view = privateViews[product];
+      if (view?.status == 'INITIALIZING') _privateRecovery.pause(product);
+      if (!offline &&
+          view != null &&
+          (view.status == 'STALE' || view.status == 'READY')) {
+        _privateRecovery.observe(product);
+      }
       if (view == null) {
         complete = false;
         continue;
       }
-      var productComplete = view.ready;
-      final cash = view.rows('balance');
-      final equity = <String, int>{
-        for (final b in cash)
-          asString(b['asset']):
-              asInt(b['availableUnits']) + asInt(b['lockedUnits']),
-      };
-      final activePositions = view
-          .rows('position')
-          .where((p) => asInt(p['signedQuantitySteps']) != 0)
-          .toList();
-      final risks = view.rows('risk');
-      final pnlByPosition = <String, int>{};
-      for (final p in activePositions) {
-        final matching = instruments.where(
-          (i) =>
-              i.mode == product &&
-              i.symbol == p['symbol'] &&
-              (p['instrumentChangeId'] == null ||
-                  i.changeId == asInt(p['instrumentChangeId'])),
-        );
-        final instrument = matching.isEmpty ? null : matching.first;
-        final risk = risks
-            .where((r) => positionKey(r) == positionKey(p))
-            .firstOrNull;
-        final valuation = instrument == null
-            ? null
-            : positionValuation(
-                p,
-                instrument,
-                markPrices[_priceKey(product, instrument.symbol)] ?? 0,
-              );
-        if (valuation != null) pnlByPosition[positionKey(p)] = valuation.pnl;
-        final pnl =
-            valuation?.pnl ??
-            (view.ready && risk != null
-                ? asNullableInt(risk['unrealizedPnlUnits'])
-                : null);
-        if (pnl != null && view.ready) {
-          positionPnlUnits['${product.productLine}:${p['symbol']}:${p['positionSide'] ?? 'NET'}'] =
+      final projection = AccountProjection.fromView(
+        product: product,
+        view: view,
+        instruments: instruments,
+        markTicks: markTicksFor,
+        scaleFor: _balanceScaleFor,
+      );
+      if (projection == null) {
+        if (view.status == 'READY') view.status = 'STALE';
+        productBalances[product] = const [];
+        complete = false;
+        if (product == mode) {
+          balances = const [];
+          positions = const [];
+          openOrders = const [];
+          openTriggerOrders = const [];
+          positionRisks = const [];
+        }
+        continue;
+      }
+      final productComplete = projection.complete;
+      final activePositions = projection.positions;
+      final risks = projection.risks;
+      final pnlByPosition = projection.pnlByPosition;
+      for (final position in activePositions) {
+        final pnl = pnlByPosition[positionKey(position)];
+        if (pnl != null) {
+          positionPnlUnits['${product.productLine}:${position['symbol']}:${position['positionSide'] ?? 'NET'}'] =
               pnl;
         }
-        final contribution =
-            valuation?.value ??
-            (!product.isOption && risk != null
-                ? asNullableInt(risk['unrealizedPnlUnits'])
-                : null);
-        if (contribution == null) {
-          productComplete = false;
-        } else {
-          final asset = asString(p['marginAsset']);
-          equity[asset] = (equity[asset] ?? 0) + contribution;
-        }
       }
-      if (equity.keys.any((asset) => !cash.any((b) => b['asset'] == asset))) {
-        productComplete = false;
-      }
-      productBalances[product] = cash
-          .map(
-            (b) => ProductBalance(
-              accountType: product.accountType,
-              asset: asString(b['asset']),
-              availableUnits: asInt(b['availableUnits']),
-              lockedUnits: asInt(b['lockedUnits']),
-              equityUnits: equity[asString(b['asset'])] ?? 0,
-              scaleUnits: _balanceScaleFor(asString(b['asset'])),
-            ),
-          )
-          .toList();
-      if (productBalances[product]!.any(
-        (b) => b.available == null || b.locked == null || b.equity == null,
-      )) {
-        productComplete = false;
-      }
+      productBalances[product] = projection.balances;
       if (productComplete && _privateAuthenticated) valuedProducts.add(product);
       complete = complete && productComplete;
       if (product == mode) {
@@ -4805,20 +2081,28 @@ class AppState extends ChangeNotifier {
     }
     assetsReady = complete;
     final riskKey =
-        '$userId:${mode.productLine}:${privateViews[mode]?.ready}:${positions.map((p) => '${p.symbol}:${p.positionSide}:${p.marginMode}:${p.signedQuantitySteps}:${p.entryPriceTicks}:${p.positionMarginUnits}').join('|')}:${balances.map((b) => '${b.asset}:${b.availableUnits}:${b.lockedUnits}').join('|')}';
+        '$userId:$_privateAuthenticated:${mode.productLine}:${selectedInstrument.settleAsset}:${privateViews[mode]?.ready}:${positions.map((p) => '${p.symbol}:${p.positionSide}:${p.marginMode}:${p.signedQuantitySteps}:${p.entryPriceTicks}:${p.positionMarginUnits}').join('|')}:${balances.map((b) => '${b.asset}:${b.availableUnits}:${b.lockedUnits}').join('|')}';
+    if (!_canReadAccountRisk) _clearAccountRisk();
     if (riskKey != _riskInputKey) {
       _riskInputKey = riskKey;
       queriedPositionRisks = [];
       ++_riskDetailsVersion;
       _riskDetailsTimer?.cancel();
-      if (!offline &&
-          positions.isNotEmpty &&
-          privateViews[mode]?.ready == true) {
+      if (!offline && mode.isDerivative && privateViews[mode]?.ready == true) {
         _riskDetailsTimer = Timer(
           const Duration(milliseconds: 350),
-          () => unawaited(refreshPositionRiskDetails()),
+          () => unawaited(refreshRiskDetails()),
         );
       }
+    }
+    if (_canReadAccountRisk &&
+        _realtimeConnected &&
+        !loadingAccountRisk &&
+        !(_riskDetailsTimer?.isActive ?? false)) {
+      _riskDetailsTimer = Timer(
+        const Duration(seconds: 5),
+        () => unawaited(refreshRiskDetails()),
+      );
     }
   }
 
@@ -4831,7 +2115,7 @@ class AppState extends ChangeNotifier {
     final channel = asString(message['channel']);
     if (op == 'authenticated' &&
         isLoggedIn &&
-        asInt(message['userId']) == userId) {
+        parseInt64(message['userId']) == userId) {
       _privateAuthenticated = true;
       _materializePrivate();
       _scheduleRealtimeNotify();
@@ -4862,9 +2146,10 @@ class AppState extends ChangeNotifier {
           'accountRisk',
           'executionReports',
         ].contains(channel)) {
-      if (!isLoggedIn || asInt(message['userId']) != userId) return;
+      if (!isLoggedIn || parseInt64(message['userId']) != userId) return;
       final view = privateViews.putIfAbsent(product, PrivateView.new);
-      if (view.apply(message)) {
+      final applied = view.apply(message);
+      if (applied || !view.ready) {
         _materializePrivate();
         _subscribePublicSelected();
         _scheduleRealtimeNotify();
@@ -4884,144 +2169,31 @@ class AppState extends ChangeNotifier {
         .where((i) => i.mode == product && i.symbol == symbol)
         .firstOrNull;
     if (instrument == null) return;
-    final selected = product == mode && symbol == selectedSymbol;
-    final key = _priceKey(product, symbol);
-    final stream = '$key:$channel:${message['period'] ?? ''}';
-    final version = asString(envelope['version']);
-    final previous = _publicVersions[stream];
-    final depthBaseline =
-        channel == 'depth' && data['updateType'] == 'SNAPSHOT';
-    if (!depthBaseline && version.isNotEmpty && previous != null) {
-      final time = DateTime.tryParse(asString(message['eventTime']));
-      final previousTime = DateTime.tryParse(asString(previous['eventTime']));
-      final coreStream = ['trades', 'depth', 'bookTicker'].contains(channel);
-      if (!coreStream &&
-          time != null &&
-          previousTime != null &&
-          time != previousTime) {
-        if (time.isBefore(previousTime)) return;
-      } else if (version.compareTo(asString(previous['version'])) <= 0) {
-        return;
+    final result = market.applyPublicEvent(
+      message: message,
+      instrument: instrument,
+      selected: product == mode && symbol == selectedSymbol,
+      period: period,
+    );
+    if (result == MarketUpdate.ignored) return;
+    if (instrument.isSpot && instrument.quoteAsset == 'USDT') {
+      final price = market.latestPrices[market.key(instrument.mode, symbol)];
+      if (price != null && price.isFinite && price > 0) {
+        wallet.pricesUsdt[instrument.baseAsset.toUpperCase()] = price;
       }
     }
-    if (version.isNotEmpty) {
-      _publicVersions[stream] = {
-        'version': version,
-        'eventTime': message['eventTime'],
-      };
-    }
-    if (channel == 'depth' && selected) {
-      if (data['levels'] is List) {
-        final levels = asList(data['levels']);
-        _applyDepthUpdate(symbol, {
-          ...data,
-          'updateType': 'SNAPSHOT',
-          'bids': levels.where((v) => asMap(v)['side'] == 'BUY').toList(),
-          'asks': levels.where((v) => asMap(v)['side'] == 'SELL').toList(),
-        });
-      } else {
-        _applyDepthUpdate(symbol, data);
-      }
-    } else if (channel == 'trades' || channel == 'bookTicker') {
-      double? price;
-      if (channel == 'bookTicker') {
-        final bid = asInt(asMap(data['bid'])['priceTicks']),
-            ask = asInt(asMap(data['ask'])['priceTicks']);
-        final ticks = bid > 0 && ask > 0
-            ? (bid + ask) / 2
-            : (bid > 0 ? bid : ask).toDouble();
-        price = ticks * instrument.priceTickUnits / 100000000;
-      } else {
-        if (selected) recentTrades = mergeRecentTrades(recentTrades, [data]);
-        price = data['priceTicks'] != null
-            ? instrument.priceFromTicks(asInt(data['priceTicks']))
-            : asDouble(data['price']);
-      }
-      if (price > 0) {
-        latestPrices[key] = price;
-        if (instrument.isSpot && instrument.quoteAsset == 'USDT') {
-          walletAssetPricesUsdt[instrument.baseAsset.toUpperCase()] = price;
-        }
-      }
-    } else if (channel == 'mark') {
-      marketMetrics[key] = {...?marketMetrics[key], ...data};
-      final ticks = data['markPriceTicks'] != null
-          ? asInt(data['markPriceTicks'])
-          : data['markPriceUnits'] != null && instrument.priceTickUnits > 0
-          ? asInt(data['markPriceUnits']) ~/ instrument.priceTickUnits
-          : instrument.ticksFromPrice(asDouble(data['markPrice']));
-      if (ticks > 0) {
-        markPrices[key] = ticks;
-        _materializePrivate();
-      }
-    } else if (channel == 'index' || channel == 'funding') {
-      marketMetrics[key] = {...?marketMetrics[key], ...data};
-    } else if (channel == 'candles' &&
-        selected &&
-        asString(message['period'], fallback: asString(data['period'])) ==
-            period) {
-      final candle = Candle.fromJson(data);
-      candles = [...candles.where((c) => c.openTime != candle.openTime), candle]
-        ..sort((a, b) => a.openTime.compareTo(b.openTime));
-      if (candles.length > 300) candles = candles.sublist(candles.length - 300);
-    }
+    if (result == MarketUpdate.markChanged) _materializePrivate();
     _scheduleRealtimeNotify();
   }
 
-  void _applyDepthUpdate(String symbol, Map<String, dynamic> data) {
-    final sequence = asInt(
-      data['sequence'] ?? data['lastSequence'] ?? data['eventSequence'],
-    );
-    final updateType = asString(data['updateType'], fallback: 'SNAPSHOT');
-    final depth = asInt(data['depth'], fallback: 50);
-    final recoveryKey = '${mode.productLine}:$symbol';
-    if (updateType != 'DELTA') {
-      _depthRecoveryKey = null;
-      if (data['updateType'] != 'SNAPSHOT' &&
-          sequence > 0 &&
-          sequence < orderBook.sequence) {
-        return;
+  void _requestDepthSnapshot() {
+    if (_disposed) return;
+    for (final subscription in _publicSubscriptions.values) {
+      if (subscription['channel'] == 'depth' &&
+          subscription['productLine'] == mode.productLine) {
+        realtime.resubscribe(subscription);
       }
-      orderBook = OrderBook.fromJson({
-        'symbol': symbol,
-        'sequence': sequence,
-        'bids': data['bids'] ?? data['bidLevels'] ?? const [],
-        'asks': data['asks'] ?? data['askLevels'] ?? const [],
-      });
-      return;
     }
-    if (_depthRecoveryKey == recoveryKey || sequence <= orderBook.sequence) {
-      return;
-    }
-    final previousSequence = asNullableInt(data['previousSequence']);
-    if (orderBook.symbol != symbol ||
-        orderBook.sequence == 0 ||
-        previousSequence != orderBook.sequence) {
-      _depthRecoveryKey = recoveryKey;
-      for (final subscription in _publicSubscriptions.values) {
-        if (subscription['channel'] == 'depth' &&
-            subscription['productLine'] == mode.productLine) {
-          realtime.resubscribe(subscription);
-        }
-      }
-      return;
-    }
-    orderBook = OrderBook(
-      symbol: symbol,
-      sequence: sequence,
-      bids: _mergeDepthLevels(
-        orderBook.bids,
-        data['bids'] ?? data['bidLevels'] ?? const [],
-        descending: true,
-        depth: depth,
-      ),
-      asks: _mergeDepthLevels(
-        orderBook.asks,
-        data['asks'] ?? data['askLevels'] ?? const [],
-        descending: false,
-        depth: depth,
-      ),
-    );
   }
 
   Instrument _instrumentForSymbol(String symbol) {
@@ -5038,122 +2210,38 @@ class AppState extends ChangeNotifier {
     return _instrumentForSymbol(symbol).mode.productLine;
   }
 
-  void _upsertOrder(OrderModel order) {
-    final mutable = [...openOrders];
-    final index = mutable.indexWhere((item) => item.orderId == order.orderId);
-    if (index >= 0) {
-      if (!_isOpenOrder(order)) {
-        mutable.removeAt(index);
-      } else {
-        mutable[index] = order;
-      }
-    } else if (_isOpenOrder(order)) {
-      mutable.insert(0, order);
-    }
-    openOrders = mutable;
-  }
-
-  void _upsertAlgoOrder(AlgoOrderModel order) {
-    if (order.userId != userId || order.product != mode) return;
-    final mutable = [...openAlgoOrders];
-    final index = mutable.indexWhere(
-      (item) => item.algoOrderId == order.algoOrderId,
-    );
-    if (index >= 0) {
-      if (!_isOpenAlgoStatus(order.status)) {
-        mutable.removeAt(index);
-      } else {
-        mutable[index] = order;
-      }
-    } else if (_isOpenAlgoStatus(order.status)) {
-      mutable.insert(0, order);
-    }
-    openAlgoOrders = mutable;
-  }
-
-  void _upsertTriggerOrder(TriggerOrderModel order) {
-    final mutable = [...openTriggerOrders];
-    final index = mutable.indexWhere(
-      (item) => item.triggerOrderId == order.triggerOrderId,
-    );
-    if (index >= 0) {
-      if (!_isOpenTriggerStatus(order.status)) {
-        mutable.removeAt(index);
-      } else {
-        mutable[index] = order;
-      }
-    } else if (_isOpenTriggerStatus(order.status)) {
-      mutable.insert(0, order);
-    }
-    openTriggerOrders = mutable;
-  }
-
   @override
   void dispose() {
-    _resetPortfolioIncome();
-    ++_telegramLoginVersion;
-    _resetBiometricUnlock();
+    _disposed = true;
+    _realtimeAuthRetryTimer?.cancel();
+    auth.removeListener(notifyListeners);
+    auth.dispose();
+    api.dispose();
+    market.dispose();
+    orders.dispose();
+    transfers.dispose();
+    wallet.dispose();
+    _privateRecovery.dispose();
+    presentation.dispose();
+    _income.dispose();
     ++_optionReferenceRequest;
     _optionReferenceTimer?.cancel();
     ++_orderTermsRequest;
-    ++_walletSessionVersion;
-    ++_walletVersion;
-    ++_walletPricesVersion;
+    ++_accountEpoch;
     ++_valuationVersion;
     ++_riskDetailsVersion;
     ++_selectionVersion;
     ++_instrumentRequestVersion;
     ++_publicRequestVersion;
-    ++_openOrdersRequestVersion;
+    orders.invalidateOpenOrders();
     _riskDetailsTimer?.cancel();
     _freshnessTimer?.cancel();
     _announcementRefreshTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
     _realtimeReconnectTimer?.cancel();
+    _realtimeAuthRetryTimer?.cancel();
     _realtimeGeneration++;
     unawaited(realtime.close());
     super.dispose();
   }
-}
-
-bool _isOpenTriggerStatus(String status) {
-  return status == 'PENDING' || status == 'TRIGGERING';
-}
-
-bool _isOpenOrder(OrderModel order) {
-  return order.remainingQuantitySteps > 0 &&
-      (order.status == 'ACCEPTED' || order.status == 'PARTIALLY_FILLED');
-}
-
-bool _isOpenAlgoStatus(String status) {
-  return status == 'PENDING' ||
-      status == 'RUNNING' ||
-      status == 'CANCEL_REQUESTED';
-}
-
-List<OrderBookLevel> _mergeDepthLevels(
-  List<OrderBookLevel> current,
-  Object? updates, {
-  required bool descending,
-  required int depth,
-}) {
-  final byPrice = <int, OrderBookLevel>{
-    for (final level in current) level.priceTicks: level,
-  };
-  for (final item in asList(updates)) {
-    final level = OrderBookLevel.fromJson(asMap(item));
-    if (level.quantitySteps <= 0) {
-      byPrice.remove(level.priceTicks);
-    } else {
-      byPrice[level.priceTicks] = level;
-    }
-  }
-  final levels = byPrice.values.toList()
-    ..sort(
-      (left, right) => descending
-          ? right.priceTicks.compareTo(left.priceTicks)
-          : left.priceTicks.compareTo(right.priceTicks),
-    );
-  if (depth > 0 && levels.length > depth) return levels.take(depth).toList();
-  return levels;
 }

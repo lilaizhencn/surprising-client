@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,10 @@ Instrument instrument({String contract = 'LINEAR_PERPETUAL'}) =>
     Instrument.fromJson({
       'instrumentId': '42',
       'symbol': 'BTC-USDT',
+      'baseAsset': 'BTC',
+      'quoteAsset': 'USDT',
+      'settleAsset': 'USDT',
+      'status': 'TRADING',
       'contractType': contract,
       'changeId': 45,
       'notionalMultiplierUnits': 1000000,
@@ -30,7 +35,7 @@ Map<String, dynamic> frame(
   Object value, {
   String? period,
   String? eventTime,
-}) => {
+}) => completeCoreEvent({
   'op': 'event',
   'channel': channel,
   'productLine': 'LINEAR_PERPETUAL',
@@ -39,7 +44,7 @@ Map<String, dynamic> frame(
   'period': period,
   'eventTime': eventTime,
   'data': {'version': v(version), 'entityId': 'user', 'value': value},
-};
+});
 Map<String, dynamic> position({int quantity = 2}) => {
   'instrumentId': '42',
   'positionSide': 'LONG',
@@ -50,7 +55,7 @@ Map<String, dynamic> position({int quantity = 2}) => {
   'positionMarginUnits': 3000000,
   'marginAsset': 'USDT',
 };
-Map<String, dynamic> snapshot({bool risk = false}) => {
+Map<String, dynamic> snapshot({bool risk = false}) => completeCoreSnapshot({
   'op': 'snapshot',
   'productLine': 'LINEAR_PERPETUAL',
   'userId': 1,
@@ -86,14 +91,15 @@ Map<String, dynamic> snapshot({bool risk = false}) => {
           ]
         : [],
   },
-};
-AppState state() => AppState(offline: true)
-  ..instruments = [instrument()]
-  ..session = const AuthSession(
+});
+AppState state() => AppState(
+  offline: true,
+  initialSession: const AuthSession(
     user: AuthUser(userId: 1, username: 'test', email: '', status: 'NORMAL'),
     accessToken: 'test',
     refreshToken: 'test',
-  );
+  ),
+)..instruments = [instrument()];
 Map<String, dynamic> order({String status = 'OPEN', int executed = 2}) => {
   'orderId': 9007199254740993,
   'instrumentId': '42',
@@ -121,8 +127,8 @@ void main() {
     'liquidation requests are fenced across product switches and restored on return',
     (tester) async {
       final api = RiskApi();
-      final s = RiskState(api)
-        ..session = const AuthSession(
+      final s = RiskState(
+        initialSession: const AuthSession(
           user: AuthUser(
             userId: 1,
             username: 'test',
@@ -131,8 +137,11 @@ void main() {
           ),
           accessToken: 'test',
           refreshToken: 'test',
-        );
+        ),
+        api,
+      );
       addTearDown(s.dispose);
+      s.handleRealtimeMessage({'op': 'authenticated', 'userId': 1});
       s.handleRealtimeMessage(snapshot());
       await tester.pump(const Duration(milliseconds: 400));
       expect(api.pending, hasLength(1));
@@ -173,8 +182,8 @@ void main() {
     'leverage editor validates range, submits ppm once and scopes the product',
     (tester) async {
       final api = LeverageApi();
-      final s = AppState(offline: true, apiClient: api)
-        ..session = const AuthSession(
+      final s = AppState(
+        initialSession: const AuthSession(
           user: AuthUser(
             userId: 1,
             username: 'test',
@@ -183,7 +192,10 @@ void main() {
           ),
           accessToken: 'test',
           refreshToken: 'test',
-        );
+        ),
+        offline: true,
+        apiClient: api,
+      );
       addTearDown(s.dispose);
       await tester.pumpWidget(
         MaterialApp(
@@ -429,6 +441,7 @@ void main() {
           'updateType': 'DELTA',
           'sequence': 9,
           'previousSequence': 10,
+          'asks': <dynamic>[],
           'bids': [
             {'priceTicks': 99, 'quantitySteps': 1},
           ],
@@ -445,7 +458,8 @@ void main() {
         }),
       );
       expect(s.refreshes, 0);
-      expect(s.orderBook.sequence, 10);
+      expect(s.orderBook.sequence, 0);
+      expect(s.market.depthRecovering, isTrue);
       s.handleRealtimeMessage(
         frame('depth', 4, {'sequence': 12, 'levels': []}),
       );
@@ -547,7 +561,7 @@ void main() {
         expect(find.text('40.0%'), findsOneWidget);
         expect(find.text('9007199254740993'), findsOneWidget);
         expect(find.text('0.4 USDT'), findsOneWidget);
-        expect(find.text('5.0×'), findsOneWidget);
+        expect(find.text('5×'), findsOneWidget);
         expect(find.text('-0.001 USDT'), findsOneWidget);
         await tester.pump(const Duration(milliseconds: 250));
         expect(tester.takeException(), isNull);
@@ -606,6 +620,13 @@ class RiskApi extends ApiClient {
   RiskApi() : super(const AppConfig());
   final pending = <Completer<List<PositionRisk>>>[];
   @override
+  Future<AccountRisk?> accountRisk(
+    int userId,
+    String settleAsset, {
+    String? accountType,
+    String? productLine,
+  }) async => null;
+  @override
   Future<List<PositionRisk>> positionRisks(int userId, {String? productLine}) {
     final request = Completer<List<PositionRisk>>();
     pending.add(request);
@@ -614,7 +635,7 @@ class RiskApi extends ApiClient {
 }
 
 class RiskState extends AppState {
-  RiskState(ApiClient api)
+  RiskState(ApiClient api, {super.initialSession})
     : super(
         config: const AppConfig(websocketUrl: ''),
         apiClient: api,

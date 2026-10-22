@@ -1,3 +1,4 @@
+import 'support/authentication.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -20,8 +21,7 @@ AuthSession account(int id) => AuthSession(
 );
 
 AppState stateFor(RecoveryApi api, DurableSettings store, [int user = 7]) =>
-    AppState(offline: true, apiClient: api, settingsStore: store)
-      ..session = account(user);
+    _TransferState(api, store, initialSession: account(user));
 
 Future<void> send(AppState state, {String amount = '1.000001'}) =>
     state.transfer(
@@ -141,7 +141,8 @@ void main() {
     while (api.calls.isEmpty) {
       await Future<void>.delayed(Duration.zero);
     }
-    state.session = account(8);
+    await state.logout();
+    await signInAs(state, account(8));
     expect(state.transferOutcomeLocked, isFalse);
     await send(state, amount: '2');
     expect(state.pendingTransfer, isNull);
@@ -150,7 +151,8 @@ void main() {
     await original;
     expect(state.pendingTransfer, isNull);
     expect(state.lastNotice, notice);
-    state.session = account(7);
+    await state.logout();
+    await signInAs(state, account(7));
     expect(state.transferOutcomeLocked, isTrue);
     expect(state.pendingTransfer!.amountUnits, 1000001);
     final restarted = stateFor(api, store);
@@ -203,7 +205,7 @@ class DurableSettings implements ClientSettingsStore {
   }
 }
 
-class RecoveryApi extends ApiClient {
+class RecoveryApi extends TestApiClient {
   RecoveryApi(this.store) : super(const AppConfig());
   final DurableSettings store;
   final calls = <Map<String, dynamic>>[];
@@ -249,4 +251,20 @@ class RecoveryApi extends ApiClient {
     if (applied.add(idempotencyKey)) debits++;
     return respond(request);
   }
+}
+
+class _TransferState extends AppState {
+  _TransferState(
+    RecoveryApi api,
+    DurableSettings store, {
+    required super.initialSession,
+  }) : super(
+         apiClient: api,
+         settingsStore: store,
+         sessionStore: MemorySessionStore(),
+         config: const AppConfig(websocketUrl: ''),
+         seedInstruments: fallbackInstruments(),
+       );
+  @override
+  Future<void> refreshPrivateData() async {}
 }

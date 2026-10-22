@@ -304,7 +304,7 @@ class AuthUser {
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
-      userId: asInt(json['userId']),
+      userId: requireInt64(json['userId'], 'userId'),
       displayName: nullableString(json['displayName']),
       email: asString(json['email']),
       username: asString(
@@ -472,23 +472,10 @@ class Instrument {
     );
   }
 
-  ProductMode get mode {
-    if (contractType == ProductMode.spot.contractType) return ProductMode.spot;
-    if (contractType == ProductMode.inverse.contractType) {
-      return ProductMode.inverse;
-    }
-    if (contractType == ProductMode.linearDelivery.contractType) {
-      return ProductMode.linearDelivery;
-    }
-    if (contractType == ProductMode.inverseDelivery.contractType) {
-      return ProductMode.inverseDelivery;
-    }
-    if (contractType == ProductMode.option.contractType ||
-        instrumentType == 'OPTION') {
-      return ProductMode.option;
-    }
-    return ProductMode.linear;
-  }
+  ProductMode get mode => ProductMode.values.firstWhere(
+    (mode) => mode.contractType == contractType,
+    orElse: () => throw const FormatException('未知合约产品类型'),
+  );
 
   bool get isSpot => mode.isSpot;
   bool get isDerivative => mode.isDerivative;
@@ -567,7 +554,31 @@ class Instrument {
   }
 
   factory Instrument.fromJson(Map<String, dynamic> json) {
-    double? number(String key) => double.tryParse(asString(json[key]));
+    final contractType = requireString(json['contractType'], 'contractType');
+    final product = ProductMode.values
+        .where((mode) => mode.contractType == contractType)
+        .firstOrNull;
+    if (product == null) throw const FormatException('未知合约产品类型');
+    final expectedType = product.isSpot
+        ? 'SPOT'
+        : product.isOption
+        ? 'OPTION'
+        : product.isDelivery
+        ? 'DELIVERY'
+        : 'PERPETUAL';
+    final instrumentType = json['instrumentType'] == null
+        ? expectedType
+        : requireString(json['instrumentType'], 'instrumentType');
+    if (instrumentType != expectedType ||
+        (json['productLine'] != null &&
+            json['productLine'] != product.productLine)) {
+      throw const FormatException('合约产品类型不一致');
+    }
+    double? number(String key) {
+      final value = double.tryParse(asString(json[key]));
+      return value != null && value.isFinite ? value : null;
+    }
+
     return Instrument(
       instrumentId: asString(json['instrumentId']),
       lastPrice: number('lastPrice'),
@@ -578,52 +589,62 @@ class Instrument {
               : number('change24hPpm')! / 10000),
       volume24h: number('volume24h'),
       symbol: asString(json['symbol']),
-      instrumentType: asString(json['instrumentType'], fallback: 'PERPETUAL'),
-      contractType: asString(
-        json['contractType'],
-        fallback: 'LINEAR_PERPETUAL',
-      ),
-      baseAsset: asString(json['baseAsset'], fallback: 'BTC'),
-      quoteAsset: asString(json['quoteAsset'], fallback: 'USDT'),
-      settleAsset: asString(json['settleAsset'], fallback: 'USDT'),
-      priceTickUnits: asInt(
-        json['priceTickUnits'],
-        fallback: json['contractType'] == 'SPOT' ? 0 : 10000000,
-      ),
-      quantityStepUnits: asInt(
-        json['quantityStepUnits'],
-        fallback: json['contractType'] == 'SPOT' ? 0 : 1,
-      ),
+      instrumentType: instrumentType,
+      contractType: contractType,
+      baseAsset: asString(json['baseAsset']),
+      quoteAsset: asString(json['quoteAsset']),
+      settleAsset: asString(json['settleAsset']),
+      priceTickUnits:
+          nullableInt64(json['priceTickUnits'], 'priceTickUnits') ?? 0,
+      quantityStepUnits:
+          nullableInt64(json['quantityStepUnits'], 'quantityStepUnits') ?? 0,
       pricePrecision: asInt(json['pricePrecision'], fallback: 2),
       quantityPrecision: asInt(json['quantityPrecision'], fallback: 0),
-      maxLeveragePpm: asInt(json['maxLeveragePpm'], fallback: 1000000),
-      status: asString(
-        json['status'],
-        fallback:
-            (json['contractType'] == 'LINEAR_DELIVERY' ||
-                json['contractType'] == 'INVERSE_DELIVERY' ||
-                json['contractType'] == 'VANILLA_OPTION')
-            ? 'UNAVAILABLE'
-            : 'TRADING',
-      ),
+      maxLeveragePpm:
+          nullableInt64(json['maxLeveragePpm'], 'maxLeveragePpm') ?? 0,
+      status: asString(json['status'], fallback: 'UNAVAILABLE'),
       expiryTime: asNullableDateTime(json['expiryTime']),
       deliveryTime: asNullableDateTime(json['deliveryTime']),
       underlyingSymbol: nullableString(json['underlyingSymbol']),
       underlyingInstrumentId: nullableString(json['underlyingInstrumentId']),
       underlyingProductLine: nullableString(json['underlyingProductLine']),
-      strikePriceUnits: asNullableInt(json['strikePriceUnits']),
+      strikePriceUnits: nullableInt64(
+        json['strikePriceUnits'],
+        'strikePriceUnits',
+      ),
       optionType: nullableString(json['optionType']),
       optionExerciseStyle: nullableString(json['optionExerciseStyle']),
       settlementMethod: nullableString(json['settlementMethod']),
-      changeId: asNullableInt(json['changeId']),
-      notionalMultiplierUnits: asNullableInt(json['notionalMultiplierUnits']),
-      settleScaleUnits: asNullableInt(json['settleScaleUnits']),
-      baseScaleUnits: asNullableInt(json['baseScaleUnits']),
-      quoteScaleUnits: asNullableInt(json['quoteScaleUnits']),
-      minQuantitySteps: asNullableInt(json['minQuantitySteps']),
-      maxQuantitySteps: asNullableInt(json['maxQuantitySteps']),
-      minNotionalUnits: asNullableInt(json['minNotionalUnits']),
-      maxNotionalUnits: asNullableInt(json['maxNotionalUnits']),
+      changeId: nullableInt64(json['changeId'], 'changeId'),
+      notionalMultiplierUnits: nullableInt64(
+        json['notionalMultiplierUnits'],
+        'notionalMultiplierUnits',
+      ),
+      settleScaleUnits: nullableInt64(
+        json['settleScaleUnits'],
+        'settleScaleUnits',
+      ),
+      baseScaleUnits: nullableInt64(json['baseScaleUnits'], 'baseScaleUnits'),
+      quoteScaleUnits: nullableInt64(
+        json['quoteScaleUnits'],
+        'quoteScaleUnits',
+      ),
+      minQuantitySteps: nullableInt64(
+        json['minQuantitySteps'],
+        'minQuantitySteps',
+      ),
+      maxQuantitySteps: nullableInt64(
+        json['maxQuantitySteps'],
+        'maxQuantitySteps',
+      ),
+      minNotionalUnits: nullableInt64(
+        json['minNotionalUnits'],
+        'minNotionalUnits',
+      ),
+      maxNotionalUnits: nullableInt64(
+        json['maxNotionalUnits'],
+        'maxNotionalUnits',
+      ),
     );
   }
 }
@@ -640,10 +661,16 @@ class OrderBookLevel {
   final int orderCount;
 
   factory OrderBookLevel.fromJson(Map<String, dynamic> json) {
+    final price = requireInt64(json['priceTicks'], 'priceTicks');
+    final quantity = requireInt64(json['quantitySteps'], 'quantitySteps');
+    final count = nullableInt64(json['orderCount'], 'orderCount') ?? 0;
+    if (price <= 0 || quantity < 0 || count < 0) {
+      throw const FormatException('盘口价格、数量或委托数无效');
+    }
     return OrderBookLevel(
-      priceTicks: asInt(json['priceTicks']),
-      quantitySteps: asInt(json['quantitySteps']),
-      orderCount: asInt(json['orderCount']),
+      priceTicks: price,
+      quantitySteps: quantity,
+      orderCount: count,
     );
   }
 }
@@ -673,8 +700,14 @@ class OrderBook {
   factory OrderBook.fromJson(Map<String, dynamic> json) {
     List<OrderBookLevel> levels(String side) {
       final byPrice = <int, OrderBookLevel>{};
-      for (final raw in asList(json[side])) {
-        final level = OrderBookLevel.fromJson(asMap(raw));
+      final rawLevels = json[side];
+      if (rawLevels is! List) throw FormatException('$side 缺失或无效');
+      for (final raw in rawLevels) {
+        if (raw is! Map<String, dynamic>) throw FormatException('$side 档位无效');
+        final level = OrderBookLevel.fromJson(raw);
+        if (byPrice.containsKey(level.priceTicks)) {
+          throw const FormatException('盘口价格档重复');
+        }
         if (level.priceTicks > 0 && level.quantitySteps > 0) {
           byPrice[level.priceTicks] = level;
         }
@@ -688,9 +721,11 @@ class OrderBook {
       return sorted.take(50).toList();
     }
 
+    final sequence = requireInt64(json['sequence'], 'sequence');
+    if (sequence < 0) throw const FormatException('盘口序列无效');
     return OrderBook(
       symbol: asString(json['symbol']),
-      sequence: asInt(json['sequence']),
+      sequence: sequence,
       bids: levels('bids'),
       asks: levels('asks'),
     );
@@ -744,13 +779,32 @@ class Candle {
   int get timeMillis => openTime.millisecondsSinceEpoch;
 
   factory Candle.fromJson(Map<String, dynamic> json) {
+    final time = json['openTime'];
+    final parsedTime = time is String ? DateTime.tryParse(time) : null;
+    if (parsedTime == null) throw const FormatException('K 线时间无效');
+    final open = requireFiniteDouble(json['openPrice'], 'openPrice');
+    final high = requireFiniteDouble(json['highPrice'], 'highPrice');
+    final low = requireFiniteDouble(json['lowPrice'], 'lowPrice');
+    final close = requireFiniteDouble(json['closePrice'], 'closePrice');
+    final volume = requireFiniteDouble(json['baseVolume'], 'baseVolume');
+    if (open < 0 ||
+        low < 0 ||
+        close < 0 ||
+        high < low ||
+        high < open ||
+        high < close ||
+        low > open ||
+        low > close ||
+        volume < 0) {
+      throw const FormatException('K 线价格或成交量无效');
+    }
     return Candle(
-      openTime: DateTime.tryParse(asString(json['openTime'])) ?? DateTime.now(),
-      open: asDouble(json['openPrice']),
-      high: asDouble(json['highPrice']),
-      low: asDouble(json['lowPrice']),
-      close: asDouble(json['closePrice']),
-      volume: asDouble(json['baseVolume']),
+      openTime: parsedTime,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      volume: volume,
     );
   }
 }
@@ -805,11 +859,7 @@ class ProductBalance {
 
   bool get hasScale =>
       scaleUnits != null && RegExp(r'^10*$').hasMatch('$scaleUnits');
-  double? _amount(int units) => units == 0
-      ? 0
-      : hasScale
-      ? units / scaleUnits!
-      : null;
+  double? _amount(int units) => hasScale ? units / scaleUnits! : null;
   double? get available => _amount(availableUnits);
   double? get locked => _amount(lockedUnits);
   double? get equity => _amount(equityUnits);
@@ -818,12 +868,16 @@ class ProductBalance {
     Map<String, dynamic> json, {
     int? scaleUnits,
   }) {
+    final accountType = requireString(json['accountType'], 'accountType');
+    if (!productAccountTypes.contains(accountType)) {
+      throw const FormatException('未知资金账户类型');
+    }
     return ProductBalance(
-      accountType: asString(json['accountType'], fallback: 'SPOT'),
-      asset: asString(json['asset'], fallback: 'USDT'),
-      availableUnits: asInt(json['availableUnits']),
-      lockedUnits: asInt(json['lockedUnits']),
-      equityUnits: asInt(json['equityUnits']),
+      accountType: accountType,
+      asset: requireString(json['asset'], 'asset'),
+      availableUnits: requireInt64(json['availableUnits'], 'availableUnits'),
+      lockedUnits: requireInt64(json['lockedUnits'], 'lockedUnits'),
+      equityUnits: requireInt64(json['equityUnits'], 'equityUnits'),
       scaleUnits: scaleUnits,
     );
   }
@@ -859,12 +913,21 @@ class Position {
       symbol: asString(json['symbol']),
       marginMode: asString(json['marginMode'], fallback: 'CROSS'),
       positionSide: asString(json['positionSide'], fallback: 'NET'),
-      signedQuantitySteps: asInt(json['signedQuantitySteps']),
-      entryPriceTicks: asInt(json['entryPriceTicks']),
-      realizedPnlUnits: asNullableInt(json['realizedPnlUnits']),
+      signedQuantitySteps: requireInt64(
+        json['signedQuantitySteps'],
+        'signedQuantitySteps',
+      ),
+      entryPriceTicks: requireInt64(json['entryPriceTicks'], 'entryPriceTicks'),
+      realizedPnlUnits: nullableInt64(
+        json['realizedPnlUnits'],
+        'realizedPnlUnits',
+      ),
       instrumentId: asString(json['instrumentId']),
       marginAsset: asString(json['marginAsset']),
-      positionMarginUnits: asNullableInt(json['positionMarginUnits']),
+      positionMarginUnits: nullableInt64(
+        json['positionMarginUnits'],
+        'positionMarginUnits',
+      ),
     );
   }
 }
@@ -887,7 +950,9 @@ class CancellationBatch {
   factory CancellationBatch.fromJson(Map<String, dynamic> json) =>
       CancellationBatch(
         asString(json['key']),
-        asList(json['orderIds']).map(asInt).toList(),
+        asList(
+          json['orderIds'],
+        ).map((value) => requireInt64(value, 'orderId')).toList(),
       );
 }
 
@@ -1006,7 +1071,10 @@ class CancellationPlan {
         failed: asInt(json['failed']),
         failures: asList(json['failures']).map((f) {
           final row = asMap(f);
-          return (orderId: asInt(row['orderId']), code: asString(row['code']));
+          return (
+            orderId: requireInt64(row['orderId'], 'orderId'),
+            code: asString(row['code']),
+          );
         }).toList(),
       );
 }
@@ -1039,6 +1107,7 @@ class PendingTradingOrder {
     this.ocoStopLossClientId,
     this.clientTriggerOrderId,
     this.cancelTriggerOrderId,
+    this.clientAlgoOrderId,
   });
   final CancellationPlan? cancelPlan;
   final String? amendRequestId;
@@ -1050,6 +1119,7 @@ class PendingTradingOrder {
   final String? ocoTakeProfitClientId, ocoStopLossClientId;
   final String? clientTriggerOrderId;
   final int? cancelTriggerOrderId;
+  final String? clientAlgoOrderId;
 }
 
 class OrderModel {
@@ -1104,15 +1174,21 @@ class OrderModel {
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     return OrderModel(
-      orderId: asInt(json['orderId']),
+      orderId: requireInt64(json['orderId'], 'orderId'),
       symbol: asString(json['symbol']),
       side: asString(json['side']),
       orderType: asString(json['orderType']),
       timeInForce: asString(json['timeInForce']),
-      priceTicks: asInt(json['priceTicks']),
-      quantitySteps: asInt(json['quantitySteps']),
-      executedQuantitySteps: asInt(json['executedQuantitySteps']),
-      remainingQuantitySteps: asInt(json['remainingQuantitySteps']),
+      priceTicks: requireInt64(json['priceTicks'], 'priceTicks'),
+      quantitySteps: requireInt64(json['quantitySteps'], 'quantitySteps'),
+      executedQuantitySteps: requireInt64(
+        json['executedQuantitySteps'],
+        'executedQuantitySteps',
+      ),
+      remainingQuantitySteps: requireInt64(
+        json['remainingQuantitySteps'],
+        'remainingQuantitySteps',
+      ),
       marginMode: asString(json['marginMode'], fallback: 'CROSS'),
       positionSide: asString(json['positionSide'], fallback: 'NET'),
       status: asString(json['status']),
@@ -1120,7 +1196,10 @@ class OrderModel {
       postOnly: asBool(json['postOnly']),
       averagePriceTicks: nullableString(json['averagePriceTicks']),
       executedValueTicks: nullableString(json['executedValueTicks']),
-      cumulativeFeeUnits: asNullableInt(json['cumulativeFeeUnits']),
+      cumulativeFeeUnits: nullableInt64(
+        json['cumulativeFeeUnits'],
+        'cumulativeFeeUnits',
+      ),
       createdAt: orderTimestamp(
         json['createdAtEpochMillis'] ?? json['createdAt'],
       ),
@@ -1170,11 +1249,17 @@ class TestOrderResult {
     return TestOrderResult(
       accepted: asBool(json['accepted']),
       rejectReason: nullableString(json['rejectReason']),
-      instrumentChangeId: asInt(json['instrumentChangeId']),
+      instrumentChangeId: requireInt64(
+        json['instrumentChangeId'],
+        'instrumentChangeId',
+      ),
       validationStage: asString(json['validationStage']),
       accountType: nullableString(json['accountType']),
       asset: nullableString(json['asset']),
-      estimatedReserveUnits: asInt(json['estimatedReserveUnits']),
+      estimatedReserveUnits: requireInt64(
+        json['estimatedReserveUnits'],
+        'estimatedReserveUnits',
+      ),
     );
   }
 }
@@ -1505,7 +1590,7 @@ class CancelAllAfterResult {
 
   factory CancelAllAfterResult.fromJson(Map<String, dynamic> json) {
     return CancelAllAfterResult(
-      userId: asInt(json['userId']),
+      userId: requireInt64(json['userId'], 'userId'),
       symbol: nullableString(json['symbol']),
       countdownMs: asInt(json['countdownMs']),
       active: asBool(json['active']),
@@ -1647,8 +1732,8 @@ class TriggerOrderModel {
   factory TriggerOrderModel.fromJson(Map<String, dynamic> json) {
     final placedOrderId = json['placedOrderId'];
     return TriggerOrderModel(
-      userId: asInt(json['userId']),
-      triggerOrderId: asInt(json['triggerOrderId']),
+      userId: requireInt64(json['userId'], 'userId'),
+      triggerOrderId: requireInt64(json['triggerOrderId'], 'triggerOrderId'),
       instrumentId: asString(json['instrumentId']),
       clientTriggerOrderId: asString(json['clientTriggerOrderId']),
       ocoGroupId: nullableString(json['ocoGroupId']),
@@ -1657,20 +1742,35 @@ class TriggerOrderModel {
       side: asString(json['side'], fallback: 'SELL'),
       triggerType: asString(json['triggerType'], fallback: 'TAKE_PROFIT'),
       triggerCondition: asString(json['triggerCondition']),
-      triggerPriceTicks: asInt(json['triggerPriceTicks']),
-      activationPriceTicks: asNullableInt(json['activationPriceTicks']),
-      callbackRatePpm: asNullableInt(json['callbackRatePpm']),
-      highestPriceTicks: asNullableInt(json['highestPriceTicks']),
-      lowestPriceTicks: asNullableInt(json['lowestPriceTicks']),
+      triggerPriceTicks: requireInt64(
+        json['triggerPriceTicks'],
+        'triggerPriceTicks',
+      ),
+      activationPriceTicks: nullableInt64(
+        json['activationPriceTicks'],
+        'activationPriceTicks',
+      ),
+      callbackRatePpm: nullableInt64(
+        json['callbackRatePpm'],
+        'callbackRatePpm',
+      ),
+      highestPriceTicks: nullableInt64(
+        json['highestPriceTicks'],
+        'highestPriceTicks',
+      ),
+      lowestPriceTicks: nullableInt64(
+        json['lowestPriceTicks'],
+        'lowestPriceTicks',
+      ),
       activatedAt: nullableString(json['activatedAt']),
       orderType: asString(json['orderType'], fallback: 'MARKET'),
       timeInForce: asString(json['timeInForce'], fallback: 'IOC'),
-      priceTicks: asInt(json['priceTicks']),
-      quantitySteps: asInt(json['quantitySteps']),
+      priceTicks: requireInt64(json['priceTicks'], 'priceTicks'),
+      quantitySteps: requireInt64(json['quantitySteps'], 'quantitySteps'),
       marginMode: asString(json['marginMode'], fallback: 'CROSS'),
       positionSide: asString(json['positionSide'], fallback: 'NET'),
       status: asString(json['status'], fallback: 'NEW'),
-      placedOrderId: placedOrderId == null ? null : asInt(placedOrderId),
+      placedOrderId: nullableInt64(placedOrderId, 'placedOrderId'),
     );
   }
 }
@@ -1789,12 +1889,22 @@ class AccountRisk {
   final String status;
 
   factory AccountRisk.fromJson(Map<String, dynamic> json) {
+    final maintenance = requireInt64(
+      json['maintenanceMarginUnits'],
+      'maintenanceMarginUnits',
+    );
+    final ratio = requireInt64(json['marginRatioPpm'], 'marginRatioPpm');
+    if (maintenance < 0 ||
+        ratio < 0 ||
+        !const {'NORMAL', 'WARNING', 'LIQUIDATION'}.contains(json['status'])) {
+      throw const FormatException('账户风险指标无效');
+    }
     return AccountRisk(
-      settleAsset: asString(json['settleAsset'], fallback: 'USDT'),
-      equityUnits: asInt(json['equityUnits']),
-      maintenanceMarginUnits: asInt(json['maintenanceMarginUnits']),
-      marginRatioPpm: asInt(json['marginRatioPpm']),
-      status: asString(json['status'], fallback: 'NORMAL'),
+      settleAsset: requireString(json['settleAsset'], 'settleAsset'),
+      equityUnits: requireInt64(json['equityUnits'], 'equityUnits'),
+      maintenanceMarginUnits: maintenance,
+      marginRatioPpm: ratio,
+      status: json['status'] as String,
     );
   }
 }
@@ -1814,9 +1924,9 @@ class PositionRisk {
 
   final String symbol;
   final String positionSide;
-  final int markPriceTicks;
+  final int? markPriceTicks;
   final int? unrealizedPnlUnits;
-  final int positionMarginUnits;
+  final int? positionMarginUnits;
   final int? marginRatioPpm;
   final String status;
   final int? maintenanceMarginUnits;
@@ -1826,13 +1936,25 @@ class PositionRisk {
     return PositionRisk(
       symbol: asString(json['symbol']),
       positionSide: asString(json['positionSide'], fallback: 'NET'),
-      markPriceTicks: asInt(json['markPriceTicks']),
-      unrealizedPnlUnits: asNullableInt(json['unrealizedPnlUnits']),
-      positionMarginUnits: asInt(json['positionMarginUnits']),
-      marginRatioPpm: asNullableInt(json['marginRatioPpm']),
+      markPriceTicks: nullableInt64(json['markPriceTicks'], 'markPriceTicks'),
+      unrealizedPnlUnits: nullableInt64(
+        json['unrealizedPnlUnits'],
+        'unrealizedPnlUnits',
+      ),
+      positionMarginUnits: nullableInt64(
+        json['positionMarginUnits'],
+        'positionMarginUnits',
+      ),
+      marginRatioPpm: nullableInt64(json['marginRatioPpm'], 'marginRatioPpm'),
       status: asString(json['status'], fallback: 'PENDING'),
-      maintenanceMarginUnits: asNullableInt(json['maintenanceMarginUnits']),
-      liquidationPriceTicks: asNullableInt(json['liquidationPriceTicks']),
+      maintenanceMarginUnits: nullableInt64(
+        json['maintenanceMarginUnits'],
+        'maintenanceMarginUnits',
+      ),
+      liquidationPriceTicks: nullableInt64(
+        json['liquidationPriceTicks'],
+        'liquidationPriceTicks',
+      ),
     );
   }
 }
@@ -1852,10 +1974,13 @@ class LiquidationOrder {
 
   factory LiquidationOrder.fromJson(Map<String, dynamic> json) {
     return LiquidationOrder(
-      orderId: asInt(json['liquidationOrderId'] ?? json['orderId']),
+      orderId: requireInt64(
+        json['liquidationOrderId'] ?? json['orderId'],
+        'orderId',
+      ),
       symbol: asString(json['symbol']),
       status: asString(json['status']),
-      quantitySteps: asInt(json['quantitySteps']),
+      quantitySteps: requireInt64(json['quantitySteps'], 'quantitySteps'),
     );
   }
 }
@@ -1880,9 +2005,15 @@ class WalletPortfolio {
   }
 
   factory WalletPortfolio.fromJson(Map<String, dynamic> json) {
-    final assets = asList(
-      json['assets'],
-    ).map((item) => WalletAssetSummary.fromJson(asMap(item))).toList();
+    final rawAssets = json['assets'];
+    if (rawAssets is! List) throw const FormatException('钱包资产列表缺失或无效');
+    final seen = <String>{};
+    final assets = rawAssets.map((item) {
+      if (item is! Map<String, dynamic>) throw const FormatException('钱包资产无效');
+      final asset = WalletAssetSummary.fromJson(item);
+      if (!seen.add(asset.symbol)) throw const FormatException('钱包资产重复');
+      return asset;
+    }).toList();
     return WalletPortfolio(
       generatedAt: asString(json['generatedAt']),
       assets: assets,
@@ -1966,11 +2097,17 @@ class WalletAssetSummary {
 
   factory WalletAssetSummary.fromJson(Map<String, dynamic> json) {
     return WalletAssetSummary(
-      symbol: asString(json['symbol']),
-      availableBalance: asDouble(json['availableBalance']),
+      symbol: requireString(json['symbol'], 'symbol'),
+      availableBalance: requireFiniteDouble(
+        json['availableBalance'],
+        'availableBalance',
+      ),
       availableBalanceText: asString(json['availableBalance']),
-      lockedBalance: asDouble(json['lockedBalance']),
-      totalBalance: asDouble(json['totalBalance']),
+      lockedBalance: requireFiniteDouble(
+        json['lockedBalance'],
+        'lockedBalance',
+      ),
+      totalBalance: requireFiniteDouble(json['totalBalance'], 'totalBalance'),
       chains: asList(
         json['chains'],
       ).map((item) => WalletChainAsset.fromJson(asMap(item))).toList(),
@@ -2018,9 +2155,15 @@ class WalletChainAsset {
       ),
       nativeAsset: asBool(json['nativeAsset'] ?? json['nativeasset']),
       nativeSymbol: asString(json['nativeSymbol'] ?? json['nativesymbol']),
-      availableBalance: asDouble(json['availableBalance']),
-      lockedBalance: asDouble(json['lockedBalance']),
-      totalBalance: asDouble(json['totalBalance']),
+      availableBalance: requireFiniteDouble(
+        json['availableBalance'],
+        'availableBalance',
+      ),
+      lockedBalance: requireFiniteDouble(
+        json['lockedBalance'],
+        'lockedBalance',
+      ),
+      totalBalance: requireFiniteDouble(json['totalBalance'], 'totalBalance'),
       addresses: asList(
         json['addresses'],
       ).map((item) => WalletAddressRef.fromJson(asMap(item))).toList(),
@@ -2139,8 +2282,8 @@ class WalletOrderRecord {
       symbol: asString(
         json['assetSymbol'] ?? json['asset_symbol'] ?? json['symbol'],
       ),
-      amount: asDouble(json['amount']),
-      fee: asDouble(json['fee']),
+      amount: requireFiniteDouble(json['amount'], 'amount'),
+      fee: requireFiniteDouble(json['fee'], 'fee'),
       status: asString(json['status']),
       toAddress: asString(json['toAddress'] ?? json['to_address']),
       txHash: asString(json['txHash'] ?? json['tx_hash']),
@@ -2194,28 +2337,53 @@ DateTime? asNullableDateTime(Object? value) {
   return DateTime.tryParse(string);
 }
 
-int asInt(Object? value, {int fallback = 0}) {
-  if (value == null) return fallback;
+final _int64Min = BigInt.parse('-9223372036854775808');
+final _int64Max = BigInt.parse('9223372036854775807');
+final _integerText = RegExp(r'^-?(?:0|[1-9]\d*)$');
+
+/// Financial integers never pass through floating point, rounding or saturation.
+int? parseInt64(Object? value) {
   if (value is int) return value;
-  if (value is num) return value.round();
-  return int.tryParse(value.toString()) ??
-      double.tryParse(value.toString())?.round() ??
-      fallback;
+  if (value is! String || value.length > 20 || !_integerText.hasMatch(value)) {
+    return null;
+  }
+  final integer = BigInt.tryParse(value);
+  if (integer == null || integer < _int64Min || integer > _int64Max) {
+    return null;
+  }
+  return integer.toInt();
 }
 
-int? asNullableInt(Object? value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is num) return value.round();
-  return int.tryParse(value.toString()) ??
-      double.tryParse(value.toString())?.round();
+int requireInt64(Object? value, String field) =>
+    parseInt64(value) ?? (throw FormatException('$field 必须为有效的 int64 整数'));
+
+int? nullableInt64(Object? value, String field) =>
+    value == null ? null : requireInt64(value, field);
+
+String requireString(Object? value, String field) {
+  if (value is! String || value.isEmpty || value.trim() != value) {
+    throw FormatException('$field 缺失或无效');
+  }
+  return value;
 }
 
-double asDouble(Object? value, {double fallback = 0}) {
-  if (value == null) return fallback;
-  if (value is num) return value.toDouble();
-  return double.tryParse(value.toString()) ?? fallback;
+double requireFiniteDouble(Object? value, String field) {
+  final parsed = value is num
+      ? value.toDouble()
+      : value is String
+      ? double.tryParse(value)
+      : null;
+  if (parsed == null || !parsed.isFinite) throw FormatException('$field 缺失或无效');
+  return parsed;
 }
+
+int asInt(Object? value, {int fallback = 0}) =>
+    value == null ? fallback : requireInt64(value, 'integer');
+
+int? asNullableInt(Object? value) => nullableInt64(value, 'integer');
+
+double asDouble(Object? value, {double fallback = 0}) =>
+    value == null ? fallback : requireFiniteDouble(value, 'number');
 
 bool asBool(Object? value) {
   if (value is bool) return value;

@@ -157,14 +157,12 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = _RecordsApi();
-        final state =
-            AppState(
-                apiClient: api,
-                seedInstruments: [_instrument()],
-                config: const AppConfig(websocketUrl: ''),
-              )
-              ..mode = ProductMode.spot
-              ..session = _session;
+        final state = AppState(
+          apiClient: api,
+          seedInstruments: [_instrument()],
+          config: const AppConfig(websocketUrl: ''),
+          initialSession: _session,
+        )..mode = ProductMode.spot;
         addTearDown(state.dispose);
         await tester.pumpWidget(
           MaterialApp(

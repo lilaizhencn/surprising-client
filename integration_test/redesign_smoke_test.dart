@@ -40,34 +40,38 @@ void main() {
   testWidgets(
     'native home, market and bundled TradingView render with synthetic data',
     (tester) async {
-      final state = AppState(offline: true, apiClient: NativeQaApi())
-        ..session = const AuthSession(
-          user: AuthUser(
-            userId: 7,
-            username: '',
-            displayName: 'Telegram 测试用户',
-            email: '',
-            status: 'NORMAL',
-          ),
-          accessToken: 'synthetic-only',
-          refreshToken: 'synthetic-only',
-        )
-        ..walletReady = true
-        ..assetsReady = true
-        ..walletPortfolio = const WalletPortfolio(
-          generatedAt: 'synthetic',
-          assetCount: 1,
-          assets: [
-            WalletAssetSummary(
-              symbol: 'USDT',
-              availableBalance: 1000,
-              lockedBalance: 0,
-              totalBalance: 1000,
-              chains: [],
-            ),
-          ],
-        )
-        ..valuationCurrency = ValuationCurrency.cny;
+      final state =
+          AppState(
+              initialSession: const AuthSession(
+                user: AuthUser(
+                  userId: 7,
+                  username: '',
+                  displayName: 'Telegram 测试用户',
+                  email: '',
+                  status: 'NORMAL',
+                ),
+                accessToken: 'synthetic-only',
+                refreshToken: 'synthetic-only',
+              ),
+              offline: true,
+              apiClient: NativeQaApi(),
+            )
+            ..walletReady = true
+            ..assetsReady = true
+            ..walletPortfolio = const WalletPortfolio(
+              generatedAt: 'synthetic',
+              assetCount: 1,
+              assets: [
+                WalletAssetSummary(
+                  symbol: 'USDT',
+                  availableBalance: 1000,
+                  lockedBalance: 0,
+                  totalBalance: 1000,
+                  chains: [],
+                ),
+              ],
+            )
+            ..valuationCurrency = ValuationCurrency.cny;
       state.valuationRates[ValuationCurrency.cny] = 7.2;
       addTearDown(state.dispose);
       await tester.pumpWidget(

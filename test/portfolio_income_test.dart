@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/exchange_widgets.dart';
 import 'package:surprising_client/src/asset_overview.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/portfolio_income.dart';
 import 'account_display_test.dart' show session, portfolio;
 import 'support/portfolio_income_fixture.dart';
+import 'support/authentication.dart';
 
 void main() {
   test(
@@ -86,24 +86,28 @@ void main() {
     'late response after account switch or disposal cannot publish financial data',
     () async {
       final api = IncomeApi()..pending = Completer();
-      final state = AppState(apiClient: api)..session = session;
+      final state = IncomeTestState(initialSession: session, api: api);
       final request = state.refreshPortfolioIncome();
-      state.session = const AuthSession(
-        user: AuthUser(
-          userId: 9,
-          username: 'other',
-          email: '',
-          status: 'NORMAL',
+      await state.logout();
+      await signInAs(
+        state,
+        const AuthSession(
+          user: AuthUser(
+            userId: 9,
+            username: 'other',
+            email: '',
+            status: 'NORMAL',
+          ),
+          accessToken: 'other',
+          refreshToken: 'other',
         ),
-        accessToken: 'other',
-        refreshToken: 'other',
       );
       api.pending!.complete(incomeFixture());
       await request;
       expect(state.portfolioIncome(), isNull);
       state.dispose();
       final api2 = IncomeApi()..pending = Completer();
-      final disposed = AppState(apiClient: api2)..session = session;
+      final disposed = IncomeTestState(initialSession: session, api: api2);
       final pending = disposed.refreshPortfolioIncome();
       disposed.dispose();
       api2.pending!.complete(incomeFixture());
@@ -115,23 +119,29 @@ void main() {
     'failed refresh clears an old estimate and never touches spendable balances',
     () async {
       final api = IncomeApi();
-      final state = AppState(apiClient: api)..session = session;
+      final state = IncomeTestState(initialSession: session, api: api);
+      addTearDown(state.dispose);
       await state.refreshPortfolioIncome();
       expect(state.portfolioIncome()!.amount, '3');
       expect(state.balances, isEmpty);
       expect(state.productBalances, isEmpty);
-      state.session = const AuthSession(
-        user: AuthUser(
-          userId: 9,
-          username: 'other',
-          email: '',
-          status: 'NORMAL',
+      await state.logout();
+      await signInAs(
+        state,
+        const AuthSession(
+          user: AuthUser(
+            userId: 9,
+            username: 'other',
+            email: '',
+            status: 'NORMAL',
+          ),
+          accessToken: 'other',
+          refreshToken: 'other',
         ),
-        accessToken: 'other',
-        refreshToken: 'other',
       );
       expect(state.portfolioIncome(), isNull);
-      state.session = session;
+      await state.logout();
+      await signInAs(state, session);
       api.fail = true;
       await state.refreshPortfolioIncome();
       expect(state.portfolioIncome(), isNull);
@@ -140,7 +150,7 @@ void main() {
   testWidgets(
     'a known summary cannot certify an empty or complete asset detail list',
     (tester) async {
-      final state = AppState(apiClient: IncomeApi())..session = session;
+      final state = IncomeTestState(initialSession: session, api: IncomeApi());
       await state.refreshPortfolioIncome();
       await tester.pumpWidget(
         MaterialApp(
@@ -192,7 +202,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final state = AppState(apiClient: IncomeApi())..session = session;
+      final state = IncomeTestState(initialSession: session, api: IncomeApi());
       await state.refreshPortfolioIncome();
       await tester.pumpWidget(
         MaterialApp(

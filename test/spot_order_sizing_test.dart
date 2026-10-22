@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/spot_order.dart';
@@ -5,6 +6,7 @@ import 'package:surprising_client/src/spot_order.dart';
 Instrument instrument([Map<String, dynamic> changes = const {}]) =>
     Instrument.fromJson({
       'instrumentId': '1',
+      'status': 'TRADING',
       'symbol': 'BTC-USDT',
       'contractType': 'SPOT',
       'instrumentType': 'SPOT',
@@ -75,6 +77,7 @@ void main() {
     () {
       final spec = instrument();
       final order = OrderModel.fromJson({
+        ...completeCoreRow('order', {}),
         'orderId': 91,
         'symbol': 'BTC-USDT',
         'orderType': 'LIMIT',

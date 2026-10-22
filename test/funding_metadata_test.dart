@@ -1,3 +1,4 @@
+import 'support/core_snapshot_fixture.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app_state.dart';
@@ -19,8 +20,7 @@ void main() {
   test(
     'withdrawal maximum truncates to chain precision and never rounds a balance up',
     () {
-      final state = AppState(offline: true)
-        ..session = session
+      final state = AppState(initialSession: session, offline: true)
         ..withdrawalRulesReady = true
         ..walletReady = true
         ..withdrawalRules = [rule(fee: '0')]
@@ -64,6 +64,7 @@ void main() {
           {
             'symbol': 'USDT',
             'availableBalance': '1E-18',
+            'lockedBalance': '0',
             'totalBalance': '1E-18',
           },
         ],
@@ -104,27 +105,29 @@ void main() {
     'private snapshots gain correct valuation after registry precision loads',
     () async {
       final api = CatalogApi()..scale = '1000000';
-      final state = AppState(apiClient: api)..session = session;
+      final state = AppState(initialSession: session, apiClient: api);
       addTearDown(state.dispose);
       state.handleRealtimeMessage({'op': 'authenticated', 'userId': 1});
-      state.handleRealtimeMessage({
-        'op': 'snapshot',
-        'userId': 1,
-        'productLine': 'LINEAR_PERPETUAL',
-        'data': {
-          'status': 'READY',
-          'snapshotVersion': '0000000000000000001:0000000000',
-          'account': {
-            'balances': [
-              {'asset': 'USDT', 'availableUnits': 1234567, 'lockedUnits': 1},
-            ],
-            'positions': [],
+      state.handleRealtimeMessage(
+        completeCoreSnapshot({
+          'op': 'snapshot',
+          'userId': 1,
+          'productLine': 'LINEAR_PERPETUAL',
+          'data': {
+            'status': 'READY',
+            'snapshotVersion': '0000000000000000001:0000000000',
+            'account': {
+              'balances': [
+                {'asset': 'USDT', 'availableUnits': 1234567, 'lockedUnits': 1},
+              ],
+              'positions': [],
+            },
+            'openOrders': [],
+            'triggerOrders': [],
+            'positionRisks': [],
           },
-          'openOrders': [],
-          'triggerOrders': [],
-          'positionRisks': [],
-        },
-      });
+        }),
+      );
       expect(state.productBalancesUsdt(product: ProductMode.linear), isNull);
       await state.refreshBalanceScales();
       expect(

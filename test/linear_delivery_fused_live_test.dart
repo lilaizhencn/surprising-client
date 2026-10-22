@@ -133,14 +133,13 @@ void main() {
               ..setSession(session)
               ..instrumentCatalog = [instrument];
             return AppState(
-                config: config,
-                apiClient: api,
-                settingsStore: settings,
-                sessionStore: _Sessions(),
-                seedInstruments: [instrument],
-              )
-              ..mode = mode
-              ..session = session;
+              initialSession: session,
+              config: config,
+              apiClient: api,
+              settingsStore: settings,
+              sessionStore: _Sessions(),
+              seedInstruments: [instrument],
+            )..mode = mode;
           }
 
           try {

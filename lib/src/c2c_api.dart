@@ -147,12 +147,13 @@ extension C2cApi on ApiClient {
 
   Future<T> _c2cMedia<T>(
     int owner,
-    Future<T> Function(String token) operation,
-  ) async {
+    Future<T> Function(String token, _HttpRequestScope scope) operation, {
+    Duration? timeout,
+  }) => _withRequest((scope) async {
     _requireC2cOwner(owner);
     final originalToken = _accessToken!;
     try {
-      final value = await operation(originalToken);
+      final value = await operation(originalToken, scope);
       _requireC2cOwner(owner);
       return value;
     } on ApiException catch (error) {
@@ -164,11 +165,12 @@ extension C2cApi on ApiClient {
       }
       await _refreshAccessToken();
       _requireC2cOwner(owner);
-      final value = await operation(_accessToken!);
+      scope.checkActive();
+      final value = await operation(_accessToken!, scope);
       _requireC2cOwner(owner);
       return value;
     }
-  }
+  }, timeout: timeout);
 
   Future<C2cAttachment> c2cUpload(
     int owner,
@@ -183,16 +185,15 @@ extension C2cApi on ApiClient {
         !['image/jpeg', 'image/png', 'application/pdf'].contains(contentType)) {
       throw const FormatException('请选择 10 MB 以内的 JPG、PNG 或 PDF');
     }
-    return _c2cMedia(owner, (token) async {
-      final request = await _httpClient
-          .postUrl(
-            Uri.parse(config.gatewayBaseUrl).replace(
-              path: '/api/v1/c2c/attachments/${Uri.encodeComponent(id)}',
-            ),
-          )
-          .timeout(const Duration(seconds: 6));
+    return _c2cMedia(owner, (token, scope) async {
+      final request = await scope.open(
+        _httpClient.postUrl(
+          Uri.parse(
+            config.gatewayBaseUrl,
+          ).replace(path: '/api/v1/c2c/attachments/${Uri.encodeComponent(id)}'),
+        ),
+      );
       if (_sessionUserId != owner || _accessToken != token) {
-        request.abort();
         throw ApiException(401, '登录账户已变化，未上传文件');
       }
       final boundary = 'c2c-${DateTime.now().microsecondsSinceEpoch}';
@@ -216,52 +217,47 @@ extension C2cApi on ApiClient {
       );
       request.add(bytes);
       request.write('\r\n--$boundary--\r\n');
-      final response = await request.close().timeout(
-        const Duration(seconds: 90),
+      final response = await request.close();
+      final raw = utf8.decode(
+        await scope.read(response, maxBytes: maxResponseBytes),
       );
-      final raw = await utf8
-          .decodeStream(response)
-          .timeout(const Duration(seconds: 20));
+      scope.checkActive();
       if (response.statusCode != 200) {
         throw ApiException(response.statusCode, raw);
       }
       final attachment = C2cAttachment.fromJson(asMap(jsonDecode(raw)));
+      scope.checkActive();
       if (attachment.id != id || attachment.status != 'READY') {
         throw const FormatException('上传结果待确认，请查询原请求');
       }
       return attachment;
-    });
+    }, timeout: uploadTimeout);
   }
 
   Future<Uint8List> c2cDownload(int owner, String id) => _c2cMedia(owner, (
     token,
+    scope,
   ) async {
-    final request = await _httpClient
-        .getUrl(
-          Uri.parse(config.gatewayBaseUrl).replace(
-            path: '/api/v1/c2c/attachments/${Uri.encodeComponent(id)}/content',
-          ),
-        )
-        .timeout(const Duration(seconds: 6));
+    final request = await scope.open(
+      _httpClient.getUrl(
+        Uri.parse(config.gatewayBaseUrl).replace(
+          path: '/api/v1/c2c/attachments/${Uri.encodeComponent(id)}/content',
+        ),
+      ),
+    );
     if (_sessionUserId != owner || _accessToken != token) {
-      request.abort();
       throw ApiException(401, '登录账户已变化');
     }
     request.headers.set('Authorization', 'Bearer $token');
-    final response = await request.close().timeout(const Duration(seconds: 20));
-    if (response.statusCode != 200) {
-      throw ApiException(
-        response.statusCode,
-        await utf8.decodeStream(response),
-      );
-    }
-    final bytes = BytesBuilder();
-    await for (final chunk in response.timeout(const Duration(seconds: 20))) {
-      if (bytes.length + chunk.length > 10485760) {
-        throw const FormatException('附件超过大小限制');
-      }
-      bytes.add(chunk);
-    }
-    return bytes.takeBytes();
+    final response = await request.close();
+    final success = response.statusCode == 200;
+    final bytes = await scope.read(
+      response,
+      maxBytes: success
+          ? math.min(10485760, maxDownloadBytes)
+          : maxResponseBytes,
+    );
+    if (!success) throw ApiException(response.statusCode, utf8.decode(bytes));
+    return bytes;
   });
 }

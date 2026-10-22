@@ -41,13 +41,12 @@ class SecureClientSettingsStore implements ClientSettingsStore {
   Future<Map<String, String>> read() async {
     final raw = await _storage.read(key: _key);
     if (raw == null || raw.isEmpty) return const {};
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return const {};
-      return decoded.map((key, value) => MapEntry('$key', '$value'));
-    } on FormatException {
-      return const {};
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic> ||
+        decoded.values.any((value) => value is! String)) {
+      throw const FormatException('客户端安全设置结构无效');
     }
+    return decoded.cast<String, String>();
   }
 
   @override

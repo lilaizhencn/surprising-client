@@ -16,22 +16,20 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final api = _LedgerApi();
-        final state =
-            AppState(
-                apiClient: api,
-                config: const AppConfig(websocketUrl: ''),
-              )
-              ..mode = ProductMode.linearDelivery
-              ..session = const AuthSession(
-                user: AuthUser(
-                  userId: 1,
-                  username: 'delivery',
-                  email: '',
-                  status: 'ACTIVE',
-                ),
-                accessToken: 'test',
-                refreshToken: 'test',
-              );
+        final state = AppState(
+          apiClient: api,
+          config: const AppConfig(websocketUrl: ''),
+          initialSession: const AuthSession(
+            user: AuthUser(
+              userId: 1,
+              username: 'delivery',
+              email: '',
+              status: 'ACTIVE',
+            ),
+            accessToken: 'test',
+            refreshToken: 'test',
+          ),
+        )..mode = ProductMode.linearDelivery;
         addTearDown(state.dispose);
         await tester.pumpWidget(
           MaterialApp(

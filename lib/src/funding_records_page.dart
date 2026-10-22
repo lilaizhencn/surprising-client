@@ -311,6 +311,8 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
         row['tradeTime'] ??
         row['updatedAt'] ??
         '—';
+    final quantitySteps = parseInt64(row['quantitySteps']);
+    final priceTicks = parseInt64(row['priceTicks']);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -337,15 +339,15 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
               Text(contract?.symbol ?? '合约 ${row['instrumentId']}'),
             if (row['quantitySteps'] != null)
               Text(
-                contract == null
+                contract == null || quantitySteps == null
                     ? '数量：—'
                     : contract.isSpot
-                    ? '数量：${formatAccountUnits(BigInt.from(asInt(row['quantitySteps'])) * BigInt.from(contract.quantityStepUnits), scales[contract.baseAsset])} ${contract.baseAsset}'
-                    : '数量：${row['quantitySteps']} 张',
+                    ? '数量：${formatAccountUnits(BigInt.from(quantitySteps) * BigInt.from(contract.quantityStepUnits), scales[contract.baseAsset])} ${contract.baseAsset}'
+                    : '数量：$quantitySteps 张',
               ),
             if (row['priceTicks'] != null)
               Text(
-                '价格：${contract == null ? '—' : formatAccountUnits(BigInt.from(asInt(row['priceTicks'])) * BigInt.from(contract.priceTickUnits), scales[contract.quoteAsset])}',
+                '价格：${contract == null || priceTicks == null ? '—' : formatAccountUnits(BigInt.from(priceTicks) * BigInt.from(contract.priceTickUnits), scales[contract.quoteAsset])}',
               ),
             for (final pair in {
               'availableDeltaUnits': '可用余额变动',
@@ -374,12 +376,10 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
 
   Widget _orderRecord(Map<String, dynamic> row, Instrument? contract) {
     String quantity(String field) {
-      if (contract == null) return '—';
-      if (!contract.isSpot) return '${row[field]} 张';
-      final steps = BigInt.tryParse('${row[field]}');
-      return steps == null
-          ? '—'
-          : '${formatAccountUnits(steps * BigInt.from(contract.quantityStepUnits), scales[contract.baseAsset])} ${contract.baseAsset}';
+      final steps = parseInt64(row[field]);
+      if (contract == null || steps == null) return '—';
+      if (!contract.isSpot) return '$steps 张';
+      return '${formatAccountUnits(BigInt.from(steps) * BigInt.from(contract.quantityStepUnits), scales[contract.baseAsset])} ${contract.baseAsset}';
     }
 
     String price(Object? ticks) => contract == null

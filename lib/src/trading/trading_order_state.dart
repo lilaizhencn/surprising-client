@@ -1187,7 +1187,8 @@ class TradingOrderState extends ChangeNotifier {
           order.priceTicks != draft.priceTicks ||
           order.quantitySteps != draft.quantitySteps ||
           order.childQuantitySteps != draft.childQuantitySteps ||
-          order.intervalSeconds != draft.intervalSeconds ||
+          order.intervalSeconds !=
+              (draft.algoType == 'TWAP' ? draft.intervalSeconds : 0) ||
           order.durationSeconds != draft.durationSeconds ||
           order.marginMode != draft.marginMode ||
           order.positionSide != draft.positionSide ||
@@ -1241,13 +1242,16 @@ class TradingOrderState extends ChangeNotifier {
         draft.quantitySteps <= 0 ||
         draft.childQuantitySteps <= 0 ||
         draft.childQuantitySteps > draft.quantitySteps ||
-        draft.intervalSeconds < 1 ||
-        draft.intervalSeconds > 86400 ||
         draft.durationSeconds < 5 ||
         draft.durationSeconds > 86400 ||
-        draft.durationSeconds < draft.intervalSeconds ||
         (draft.algoType == 'ICEBERG' && draft.priceTicks == 0) ||
         (draft.algoType == 'TWAP' && draft.postOnly)) {
+      return false;
+    }
+    if (draft.algoType != 'TWAP') return true;
+    if (draft.intervalSeconds < 1 ||
+        draft.intervalSeconds > 86400 ||
+        draft.durationSeconds < draft.intervalSeconds) {
       return false;
     }
     final slices =
@@ -1256,7 +1260,7 @@ class TradingOrderState extends ChangeNotifier {
     final allowed =
         (draft.durationSeconds + draft.intervalSeconds - 1) ~/
         draft.intervalSeconds;
-    return draft.algoType != 'TWAP' || slices <= allowed;
+    return slices <= allowed;
   }
 
   Future<void> cancelAlgoOrder(AlgoOrderModel order) async {

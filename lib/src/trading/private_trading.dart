@@ -746,7 +746,8 @@ class AlgoOrderRow extends StatelessWidget {
             style: const TextStyle(fontSize: 12),
           ),
           Text(
-            '间隔 ${order.intervalSeconds} 秒 · 时长 ${order.durationSeconds} 秒 · 已提交 ${order.childOrderCount} 片',
+            '${order.algoType == 'TWAP' ? '间隔 ${order.intervalSeconds} 秒 · ' : ''}'
+            '时长 ${order.durationSeconds} 秒 · 已提交 ${order.childOrderCount} 片',
             style: const TextStyle(fontSize: 12),
           ),
           if (order.rejectReason != null && order.rejectReason!.isNotEmpty)

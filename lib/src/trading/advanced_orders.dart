@@ -77,7 +77,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
     if (quantity <= 0 || childQuantity <= 0 || childQuantity > quantity) {
       return false;
     }
-    if (interval <= 0 || duration <= 0) return false;
+    if (duration <= 0 || algoType == 'TWAP' && interval <= 0) return false;
     return algoType == 'TWAP' || priceTicks > 0;
   }
 
@@ -93,7 +93,9 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
         priceTicks: int.tryParse(priceTicksController.text) ?? 0,
         quantitySteps: int.tryParse(quantityController.text) ?? 0,
         childQuantitySteps: int.tryParse(childQuantityController.text) ?? 0,
-        intervalSeconds: int.tryParse(intervalController.text) ?? 0,
+        intervalSeconds: algoType == 'TWAP'
+            ? int.tryParse(intervalController.text) ?? 0
+            : 0,
         durationSeconds: int.tryParse(durationController.text) ?? 0,
         marginMode: widget.marginMode,
         positionSide: effectivePositionSide,
@@ -176,13 +178,15 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: AppTextField(
-                  controller: intervalController,
-                  label: '间隔秒',
+              if (algoType == 'TWAP') ...[
+                Expanded(
+                  child: AppTextField(
+                    controller: intervalController,
+                    label: '间隔秒',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
+                const SizedBox(width: 6),
+              ],
               Expanded(
                 child: AppTextField(
                   controller: durationController,

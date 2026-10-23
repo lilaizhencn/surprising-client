@@ -1418,7 +1418,10 @@ class AlgoOrderModel {
     final type = json['algoType'];
     final status = json['status'];
     final price = integer('priceTicks');
-    final interval = integer('intervalSeconds', minimum: 1);
+    final interval = integer(
+      'intervalSeconds',
+      minimum: type == 'ICEBERG' ? 0 : 1,
+    );
     final duration = integer('durationSeconds', minimum: 1);
     if (!RegExp(r'^[1-9]\d*$').hasMatch(instrumentId) ||
         asString(json['clientAlgoOrderId']).trim().isEmpty ||
@@ -1442,8 +1445,8 @@ class AlgoOrderModel {
         json['postOnly'] is! bool ||
         child > quantity ||
         BigInt.from(executed) + BigInt.from(active) > BigInt.from(quantity) ||
-        (type == 'ICEBERG' && price == 0) ||
-        duration < interval ||
+        (type == 'ICEBERG' && (price == 0 || interval != 0)) ||
+        (type == 'TWAP' && duration < interval) ||
         (product.isSpot &&
             (json['positionSide'] != 'NET' || json['reduceOnly'] != false))) {
       throw const FormatException('算法单身份或进度无效');

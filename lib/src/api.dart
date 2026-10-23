@@ -1598,12 +1598,7 @@ class ApiClient {
         'marginMode': marginMode,
         'positionSide': positionSide,
         'reduceOnly': reduceOnly,
-        'postOnly': algoType == 'ICEBERG' && postOnly,
-        'timeInForce': algoType == 'TWAP'
-            ? 'IOC'
-            : postOnly
-            ? 'GTX'
-            : 'GTC',
+        if (algoType == 'ICEBERG') 'postOnly': postOnly,
       },
       userId: userId,
       productLine: productLine,

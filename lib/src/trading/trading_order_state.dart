@@ -1193,7 +1193,7 @@ class TradingOrderState extends ChangeNotifier {
           order.marginMode != draft.marginMode ||
           order.positionSide != draft.positionSide ||
           order.reduceOnly != draft.reduceOnly ||
-          order.postOnly != draft.postOnly ||
+          order.postOnly != (draft.algoType == 'ICEBERG' && draft.postOnly) ||
           order.timeInForce !=
               (draft.algoType == 'TWAP'
                   ? 'IOC'
@@ -1244,8 +1244,7 @@ class TradingOrderState extends ChangeNotifier {
         draft.childQuantitySteps > draft.quantitySteps ||
         draft.durationSeconds < 5 ||
         draft.durationSeconds > 86400 ||
-        (draft.algoType == 'ICEBERG' && draft.priceTicks == 0) ||
-        (draft.algoType == 'TWAP' && draft.postOnly)) {
+        (draft.algoType == 'ICEBERG' && draft.priceTicks == 0)) {
       return false;
     }
     if (draft.algoType != 'TWAP') return true;

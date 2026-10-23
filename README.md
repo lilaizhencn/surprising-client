@@ -9,11 +9,11 @@ Flutter mobile client for Surprising Exchange.
 - Scrollable product tabs for spot, linear/inverse perpetuals, linear/inverse delivery and options; market list, candlestick, L2 order book and recent trades. Unconfigured products retain their page and show an explicit empty state.
 - Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed. TP/SL forms support mark/last/index sources and market/limit execution; versioned private snapshots update open triggers and recover state after private WebSocket reconnect.
 
-## 算法单间隔（2026-10-24）
+## 算法单参数（2026-10-24）
 
-仅TWAP显示、提交并校验间隔；ICEBERG不发送该字段，也不显示无意义的间隔输入和结果。ICEBERG回包间隔为0，明确表示不适用；仍严格核对父单身份、数量、时长及原请求，待确认和恢复身份流程保留。
+仅TWAP显示、提交并校验间隔，ICEBERG间隔0表示不适用。TWAP不再发送固定TIF/PostOnly；ICEBERG只提交用户的PostOnly选择，由后端确定GTC/GTX。回包继续严格核对父单身份、数量、时长及实际执行方式，待确认和恢复身份流程保留。
 
-本轮只执行`flutter build bundle --debug --no-pub`并通过（20.466秒）。未运行测试、analyze、设备/模拟器或真实交易；bundle编译不代表iOS/Android原生打包、交互或布局已通过。既有ICEBERG契约样本同步为0并保留异常响应检查。
+本轮只执行`flutter build bundle --debug --no-pub`并通过（8.988秒）。未运行测试、analyze、设备/模拟器或真实交易；bundle编译不代表iOS/Android原生打包、交互或布局已通过。
 
 ## 代码职责
 

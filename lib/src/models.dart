@@ -1576,33 +1576,27 @@ class CancelAllAfterResult {
     required this.countdownMs,
     required this.active,
     required this.updatedAt,
-    required this.canceledOrders,
-    required this.canceledTriggerOrders,
-    this.symbol,
+    this.instrumentId,
     this.triggerAt,
   });
 
   final int userId;
-  final String? symbol;
+  final String? instrumentId;
   final int countdownMs;
   final bool active;
   final DateTime? triggerAt;
   final DateTime updatedAt;
-  final int canceledOrders;
-  final int canceledTriggerOrders;
 
   factory CancelAllAfterResult.fromJson(Map<String, dynamic> json) {
     return CancelAllAfterResult(
       userId: requireInt64(json['userId'], 'userId'),
-      symbol: nullableString(json['symbol']),
+      instrumentId: nullableString(json['instrumentId']),
       countdownMs: asInt(json['countdownMs']),
       active: asBool(json['active']),
       triggerAt: DateTime.tryParse(asString(json['triggerAt'])),
       updatedAt:
           DateTime.tryParse(asString(json['updatedAt'])) ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      canceledOrders: asInt(json['canceledOrders']),
-      canceledTriggerOrders: asInt(json['canceledTriggerOrders']),
     );
   }
 }

@@ -15,6 +15,11 @@ Flutter mobile client for Surprising Exchange.
 
 本轮只执行`flutter build bundle --debug --no-pub`并通过（8.988秒）。未运行测试、analyze、设备/模拟器或真实交易；bundle编译不代表iOS/Android原生打包、交互或布局已通过。
 
+## 倒计时撤单模型（2026-10-24）
+
+模型删除`canceledOrders`/`canceledTriggerOrders`及默认零值解析，保留当前响应的六项事实；原`symbol`字段改为实际`instrumentId`键，不保留旧名称或读取回退。请求、产品归属和页面布局不变。
+最终执行`flutter build bundle --debug --no-pub`通过（8.946秒），未运行analyze、测试、设备交互或iOS/Android原生打包。
+
 ## 代码职责
 
 | 入口 / owner | 职责 |

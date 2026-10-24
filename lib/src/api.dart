@@ -2128,19 +2128,19 @@ class ApiClient {
     int userId, {
     String? productLine,
   }) async {
-    try {
-      final json = await get(
-        '/api/v1/gateway/liquidation/orders',
-        query: {'userId': '$userId', 'limit': '30'},
-        userId: userId,
-        productLine: productLine,
-      );
-      return asList(
-        json['orders'],
-      ).map((item) => LiquidationOrder.fromJson(asMap(item))).toList();
-    } catch (_) {
-      return const [];
+    final json = await get(
+      '/api/v1/gateway/liquidation/orders',
+      query: {'userId': '$userId', 'limit': '30'},
+      userId: userId,
+      productLine: productLine,
+    );
+    final orders = json['orders'];
+    if (orders is! List) {
+      throw const FormatException('强平历史响应缺少 orders 列表');
     }
+    return orders
+        .map((item) => LiquidationOrder.fromJson(asMap(item)))
+        .toList();
   }
 
   Map<String, dynamic> _orderPayload({

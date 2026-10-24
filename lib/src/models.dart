@@ -1956,25 +1956,31 @@ class PositionRisk {
 class LiquidationOrder {
   const LiquidationOrder({
     required this.orderId,
-    required this.symbol,
+    required this.instrumentId,
     required this.status,
     required this.quantitySteps,
   });
 
   final int orderId;
-  final String symbol;
+  final String instrumentId;
   final String status;
   final int quantitySteps;
 
   factory LiquidationOrder.fromJson(Map<String, dynamic> json) {
+    final orderId = requireInt64(
+      json['liquidationOrderId'],
+      'liquidationOrderId',
+    );
+    final instrumentId = requireInt64(json['instrumentId'], 'instrumentId');
+    final quantity = requireInt64(json['quantitySteps'], 'quantitySteps');
+    if (orderId <= 0 || instrumentId <= 0 || quantity <= 0) {
+      throw const FormatException('强平历史的身份和数量必须为正数');
+    }
     return LiquidationOrder(
-      orderId: requireInt64(
-        json['liquidationOrderId'] ?? json['orderId'],
-        'orderId',
-      ),
-      symbol: asString(json['symbol']),
+      orderId: orderId,
+      instrumentId: instrumentId.toString(),
       status: asString(json['status']),
-      quantitySteps: requireInt64(json['quantitySteps'], 'quantitySteps'),
+      quantitySteps: quantity,
     );
   }
 }

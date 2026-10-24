@@ -1284,6 +1284,7 @@ class AppState extends ChangeNotifier {
     final orderTermsRefresh = refreshOrderTerms();
     final algoRefresh = refreshAlgoOrders();
     final riskRefresh = refreshRiskDetails();
+    String? liquidationError;
     try {
       final liquidations =
           await (selectedMode.isDerivative &&
@@ -1297,7 +1298,7 @@ class AppState extends ChangeNotifier {
       lastError = null;
     } catch (error) {
       if (current()) {
-        lastError = '加载账户失败：${clientErrorMessage(error)}';
+        liquidationError = '加载强平记录失败：${clientErrorMessage(error)}';
       }
     } finally {
       await walletRefresh;
@@ -1307,6 +1308,7 @@ class AppState extends ChangeNotifier {
       await algoRefresh;
       await riskRefresh;
       if (current()) {
+        if (liquidationError != null) lastError = liquidationError;
         loadingPrivate = false;
         notifyListeners();
       }

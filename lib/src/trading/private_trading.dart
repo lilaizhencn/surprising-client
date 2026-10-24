@@ -429,14 +429,23 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
         ],
         if (tab == 0 && state.liquidationOrders.isNotEmpty) ...[
           const SectionTitle(title: '爆仓记录'),
-          ...state.liquidationOrders.map(
-            (order) => Panel(
+          ...state.liquidationOrders.map((order) {
+            final instrument = state.instruments
+                .where(
+                  (item) =>
+                      item.mode == state.mode &&
+                      item.instrumentId == order.instrumentId,
+                )
+                .firstOrNull;
+            return Panel(
               child: InfoLine(
-                label: '#${order.orderId} ${order.symbol}',
-                value: '${order.status} · ${order.quantitySteps}',
+                label:
+                    '#${order.orderId} ${instrument?.symbol ?? '#${order.instrumentId}'}',
+                value:
+                    '${order.status} · ${instrument == null ? '合约资料未就绪' : tradingQuantity(instrument, order.quantitySteps)}',
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ],
     );

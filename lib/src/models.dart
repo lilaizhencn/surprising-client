@@ -1573,7 +1573,6 @@ class AlgoOrderDraft {
 class CancelAllAfterResult {
   const CancelAllAfterResult({
     required this.userId,
-    required this.countdownMs,
     required this.active,
     required this.updatedAt,
     this.instrumentId,
@@ -1582,7 +1581,6 @@ class CancelAllAfterResult {
 
   final int userId;
   final String? instrumentId;
-  final int countdownMs;
   final bool active;
   final DateTime? triggerAt;
   final DateTime updatedAt;
@@ -1591,7 +1589,6 @@ class CancelAllAfterResult {
     return CancelAllAfterResult(
       userId: requireInt64(json['userId'], 'userId'),
       instrumentId: nullableString(json['instrumentId']),
-      countdownMs: asInt(json['countdownMs']),
       active: asBool(json['active']),
       triggerAt: DateTime.tryParse(asString(json['triggerAt'])),
       updatedAt:

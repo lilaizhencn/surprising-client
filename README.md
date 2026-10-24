@@ -17,8 +17,8 @@ Flutter mobile client for Surprising Exchange.
 
 ## 倒计时撤单模型（2026-10-24）
 
-模型删除`canceledOrders`/`canceledTriggerOrders`及默认零值解析，保留当前响应的六项事实；原`symbol`字段改为实际`instrumentId`键，不保留旧名称或读取回退。请求、产品归属和页面布局不变。
-最终执行`flutter build bundle --debug --no-pub`通过（8.946秒），未运行analyze、测试、设备交互或iOS/Android原生打包。
+模型删除`canceledOrders`/`canceledTriggerOrders`及默认零值解析，保留当前响应的五项事实；原时长仅作为SET输入，不再解析回显；原`symbol`字段改为实际`instrumentId`键，不保留旧名称或读取回退。请求、产品归属和页面布局不变。
+最终执行`flutter build bundle --debug --no-pub`通过（9.352秒），未运行analyze、测试、设备交互或iOS/Android原生打包。
 
 ## 代码职责
 

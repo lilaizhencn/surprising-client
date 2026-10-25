@@ -206,6 +206,26 @@ void main() {
             }
 
             final userQuery = {'userId': '${session.user.userId}'};
+            Future<Map<String, dynamic>> readTrigger(String id) async {
+              final deadline = DateTime.now().add(const Duration(seconds: 30));
+              while (true) {
+                try {
+                  return await direct.get(
+                    '/api/v1/gateway/trading-trigger/$id',
+                    userId: session.user.userId,
+                    productLine: 'OPTION',
+                    query: userQuery,
+                  );
+                } on ApiException catch (error) {
+                  if ((error.statusCode != 404 && error.statusCode != 503) ||
+                      !DateTime.now().isBefore(deadline)) {
+                    rethrow;
+                  }
+                  await Future<void>.delayed(const Duration(milliseconds: 100));
+                }
+              }
+            }
+
             await waitReceipt('/api/v1/gateway/trading-trigger/submission', {
               ...userQuery,
               'clientTriggerOrderId': original,
@@ -222,12 +242,7 @@ void main() {
             expect(Process.killPid(corePid, ProcessSignal.sigcont), true);
             corePaused = false;
             final order = TriggerOrderModel.fromJson(
-              await direct.get(
-                '/api/v1/gateway/trading-trigger/${ids.single}',
-                userId: session.user.userId,
-                productLine: 'OPTION',
-                query: userQuery,
-              ),
+              await readTrigger(ids.single),
             );
             expect(order.status, 'PENDING');
             await state.cancelTriggerOrder(order);
@@ -259,35 +274,19 @@ void main() {
             expect(await state.placeTriggerOrders([draft]), 1);
             expect(state.tradingCommandPending, false);
             final known = TriggerOrderModel.fromJson(
-              await direct.get(
-                '/api/v1/gateway/trading-trigger/${ids.last}',
-                userId: session.user.userId,
-                productLine: 'OPTION',
-                query: userQuery,
-              ),
+              await readTrigger(ids.last),
             );
             await state.cancelTriggerOrder(known);
             expect(state.tradingCommandPending, false);
             expect(posts.length, 4);
             for (final id in ids) {
-              final row = await direct.get(
-                '/api/v1/gateway/trading-trigger/$id',
-                userId: session.user.userId,
-                productLine: 'OPTION',
-                query: userQuery,
-              );
+              final row = await readTrigger(id);
               // Current read view may trail the final acknowledged cancellation briefly.
               if (row['status'] != 'CANCELED') {
                 final deadline = DateTime.now().add(
                   const Duration(seconds: 15),
                 );
-                while ((await direct.get(
-                      '/api/v1/gateway/trading-trigger/$id',
-                      userId: session.user.userId,
-                      productLine: 'OPTION',
-                      query: userQuery,
-                    ))['status'] !=
-                    'CANCELED') {
+                while ((await readTrigger(id))['status'] != 'CANCELED') {
                   expect(DateTime.now().isBefore(deadline), true);
                   await Future<void>.delayed(const Duration(milliseconds: 100));
                 }

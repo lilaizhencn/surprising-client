@@ -90,6 +90,7 @@ class AppState extends ChangeNotifier {
   SessionStore get sessionStore => auth.sessionStore;
   TelegramLoginStore get telegramLoginStore => auth.telegramLoginStore;
   late final ClientSettingsStore settingsStore;
+  String? pendingInvitationCode;
   final bool offline;
   final List<Instrument>? seedInstruments;
 
@@ -1324,7 +1325,18 @@ class AppState extends ChangeNotifier {
     String identifier,
     String password, {
     bool phone = false,
-  }) => auth.register(identifier, password, phone: phone);
+    String? inviteCode,
+  }) async {
+    final session = await auth.register(
+      identifier,
+      password,
+      phone: phone,
+      inviteCode: inviteCode ?? pendingInvitationCode,
+    );
+    if (session != null) pendingInvitationCode = null;
+    return session;
+  }
+
   Future<bool> verifyLogin(Map<String, String> codes) =>
       auth.verifyLogin(codes);
   Future<bool> verifyPendingEmail(String code) => auth.verifyPendingEmail(code);

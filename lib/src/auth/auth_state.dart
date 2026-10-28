@@ -288,11 +288,13 @@ class AuthState extends ChangeNotifier {
     String identifier,
     String password, {
     bool phone = false,
+    String? inviteCode,
   }) => _authenticate(
     () => api.register(
       password: password,
       email: identifier.trim(),
       phone: phone,
+      inviteCode: inviteCode,
     ),
     failure: '注册失败',
     success: (session) =>

@@ -256,6 +256,10 @@ const _productionWebsocketUrl = 'wss://ex-api.tokdou.com/ws/v1';
 
 class AppConfig {
   const AppConfig({
+    this.publicWebBaseUrl = const String.fromEnvironment(
+      'SURPRISING_WEB_URL',
+      defaultValue: 'https://ex.tokdou.com',
+    ),
     this.gatewayBaseUrl = const String.fromEnvironment(
       'SURPRISING_GATEWAY_URL',
       defaultValue: _productionGatewayBaseUrl,
@@ -271,6 +275,7 @@ class AppConfig {
   });
 
   final String gatewayBaseUrl;
+  final String publicWebBaseUrl;
   final String websocketUrl;
   final bool localWebSocketUserFallback;
 }
@@ -2681,12 +2686,14 @@ DateTime? orderTimestamp(Object? raw) {
   return DateTime.tryParse('$raw');
 }
 
-String scaledAmount(BigInt? units, int? scale) {
-  if (units == null || scale == null || scale <= 0) return '--';
-  final divisor = BigInt.from(scale);
+String scaledAmount(BigInt? units, Object? scale) {
+  final text = scale?.toString();
+  if (units == null || text == null || !RegExp(r'^10*$').hasMatch(text)) {
+    return '--';
+  }
+  final divisor = BigInt.parse(text);
   final fraction = units.abs().remainder(divisor);
-  final digits = scale.toString().length - 1;
-  if (BigInt.from(10).pow(digits) != divisor) return '--';
+  final digits = text.length - 1;
   final tail = fraction
       .toString()
       .padLeft(digits, '0')

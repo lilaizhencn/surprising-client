@@ -3,6 +3,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'announcements/announcement_center.dart';
 import 'app_scope.dart';
+import 'affiliate/affiliate_page.dart';
 import 'app_state.dart';
 import 'auth/auth_sheet.dart';
 import 'biometric_lock.dart';
@@ -57,6 +58,7 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
   late final AppState state = widget.state ?? AppState();
   final _navigatorKey = GlobalKey<NavigatorState>();
   StreamSubscription<Uri>? _authLinks;
+  String? _affiliateInviteOpen;
 
   @override
   void initState() {
@@ -68,10 +70,39 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
         onError: (Object _) {},
       );
       unawaited(state.bootstrap());
+      unawaited(
+        AppLinks()
+            .getInitialLink()
+            .then((link) async {
+              if (link != null) await _returnFromTelegram(link);
+            })
+            .catchError((Object _) {}),
+      );
     }
   }
 
   Future<void> _returnFromTelegram(Uri link) async {
+    if (link.scheme == 'surprising' && link.host == 'affiliate') {
+      final code = link.queryParameters['invite'];
+      if (code == null || !RegExp(r'^[A-Za-z0-9]{32}$').hasMatch(code)) return;
+      if (_affiliateInviteOpen == code) return;
+      _affiliateInviteOpen = code;
+      state.pendingInvitationCode = code.toUpperCase();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final navigation = _navigatorKey.currentState?.push(
+          MaterialPageRoute<void>(
+            builder: (_) => AffiliatePage(invitation: code),
+          ),
+        );
+        if (navigation == null) {
+          _affiliateInviteOpen = null;
+        } else {
+          unawaited(navigation.whenComplete(() => _affiliateInviteOpen = null));
+        }
+      });
+      return;
+    }
     if (!TelegramLoginFlow.isReturnLink(link)) return;
     try {
       final resumed = await state.resumeTelegramLogin(link);

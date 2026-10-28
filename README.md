@@ -1,5 +1,14 @@
 # surprising-client
 
+## 邀请与 KOL 合作（2026-10-28）
+
+账户页新增“邀请与合作”，支持推广链接、注册邀请码、已有用户接受邀请、直属合作邀请/比例设置、团队下钻、分币种贡献和到账记录。顶层默认 20%，合作下级继承本分支管理能力，平台停用优先。
+
+分享域名通过 `SURPRISING_WEB_URL` 配置，默认 `https://ex.tokdou.com`；Web 页面可打开 `surprising://affiliate?invite=...`。原生接收后保留邀请码，并在注册时自动填写。金额使用整数和权威 scale，不经过浮点；登录切换、销毁与过期响应不能覆盖当前资料。
+
+完整业务和设备验收范围见 [设计](../surprising-ex/docs/affiliate-design.md) 与 [验收](../surprising-ex/docs/validation/affiliate-20261028/README.md)。
+
+
 Flutter mobile client for Surprising Exchange.
 
 ## Features

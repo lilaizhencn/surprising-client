@@ -17,6 +17,7 @@ class _AuthSheetState extends State<AuthSheet> {
   final identifier = TextEditingController();
   final password = TextEditingController();
   final code = TextEditingController();
+  final invitation = TextEditingController();
   final codes = <String, String>{};
   String mode = 'login';
   bool phone = false;
@@ -33,6 +34,7 @@ class _AuthSheetState extends State<AuthSheet> {
     super.didChangeDependencies();
     if (checkedTelegram) return;
     checkedTelegram = true;
+    invitation.text = AppScope.of(context).pendingInvitationCode ?? "";
     final api = AppScope.of(context).api;
     unawaited(
       api
@@ -83,6 +85,7 @@ class _AuthSheetState extends State<AuthSheet> {
     identifier.dispose();
     password.dispose();
     code.dispose();
+    invitation.dispose();
     super.dispose();
   }
 
@@ -144,7 +147,12 @@ class _AuthSheetState extends State<AuthSheet> {
       close = await state.verifyPendingEmail(code.text);
     } else {
       if (mode == 'register') {
-        await state.register(identifier.text, password.text, phone: phone);
+        await state.register(
+          identifier.text,
+          password.text,
+          phone: phone,
+          inviteCode: invitation.text,
+        );
       } else {
         await state.login(identifier.text, password.text);
       }
@@ -288,6 +296,20 @@ class _AuthSheetState extends State<AuthSheet> {
                     ),
                   ),
                   onSubmitted: (_) => submit(state),
+                ),
+              ],
+              if (mode == 'register') ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: invitation,
+                  enabled: !busy,
+                  maxLength: 64,
+                  decoration: const InputDecoration(
+                    labelText: '邀请码（选填）',
+                    border: OutlineInputBorder(),
+                    helperText: '接受邀请后自动参与合格手续费核算；合作邀请请先在邀请页核对比例。',
+                    helperMaxLines: 3,
+                  ),
                 ),
               ],
               if (['verify', 'reset'].contains(mode)) ...[

@@ -153,10 +153,13 @@ class ApiClient {
     required String password,
     required String email,
     bool phone = false,
+    String? inviteCode,
   }) async {
     final json = await post('/api/v1/auth/register', {
       'password': password,
       if (phone) 'phone': email else 'email': email,
+      if (inviteCode != null && inviteCode.trim().isNotEmpty)
+        'inviteCode': inviteCode.trim(),
     });
     return AuthSession.fromJson(json);
   }

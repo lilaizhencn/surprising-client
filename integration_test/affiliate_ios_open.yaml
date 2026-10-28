@@ -1,0 +1,5 @@
+appId: com.surprising.surprisingClient
+---
+- tapOn:
+    text: '打开'
+    optional: true

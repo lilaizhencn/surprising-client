@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
+import '../affiliate/affiliate_page.dart';
 import '../app_state.dart';
 import '../auth/auth_sheet.dart';
 import '../models.dart';
@@ -115,6 +116,24 @@ class ProfilePage extends StatelessWidget {
           ),
         ),
         if (state.isLoggedIn) ...[
+          const SizedBox(height: 12),
+          Panel(
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.group_add_outlined),
+                title: const Text('邀请与合作'),
+                subtitle: const Text('邀请好友、团队贡献与返佣结算'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AffiliatePage(),
+                  ),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           Panel(
             child: Material(

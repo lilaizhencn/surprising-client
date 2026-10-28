@@ -74,7 +74,8 @@ void main() {
       gate.complete();
       await loading;
       expect(state.liquidationOrders.single.orderId, 9007199254740993);
-      expect(state.lastError, contains('projection unavailable'));
+      expect(state.lastError, contains('服务暂时不可用'));
+      expect(state.lastError, isNot(contains('projection unavailable')));
       expect(state.loadingPrivate, isFalse);
     },
   );

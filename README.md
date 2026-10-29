@@ -426,3 +426,7 @@ Web 最近订单更新曾在直接切换已登录账户时保留前一账户缓�
 安全中心支持创建、编辑名称/权限/IP、撤销 Key；交易和提现权限要求 IP 白名单。编辑表单使用独立验证码，提交时防重复点击，明确拒绝可修正后重试，结果未知则关闭并刷新核对。一次性 Secret 保存前禁止再次创建，撤销后的 Key 不再显示可操作菜单。429 从 Retry-After 读取等待秒数；不会因此自动重复资金写操作。
 
 相关 Widget/HTTP 测试：`flutter test test/api_key_edit_dialog_test.dart test/http_lifecycle_test.dart`。真实设备编辑流程使用 `integration_test/api_key_live_test.dart`，连接后端 OpenPlatformBrowserQaTest 的隔离 PostgreSQL/Valkey 夹具；通过本机私有 dart-define 文件传 OPEN_PLATFORM_QA_TOKEN/OPEN_PLATFORM_QA_GATEWAY，不使用生产账号，验证码仅在夹具内模拟。完整证据与未测范围见后端 `docs/validation/open-platform-20261029/`。
+
+## 实时连接安全心跳
+
+客户端每 20 秒发送应用级 ping，以续 Gateway 的连接租约；协议 ping 仍负责传输层存活检查。关闭/断开/重连时释放旧计时器。访问令牌缩短后，沿用显式刷新协议恢复身份和私有订阅；登录/刷新等凭证请求不附带旧 Bearer，私有操作保留鉴权。限流不清除凭证。

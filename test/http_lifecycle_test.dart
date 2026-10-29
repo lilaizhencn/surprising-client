@@ -58,6 +58,39 @@ Future<void> _hold(
 }
 
 void main() {
+  test(
+    'credential requests omit stale bearer while private auth calls retain it',
+    () async {
+      final headers = <String, String?>{};
+      final api =
+          await _api((request) async {
+              headers[request.uri.path] = request.headers.value(
+                HttpHeaders.authorizationHeader,
+              );
+              await request.drain<void>();
+              request.response.write('{"ok":true}');
+              await request.response.close();
+            })
+            ..setAccessToken('expired-access');
+      for (final path in [
+        '/api/v1/auth/login',
+        '/api/v1/auth/refresh',
+        '/api/v1/auth/google/login',
+      ]) {
+        await api.post(path, {});
+        expect(headers[path], isNull, reason: path);
+      }
+      for (final path in [
+        '/api/v1/auth/me',
+        '/api/v1/auth/verify-email',
+        '/api/v1/security/mfa',
+      ]) {
+        await api.post(path, {});
+        expect(headers[path], 'Bearer expired-access', reason: path);
+      }
+    },
+  );
+
   test('429 exposes Retry-After and does not repeat a mutation', () async {
     var requests = 0;
     final api = await _api((request) async {

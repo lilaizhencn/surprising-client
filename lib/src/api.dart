@@ -2413,7 +2413,15 @@ class ApiClient {
     }
     request.headers.contentType = ContentType.json;
     request.headers.set('X-Device-Id', deviceId);
-    if (_accessToken != null) {
+    final credentialRequest =
+        path.startsWith('/api/v1/auth/') &&
+        !const {
+          '/api/v1/auth/me',
+          '/api/v1/auth/verify-email',
+          '/api/v1/auth/resend-email-verification',
+          '/api/v1/auth/browser/revoke-others',
+        }.contains(path);
+    if (_accessToken != null && !credentialRequest) {
       request.headers.set('Authorization', 'Bearer $_accessToken');
     }
     headers?.forEach(request.headers.set);
@@ -2724,6 +2732,7 @@ class RealtimeClient {
 
   final AppConfig config;
   WebSocket? _socket;
+  Timer? _applicationHeartbeat;
   StreamSubscription<dynamic>? _subscription;
   bool _closing = false;
   int? _closeCode;
@@ -2966,6 +2975,12 @@ class RealtimeClient {
     }
     socket.pingInterval = const Duration(seconds: 20);
     _socket = socket;
+    _applicationHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (generation == _connectionGeneration &&
+          socket.readyState == WebSocket.open) {
+        socket.add(jsonEncode({'op': 'ping'}));
+      }
+    });
     _installed.clear();
     _desired.clear();
     _authenticated = false;
@@ -3062,6 +3077,8 @@ class RealtimeClient {
       onDone: () {
         if (generation != _connectionGeneration) return;
         _closeCode = socket.closeCode;
+        _applicationHeartbeat?.cancel();
+        _applicationHeartbeat = null;
         _socket = null;
         _subscription = null;
         _authenticated = false;
@@ -3125,6 +3142,8 @@ class RealtimeClient {
 
   Future<void> _closeCurrent() async {
     _closing = true;
+    _applicationHeartbeat?.cancel();
+    _applicationHeartbeat = null;
     final subscription = _subscription;
     final socket = _socket;
     _subscription = null;

@@ -7,6 +7,30 @@ import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/models.dart';
 
 void main() {
+  test('idle connections send an application heartbeat and release it on close', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final heartbeat = Completer<void>();
+    final peer = Completer<WebSocket>();
+    final closed = Completer<void>();
+    server.listen((request) async {
+      final socket = await WebSocketTransformer.upgrade(request);
+      peer.complete(socket);
+      socket.listen((message) {
+        if (message is String && (jsonDecode(message) as Map)['op'] == 'ping' && !heartbeat.isCompleted) {
+          heartbeat.complete();
+          socket.add(jsonEncode({'op': 'pong'}));
+        }
+      }, onDone: () { if (!closed.isCompleted) closed.complete(); });
+    });
+    final client = RealtimeClient(AppConfig(websocketUrl: 'ws://127.0.0.1:${server.port}'));
+    addTearDown(() async { await client.close(); await server.close(force: true); });
+    await client.connect(onEvent: (_) {}, onError: (error) => fail('$error'));
+    await heartbeat.future.timeout(const Duration(seconds: 25));
+    await client.close();
+    await closed.future.timeout(const Duration(seconds: 3));
+    expect((await peer.future).readyState, anyOf(WebSocket.closing, WebSocket.closed));
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
   test(
     'quota errors retain retry delay and close with overload rather than invalidating credentials',
     () async {

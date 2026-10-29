@@ -6,6 +6,7 @@ import '../app_scope.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../telegram_login.dart';
+import '../google_login.dart';
 
 class AuthSheet extends StatefulWidget {
   const AuthSheet({super.key});
@@ -24,18 +25,23 @@ class _AuthSheetState extends State<AuthSheet> {
   bool busy = false;
   bool showPassword = false;
   String? message;
+  GoogleLoginConfig? googleConfig;
+  bool googleConfigFailed = false;
+  bool googleBusy = false;
+  int googleAttempt = 0;
   bool telegramEnabled = false;
   bool telegramBusy = false;
   int telegramAttempt = 0;
-  bool checkedTelegram = false;
+  bool checkedMethods = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (checkedTelegram) return;
-    checkedTelegram = true;
+    if (checkedMethods) return;
+    checkedMethods = true;
     invitation.text = AppScope.of(context).pendingInvitationCode ?? "";
     final api = AppScope.of(context).api;
+    unawaited(loadGoogleConfig());
     unawaited(
       api
           .get('/api/v1/auth/telegram/config')
@@ -46,6 +52,19 @@ class _AuthSheetState extends State<AuthSheet> {
           })
           .catchError((Object _) {}),
     );
+  }
+
+  Future<void> loadGoogleConfig() async {
+    final api = AppScope.of(context).api;
+    setState(() => googleConfigFailed = false);
+    try {
+      final config = await api.get('/api/v1/auth/google/config');
+      if (mounted) {
+        setState(() => googleConfig = GoogleLoginConfig.fromJson(config));
+      }
+    } catch (_) {
+      if (mounted) setState(() => googleConfigFailed = true);
+    }
   }
 
   Future<void> telegramLogin(AppState state) async {
@@ -79,9 +98,41 @@ class _AuthSheetState extends State<AuthSheet> {
     if (state.isLoggedIn) Navigator.pop(context);
   }
 
+  Future<void> googleLogin(AppState state) async {
+    final config = googleConfig;
+    if (busy || config == null || !config.enabled) return;
+    final attempt = ++googleAttempt;
+    final initialSession = state.session;
+    setState(() {
+      busy = true;
+      googleBusy = true;
+      message = null;
+    });
+    await state.loginGoogle(
+      () => signInWithGoogle(
+        api: state.api,
+        config: config,
+        inviteCode: invitation.text,
+        cancelled: () =>
+            !mounted ||
+            googleAttempt != attempt ||
+            state.session != initialSession,
+      ),
+    );
+    if (!mounted || googleAttempt != attempt) return;
+    setState(() {
+      busy = false;
+      googleBusy = false;
+      message = state.lastError;
+      password.clear();
+    });
+    if (state.isLoggedIn) Navigator.pop(context);
+  }
+
   @override
   void dispose() {
     ++telegramAttempt;
+    ++googleAttempt;
     identifier.dispose();
     password.dispose();
     code.dispose();
@@ -352,6 +403,42 @@ class _AuthSheetState extends State<AuthSheet> {
               ),
             ),
             if (challenge == null && ['login', 'register'].contains(mode)) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const ValueKey('google-login'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF1F1F1F),
+                  disabledBackgroundColor: Colors.white,
+                  disabledForegroundColor: const Color(0xFF747775),
+                  side: const BorderSide(color: Color(0xFF747775)),
+                  minimumSize: const Size(0, 48),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                onPressed: !busy && googleConfig?.enabled == true
+                    ? () => googleLogin(state)
+                    : null,
+                icon: googleBusy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Image.asset(
+                        'assets/branding/google-g.png',
+                        width: 18,
+                        height: 18,
+                        excludeFromSemantics: true,
+                      ),
+                label: Text(googleBusy ? '正在通过 Google 登录…' : '通过 Google 继续'),
+              ),
+              if (googleConfigFailed)
+                TextButton(
+                  onPressed: busy ? null : loadGoogleConfig,
+                  child: const Text('重试 Google 登录选项'),
+                ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: telegramBusy

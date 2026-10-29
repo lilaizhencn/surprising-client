@@ -12,4 +12,8 @@ abstract final class ClientColors {
   static const positive = Color(0xFF55DF9A);
   static const negative = Color(0xFFFF7D86);
   static const warning = Color(0xFFF1B85C);
+  static Color warningFor(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? warning
+      : const Color(0xFF895000);
 }

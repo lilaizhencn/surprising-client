@@ -155,7 +155,7 @@ class ProductLifecyclePanel extends StatelessWidget {
               Icon(
                 isOption ? Icons.auto_graph : Icons.event_available_outlined,
                 size: 18,
-                color: ClientColors.warning,
+                color: ClientColors.warningFor(context),
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -247,7 +247,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                 MetricPill(
                   label: '行权价',
                   value: '$strike ${instrument.quoteAsset}',
-                  color: ClientColors.warning,
+                  color: ClientColors.warningFor(context),
                 ),
                 MetricPill(
                   label: '权利金',
@@ -276,7 +276,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                           reference.sameExpiryForwardPrice,
                           digits: instrument.pricePrecision,
                         ),
-                  color: ClientColors.warning,
+                  color: ClientColors.warningFor(context),
                 ),
                 for (final entry in <String, double?>{
                   '隐含波动率%': reference?.greeks == null
@@ -376,7 +376,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                   child: MetricPill(
                     label: '结算资产',
                     value: instrument.settleAsset,
-                    color: ClientColors.warning,
+                    color: ClientColors.warningFor(context),
                   ),
                 ),
                 const SizedBox(width: 6),

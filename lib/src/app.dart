@@ -12,7 +12,6 @@ import 'market/market_pages.dart';
 import 'models.dart';
 import 'telegram_login.dart';
 import 'trading/trade_page.dart';
-import 'ui/client_colors.dart';
 import 'ui/client_components.dart';
 import 'ui/client_navigation.dart';
 import 'ui/client_theme.dart';
@@ -314,8 +313,11 @@ class _ClientShellState extends State<ClientShell> {
         messenger.clearSnackBars();
         messenger.showSnackBar(
           SnackBar(
-            content: Text(state.lastError!),
-            backgroundColor: ClientColors.negative,
+            content: Text(
+              state.lastError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.onError),
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
         return;

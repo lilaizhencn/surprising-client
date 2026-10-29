@@ -1,0 +1,19 @@
+appId: ${APP_ID}
+---
+- launchApp
+- tapOn: 个人设置
+- tapOn: 登录
+- tapOn:
+    point: ${FIELD_POINT}
+- inputText: long-google-user@example.com
+- assertVisible: long-google-user@example.com
+- takeScreenshot: ${CAPTURE_DIR}/native-keyboard
+- scrollUntilVisible:
+    element: 通过 Google 继续
+    direction: DOWN
+- takeScreenshot: ${CAPTURE_DIR}/native-keyboard-google-scroll
+- scrollUntilVisible:
+    element: 关闭
+    direction: UP
+- tapOn: 关闭
+- assertVisible: 主题.*

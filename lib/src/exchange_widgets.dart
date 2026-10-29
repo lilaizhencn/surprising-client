@@ -7,9 +7,7 @@ const exchangeAccent = Color(0xFFB7FF26);
 const exchangeNumberFeatures = [FontFeature.tabularFigures()];
 
 Color exchangePanel(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFF111111)
-    : const Color(0xFFF4F4F4);
+    Theme.of(context).colorScheme.surfaceContainerHighest;
 
 Color exchangeIncomeColor(BuildContext context, double? amount) =>
     amount == null
@@ -42,9 +40,7 @@ String assetQuantity(double amount) {
 }
 
 Color exchangeBackground(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? Colors.black
-    : Colors.white;
+    Theme.of(context).colorScheme.surfaceDim;
 
 ButtonStyle exchangeIconStyle(BuildContext context) => IconButton.styleFrom(
   backgroundColor: Colors.transparent,
@@ -79,8 +75,7 @@ class _ExchangeSearchFieldState extends State<ExchangeSearchField> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final fill = dark ? const Color(0xFF222222) : const Color(0xFFF3F3F3);
+    final fill = Theme.of(context).colorScheme.surfaceContainerHighest;
     return Row(
       children: [
         Expanded(

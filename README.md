@@ -427,6 +427,12 @@ Web 最近订单更新曾在直接切换已登录账户时保留前一账户缓�
 
 相关 Widget/HTTP 测试：`flutter test test/api_key_edit_dialog_test.dart test/http_lifecycle_test.dart`。真实设备编辑流程使用 `integration_test/api_key_live_test.dart`，连接后端 OpenPlatformBrowserQaTest 的隔离 PostgreSQL/Valkey 夹具；通过本机私有 dart-define 文件传 OPEN_PLATFORM_QA_TOKEN/OPEN_PLATFORM_QA_GATEWAY，不使用生产账号，验证码仅在夹具内模拟。完整证据与未测范围见后端 `docs/validation/open-platform-20261029/`。
 
+## Google 登录与个性主题
+
+Google 登录连接交易 Gateway 的 `/api/v1/auth/google`，沿用现有会话与二次验证。Web 提供 Google 标准按钮及首页 One Tap，App 使用 Android/iOS 原生账号选择；未配置时入口不可用。首次授权创建独立账号，不自动合并相同邮箱的资金账户。配置步骤和验证边界见 [Google 登录说明](../surprising-ex/docs/google-login.md)。
+
+外观入口提供经典石墨、明亮晨光、深海蓝、森林绿、暮光紫、暖沙色六套主题及预览，覆盖整套界面和图表，并保留涨跌语义色。App 入口为“首页右上角个人设置 → 主题”，游客也可直接选择配色。原生验证脚本为 `integration_test/google_themes_test.dart`；Google 图标来自 [Google 官方品牌资源](https://developers.google.com/identity/branding-guidelines)。
+
 ## 实时连接安全心跳
 
 客户端每 20 秒发送应用级 ping，以续 Gateway 的连接租约；协议 ping 仍负责传输层存活检查。关闭/断开/重连时释放旧计时器。访问令牌缩短后，沿用显式刷新协议恢复身份和私有订阅；登录/刷新等凭证请求不附带旧 Bearer，私有操作保留鉴权。限流不清除凭证。

@@ -7,6 +7,7 @@ import '../auth/auth_sheet.dart';
 import '../models.dart';
 import '../ui/client_colors.dart';
 import '../ui/client_components.dart';
+import '../ui/theme_picker.dart';
 import 'security_sheet.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -72,24 +73,14 @@ class ProfilePage extends StatelessWidget {
         Panel(
           child: Column(
             children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('主题'),
-                subtitle: const Text('切换交易终端的明暗外观'),
-                trailing: DropdownButton<ClientTheme>(
-                  value: state.clientTheme,
-                  underline: const SizedBox.shrink(),
-                  items: ClientTheme.values
-                      .map(
-                        (theme) => DropdownMenuItem(
-                          value: theme,
-                          child: Text(theme.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (next) {
-                    if (next != null) state.selectTheme(next);
-                  },
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('主题'),
+                  subtitle: Text(state.clientTheme.label),
+                  trailing: const Icon(Icons.palette_outlined),
+                  onTap: () => showClientThemePicker(context),
                 ),
               ),
               ListTile(
@@ -177,9 +168,9 @@ class ProfilePage extends StatelessWidget {
           Panel(
             child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(
+              leading: Icon(
                 Icons.fingerprint,
-                color: ClientColors.warning,
+                color: ClientColors.warningFor(context),
               ),
               title: Text(
                 state.biometricLoginEnabled ? '生物识别登录已启用' : '启用生物识别登录',

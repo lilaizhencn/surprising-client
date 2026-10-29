@@ -556,7 +556,7 @@ class BalanceRow extends StatelessWidget {
                     BigInt.from(balance.lockedUnits),
                     balance.scaleUnits,
                   ),
-                  color: ClientColors.warning,
+                  color: ClientColors.warningFor(context),
                 ),
               ),
             ],
@@ -621,8 +621,8 @@ class DepositAddressCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 3),
                 child: Text(
                   warning,
-                  style: const TextStyle(
-                    color: ClientColors.warning,
+                  style: TextStyle(
+                    color: ClientColors.warningFor(context),
                     fontSize: 11,
                   ),
                 ),
@@ -776,7 +776,7 @@ class WalletAssetRow extends StatelessWidget {
                 child: MetricPill(
                   label: '冻结',
                   value: money(asset.lockedBalance, digits: 8),
-                  color: ClientColors.warning,
+                  color: ClientColors.warningFor(context),
                 ),
               ),
             ],
@@ -932,8 +932,8 @@ class WalletAction extends StatelessWidget {
             Container(
               width: 50,
               height: 50,
-              decoration: const BoxDecoration(
-                color: ClientColors.warning,
+              decoration: BoxDecoration(
+                color: ClientColors.warningFor(context),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: Colors.black, size: 25),

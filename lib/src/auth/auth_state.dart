@@ -6,6 +6,7 @@ import '../api.dart';
 import '../models.dart';
 import '../session_store.dart';
 import '../telegram_login.dart';
+import '../google_login.dart';
 
 enum AuthSessionChange { signedIn, tokenRefreshed, signedOut, expired }
 
@@ -309,6 +310,14 @@ class AuthState extends ChangeNotifier {
     success: (_) => '登录成功',
   );
 
+  Future<AuthSession?> loginGoogle(
+    Future<AuthSession> Function() authenticate,
+  ) => _authenticate(
+    authenticate,
+    failure: 'Google 登录失败',
+    success: (_) => '登录成功',
+  );
+
   Future<AuthSession?> _authenticate(
     Future<AuthSession> Function() authenticate, {
     required String failure,
@@ -331,6 +340,8 @@ class AuthState extends ChangeNotifier {
       if (!isCurrentRevision(operation)) return null;
       _feedback(notice: success(authenticated));
       return authenticated;
+    } on GoogleLoginCancelled {
+      return null;
     } on TelegramLoginCancelled {
       return null;
     } on LoginChallenge catch (challenge) {

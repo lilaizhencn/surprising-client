@@ -427,10 +427,10 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             ),
             if (state.withdrawalOutcomeUnknown) ...[
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 '本次请求可能已到达钱包服务。为避免重复扣款，当前提币意图已锁定，请先核对提币记录。',
                 style: TextStyle(
-                  color: ClientColors.warning,
+                  color: ClientColors.warningFor(context),
                   fontSize: 11,
                   height: 1.45,
                 ),

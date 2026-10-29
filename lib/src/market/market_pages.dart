@@ -92,15 +92,12 @@ class _HomePageState extends State<HomePage> {
                     shape: const CircleBorder(),
                   ),
                   icon: const Icon(Icons.account_circle_outlined),
-                  onPressed: () => authenticated(
-                    state,
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(title: const Text('个人设置')),
-                          body: const SafeArea(child: ProfilePage()),
-                        ),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('个人设置')),
+                        body: const SafeArea(child: ProfilePage()),
                       ),
                     ),
                   ),
@@ -183,9 +180,7 @@ class _HomePageState extends State<HomePage> {
                   vertical: 20,
                 ),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF202020)
-                      : const Color(0xFFF3F3F3),
+                  color: colors.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Row(
@@ -886,7 +881,7 @@ class MarketTickerRow extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: change == null
-                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
                     : change >= 0
                     ? Theme.of(context).colorScheme.tertiary
                     : Theme.of(context).colorScheme.error,
@@ -896,8 +891,12 @@ class MarketTickerRow extends StatelessWidget {
                 change == null
                     ? '--'
                     : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: change == null
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : change >= 0
+                      ? Theme.of(context).colorScheme.onTertiary
+                      : Theme.of(context).colorScheme.onError,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
@@ -942,7 +941,7 @@ class InstrumentRow extends StatelessWidget {
                     : instrument.baseAsset.substring(0, 1),
                 style: TextStyle(
                   color: selected
-                      ? Colors.white
+                      ? Theme.of(context).colorScheme.onPrimary
                       : Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w900,
                 ),

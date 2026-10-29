@@ -77,13 +77,19 @@ enum ValuationCurrency {
 }
 
 enum ClientTheme {
-  dark('深色', 'dark'),
-  light('浅色', 'light');
+  dark('经典石墨', 'dark'),
+  light('明亮晨光', 'light'),
+  ocean('深海蓝', 'ocean'),
+  forest('森林绿', 'forest'),
+  dusk('暮光紫', 'dusk'),
+  sand('暖沙色', 'sand');
 
   const ClientTheme(this.label, this.code);
 
   final String label;
   final String code;
+
+  bool get isLight => this == ClientTheme.light || this == ClientTheme.sand;
 
   static ClientTheme fromCode(String value) {
     return ClientTheme.values.firstWhere(

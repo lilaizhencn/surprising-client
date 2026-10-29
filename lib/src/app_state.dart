@@ -1318,6 +1318,16 @@ class AppState extends ChangeNotifier {
 
   Future<AuthSession?> login(String identifier, String password) =>
       auth.login(identifier, password);
+  Future<AuthSession?> loginGoogle(
+    Future<AuthSession> Function() authenticate,
+  ) async {
+    final session = await auth.loginGoogle(authenticate);
+    if (session != null || auth.pendingLoginChallenge != null) {
+      pendingInvitationCode = null;
+    }
+    return session;
+  }
+
   Future<AuthSession?> loginTelegram(
     Future<AuthSession> Function() authenticate,
   ) => auth.loginTelegram(authenticate);

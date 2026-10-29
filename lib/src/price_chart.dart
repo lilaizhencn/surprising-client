@@ -11,6 +11,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'models.dart';
 
+String chartColor(Color color) =>
+    'rgba(${(color.r * 255).round()},${(color.g * 255).round()},${(color.b * 255).round()},${color.a})';
+
 /// Web PriceChart parity: deduplication, zero-volume gap bars and a 120-bar window.
 List<Map<String, Object>> chartCandles(
   List<Candle> candles, {
@@ -149,9 +152,7 @@ class _NativePriceChartState extends State<NativePriceChart> {
     }
     try {
       final background = Theme.of(context).colorScheme.surface;
-      final surface = Theme.of(context).brightness == Brightness.dark
-          ? '#191c23'
-          : '#ffffff';
+      final surface = chartColor(background);
       final view = WebViewController();
       await view.setJavaScriptMode(JavaScriptMode.unrestricted);
       await view.setBackgroundColor(background);
@@ -237,7 +238,7 @@ class _NativePriceChartState extends State<NativePriceChart> {
   Future<void> _render() async {
     final view = controller;
     if (!mounted || view == null || !ready) return;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final colors = Theme.of(context).colorScheme;
     final instrument = widget.instrument;
     final precision = instrument.pricePrecision.clamp(0, 12);
     final tick = instrument.priceFromTicks(1);
@@ -249,14 +250,14 @@ class _NativePriceChartState extends State<NativePriceChart> {
       'minMove': tick.isFinite && tick > 0 ? tick : math.pow(10, -precision),
       'volumeUnit': instrument.baseAsset,
       'theme': {
-        'background': dark ? '#191c23' : '#ffffff',
-        'ink': dark ? '#c6c9d1' : '#434656',
-        'border': dark ? '#343a49' : '#c3c5d9',
-        'grid': dark ? '#292e39' : '#e9e7ea',
-        'up': dark ? '#55df9a' : '#006d3f',
-        'down': dark ? '#ff7d86' : '#9e0d22',
-        'wickUp': dark ? 'rgba(85,223,154,.62)' : 'rgba(0,109,63,.62)',
-        'wickDown': dark ? 'rgba(255,125,134,.62)' : 'rgba(158,13,34,.62)',
+        'background': chartColor(colors.surface),
+        'ink': chartColor(colors.onSurfaceVariant),
+        'border': chartColor(colors.outline),
+        'grid': chartColor(colors.surfaceContainerHighest),
+        'up': chartColor(colors.tertiary),
+        'down': chartColor(colors.error),
+        'wickUp': chartColor(colors.tertiary.withValues(alpha: .62)),
+        'wickDown': chartColor(colors.error.withValues(alpha: .62)),
       },
     };
     try {

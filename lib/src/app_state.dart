@@ -1755,6 +1755,7 @@ class AppState extends ChangeNotifier {
               parseInt64(message['userId']) == current.user.userId) {
             _privateAuthenticated = true;
           }
+          if (message['op'] != 'error') _realtimeReconnectAttempts = 0;
           handleRealtimeMessage(message);
         },
         onError: (error) {
@@ -1778,7 +1779,6 @@ class AppState extends ChangeNotifier {
         return;
       }
       _realtimeConnected = true;
-      if (!_realtimeSessionPaused) _realtimeReconnectAttempts = 0;
       _subscribePrivateSelected();
       _subscribePublicSelected();
       _syncRealtimeSubscriptions();
@@ -1870,8 +1870,11 @@ class AppState extends ChangeNotifier {
     if (isLoggedIn) _materializePrivate();
     final reconnectGeneration = _realtimeGeneration;
     _realtimeReconnectAttempts++;
+    final backoff = _reconnectDelay(_realtimeReconnectAttempts);
+    final retryAfter = realtime.retryAfter;
+    realtime.retryAfter = Duration.zero;
     _realtimeReconnectTimer = Timer(
-      _reconnectDelay(_realtimeReconnectAttempts),
+      retryAfter > backoff ? retryAfter : backoff,
       () async {
         _realtimeReconnectTimer = null;
         if (reconnectGeneration != _realtimeGeneration) return;

@@ -419,3 +419,10 @@ Web 最近订单更新曾在直接切换已登录账户时保留前一账户缓�
 本轮权限、截图、Web 和设备验证及未测范围见[开通边界验证](../surprising-ex/docs/validation/affiliate-access-20261029/README.md)。
 
 本地 UI 契约验证：启动 Web 项目的 `scripts/affiliate-access-fixture.py`，再运行 `python3 integration_test/affiliate_access_host.py ios --device <simulator> --output <artifacts>`（Android 同理）。夹具不连接交易、不执行真实资金操作。原真实 Gateway 全流程的 `affiliate_host.py` 现在还需 `--admin-session <local-qa-admin-session.json>`，由本机 QA 管理员 API 开通新成员，替代原来的自动授权；不要使用生产凭证。
+
+
+## API Key 与限流响应（2026-10-29）
+
+安全中心支持创建、编辑名称/权限/IP、撤销 Key；交易和提现权限要求 IP 白名单。编辑表单使用独立验证码，提交时防重复点击，明确拒绝可修正后重试，结果未知则关闭并刷新核对。一次性 Secret 保存前禁止再次创建，撤销后的 Key 不再显示可操作菜单。429 从 Retry-After 读取等待秒数；不会因此自动重复资金写操作。
+
+相关 Widget/HTTP 测试：`flutter test test/api_key_edit_dialog_test.dart test/http_lifecycle_test.dart`。真实设备编辑流程使用 `integration_test/api_key_live_test.dart`，连接后端 OpenPlatformBrowserQaTest 的隔离 PostgreSQL/Valkey 夹具；通过本机私有 dart-define 文件传 OPEN_PLATFORM_QA_TOKEN/OPEN_PLATFORM_QA_GATEWAY，不使用生产账号，验证码仅在夹具内模拟。完整证据与未测范围见后端 `docs/validation/open-platform-20261029/`。

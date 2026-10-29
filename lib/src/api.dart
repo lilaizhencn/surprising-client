@@ -744,8 +744,10 @@ class ApiClient {
     );
   }
 
-  Future<void> updateApiKeyAllowlist({
+  Future<void> updateApiKey({
     required String apiKey,
+    required String label,
+    required List<String> permissions,
     required List<String> ipAllowlist,
     required String emailCode,
     required String totpCode,
@@ -753,7 +755,12 @@ class ApiClient {
     await _sendMap(
       'PATCH',
       '/api/v1/security/api-keys',
-      body: {'apiKey': apiKey, 'ipAllowlist': ipAllowlist},
+      body: {
+        'apiKey': apiKey,
+        'label': label,
+        'permissions': permissions,
+        'ipAllowlist': ipAllowlist,
+      },
       headers: {
         'X-Security-Email-Code': emailCode,
         'X-Security-TOTP-Code': totpCode,
@@ -859,7 +866,7 @@ class ApiClient {
         maxBytes: success ? maxDownloadBytes : maxResponseBytes,
       );
       if (!success) {
-        throw ApiException(response.statusCode, utf8.decode(bytes));
+        throw ApiException.response(response, utf8.decode(bytes));
       }
       return bytes;
     }
@@ -917,8 +924,8 @@ class ApiClient {
     );
     scope.checkActive();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(
-        response.statusCode,
+      throw ApiException.response(
+        response,
         payload.isEmpty ? response.reasonPhrase : payload,
       );
     }
@@ -2423,8 +2430,8 @@ class ApiClient {
     );
     scope.checkActive();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(
-        response.statusCode,
+      throw ApiException.response(
+        response,
         payload.isEmpty ? response.reasonPhrase : payload,
       );
     }
@@ -2637,13 +2644,37 @@ bool isDefinitiveOrderRejection(Object error) {
 }
 
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message);
+  ApiException(this.statusCode, this.message, {this.retryAfterSeconds});
+
+  factory ApiException.response(HttpClientResponse response, String message) {
+    final header = response.headers.value(HttpHeaders.retryAfterHeader)?.trim();
+    int? seconds = header == null ? null : int.tryParse(header);
+    if (seconds == null && header != null) {
+      try {
+        seconds =
+            (HttpDate.parse(header).difference(DateTime.now()).inMilliseconds /
+                    1000)
+                .ceil();
+      } on FormatException {
+        // Ignore malformed optional response metadata; preserve the HTTP failure.
+      }
+    }
+    return ApiException(
+      response.statusCode,
+      message,
+      retryAfterSeconds: seconds == null ? null : math.max(1, seconds),
+    );
+  }
 
   final int statusCode;
   final String message;
+  final int? retryAfterSeconds;
 
   @override
   String toString() {
+    if (statusCode == 429 && retryAfterSeconds != null) {
+      return '操作过于频繁，请在 $retryAfterSeconds 秒后重试';
+    }
     String code = '', detail = message;
     try {
       final payload = asMap(jsonDecode(message));
@@ -2661,6 +2692,9 @@ class ApiException implements Exception {
       'LOGIN_RECENT_AUTHENTICATION_REQUIRED': '请重新登录后继续安全设置',
       'LOGIN_CONTACT_MISSING': '请先绑定邮箱或手机号，再绑定身份验证器',
       'LOGIN_PASSWORD_INVALID': '登录密码不正确',
+      'REQUEST_EXCEEDS_RATE_BURST': '请减小批量数量或查询条数后重试',
+      'GATEWAY_BUSY': '网关暂时繁忙，请先确认操作结果后再重试',
+      'RATE_LIMIT_STORAGE_UNAVAILABLE': '网关暂时不可用，请先确认操作结果后再重试',
     };
     if (messages.containsKey(code)) return messages[code]!;
     if (messages.containsKey(detail)) return messages[detail]!;
@@ -2694,6 +2728,7 @@ class RealtimeClient {
   bool _closing = false;
   int? _closeCode;
   int? get closeCode => _closeCode;
+  Duration retryAfter = Duration.zero;
   int _connectionGeneration = 0;
   bool _authenticated = false;
   bool _authenticationRequested = false;
@@ -2953,6 +2988,28 @@ class RealtimeClient {
             throw const FormatException('实时消息结构无效');
           }
           final decoded = raw;
+          if (decoded['op'] == 'error') {
+            final error = asMap(decoded['data']);
+            if (const [
+              'RATE_LIMITED',
+              'GATEWAY_BUSY',
+              'RATE_LIMIT_STORAGE_UNAVAILABLE',
+              'WEBSOCKET_CONNECTION_LIMIT',
+            ].contains(error['code'])) {
+              final seconds = asInt(
+                error['retryAfterSeconds'],
+                fallback: 1,
+              ).clamp(1, 86400);
+              retryAfter = Duration(seconds: seconds);
+              unawaited(
+                socket.close(
+                  WebSocketStatus.normalClosure,
+                  'gateway temporarily unavailable',
+                ),
+              );
+              return;
+            }
+          }
           // Invalid private identities are rejected before dispatch, without
           // turning a malformed authentication frame into a UI exception.
           final messageUserId = parseInt64(decoded['userId']);

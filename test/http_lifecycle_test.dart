@@ -58,6 +58,26 @@ Future<void> _hold(
 }
 
 void main() {
+  test('429 exposes Retry-After and does not repeat a mutation', () async {
+    var requests = 0;
+    final api = await _api((request) async {
+      requests++;
+      await request.drain<void>();
+      request.response.statusCode = 429;
+      request.response.headers.set(HttpHeaders.retryAfterHeader, '12');
+      request.response.write('{"code":"RATE_LIMITED"}');
+      await request.response.close();
+    });
+    await expectLater(
+      api.post('/api/v1/gateway/trading', {}),
+      throwsA(
+        isA<ApiException>()
+            .having((error) => error.retryAfterSeconds, 'retry delay', 12)
+            .having((error) => error.toString(), 'message', contains('12 秒')),
+      ),
+    );
+    expect(requests, 1);
+  });
   for (final sendHeaders in [false, true]) {
     test(
       'deadline aborts ${sendHeaders ? 'partial body' : 'slow headers'} and closes socket',

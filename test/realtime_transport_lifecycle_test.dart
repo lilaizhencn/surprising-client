@@ -8,6 +8,40 @@ import 'package:surprising_client/src/models.dart';
 
 void main() {
   test(
+    'quota errors retain retry delay and close with overload rather than invalidating credentials',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final peer = Completer<WebSocket>();
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.listen((_) {});
+        peer.complete(socket);
+      });
+      final client = RealtimeClient(
+        AppConfig(websocketUrl: 'ws://127.0.0.1:${server.port}'),
+      );
+      addTearDown(() async {
+        await client.close();
+        await server.close(force: true);
+      });
+      final done = Completer<void>();
+      await client.connect(
+        onEvent: (_) {},
+        onError: (error) => fail('$error'),
+        onDone: done.complete,
+      );
+      (await peer.future).add(
+        jsonEncode({
+          'op': 'error',
+          'data': {'code': 'RATE_LIMITED', 'retryAfterSeconds': 26},
+        }),
+      );
+      await done.future.timeout(const Duration(seconds: 3));
+      expect(client.retryAfter, const Duration(seconds: 26));
+      expect(client.closeCode, WebSocketStatus.normalClosure);
+    },
+  );
+  test(
     'server policy closure preserves close code for session recovery',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

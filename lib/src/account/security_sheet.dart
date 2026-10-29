@@ -14,6 +14,7 @@ import '../kyc_documents_page.dart';
 import '../models.dart';
 import '../ui/client_components.dart';
 import 'kyc_webview.dart';
+import 'api_key_edit_dialog.dart';
 
 class SecuritySheet extends StatefulWidget {
   const SecuritySheet({this.kycOnly = false, super.key});
@@ -1325,7 +1326,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 controller: apiAllowlist,
                 label: 'IP 白名单（多个地址以逗号分隔）',
               ),
-              const Text('默认只有读取权限。按需要开启交易或提现权限。'),
+              const Text('默认只有读取权限。交易或提币权限必须设置 IP 白名单。'),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('允许交易'),
@@ -1363,9 +1364,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
                     child: PrimaryAction(
                       label: '创建 API Key',
                       icon: Icons.key,
-                      onPressed: actionsBlocked
+                      onPressed: actionsBlocked || apiSecret != null
                           ? null
                           : () => _run(() async {
+                              if ((apiTradeEnabled || apiWithdrawEnabled) &&
+                                  _apiAllowlist().isEmpty) {
+                                throw const FormatException(
+                                  '交易或提币权限必须设置 IP 白名单',
+                                );
+                              }
                               final created = await state.api.createApiKey(
                                 label: apiLabel.text.trim(),
                                 permissions: [
@@ -1402,45 +1409,47 @@ class _SecuritySheetState extends State<SecuritySheet> {
                     '${asString(apiKey['apiKey'])} · ${asString(apiKey['permissions'])}',
                   ),
                   trailing: PopupMenuButton<String>(
+                    enabled:
+                        !actionsBlocked &&
+                        asString(apiKey['status']) == 'ACTIVE',
                     onSelected: (action) => _run(() async {
                       final key = asString(apiKey['apiKey']);
                       if (key.isEmpty) {
                         throw const FormatException('密钥信息暂不可用，请刷新');
                       }
-                      if (action == 'allowlist') {
-                        apiAllowlist.text = asList(
-                          apiKey['ipAllowlist'],
-                        ).join(', ');
+                      if (action == 'edit') {
                         final confirmed = await showDialog<bool>(
                           context: context,
-                          builder: (dialog) => AlertDialog(
-                            title: const Text('修改 IP 白名单'),
-                            content: AppTextField(
-                              controller: apiAllowlist,
-                              label: 'IP 地址或 CIDR，以逗号分隔',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialog, false),
-                                child: const Text('取消'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(dialog, true),
-                                child: const Text('保存'),
-                              ),
-                            ],
+                          builder: (dialog) => ApiKeyEditDialog(
+                            apiKey: apiKey,
+                            mfaRequired: mfaEnabled,
+                            onSendCode: () async {
+                              if (!operationCurrent) {
+                                throw const FormatException('登录状态已变化，请重新打开');
+                              }
+                              await state.api.issueSecurityChallenge(
+                                'SECURITY_SETTINGS',
+                              );
+                            },
+                            onSave: (settings) async {
+                              if (!operationCurrent) {
+                                throw const FormatException('登录状态已变化，请重新打开');
+                              }
+                              await state.api.updateApiKey(
+                                apiKey: key,
+                                label: settings.label,
+                                permissions: settings.permissions,
+                                ipAllowlist: settings.ipAllowlist,
+                                emailCode: settings.emailCode,
+                                totpCode: settings.totpCode,
+                              );
+                            },
                           ),
                         );
                         if (confirmed != true || !operationCurrent) {
                           _operationCancelled = true;
                           return;
                         }
-                        await state.api.updateApiKeyAllowlist(
-                          apiKey: key,
-                          ipAllowlist: _apiAllowlist(),
-                          emailCode: emailCode.text.trim(),
-                          totpCode: apiTotp.text.trim(),
-                        );
                       } else {
                         if (!await _confirmSecurity(
                               '撤销 API 密钥？',
@@ -1456,9 +1465,9 @@ class _SecuritySheetState extends State<SecuritySheet> {
                         );
                       }
                       if (operationCurrent) await _load();
-                    }, action == 'allowlist' ? 'IP 白名单已更新' : 'API Key 已撤销'),
+                    }, action == 'edit' ? 'API Key 设置已更新' : 'API Key 已撤销'),
                     itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'allowlist', child: Text('IP 白名单')),
+                      PopupMenuItem(value: 'edit', child: Text('编辑名称、权限与 IP')),
                       PopupMenuItem(value: 'revoke', child: Text('撤销')),
                     ],
                   ),

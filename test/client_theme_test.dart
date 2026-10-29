@@ -109,4 +109,31 @@ void main() {
       expect(ClientTheme.fromCode('unknown'), ClientTheme.dark);
     },
   );
+  test(
+    'palette accents stay distinct and body text remains readable on raised surfaces',
+    () {
+      final accents = <Color>{};
+      for (final palette in ClientTheme.values) {
+        final colors = clientColorScheme(palette);
+        accents.add(colors.primary);
+        expect(HSVColor.fromColor(colors.primary).saturation, greaterThan(.6));
+        for (final surface in [
+          colors.surfaceDim,
+          colors.surfaceContainerHighest,
+        ]) {
+          expect(
+            contrast(colors.onSurface, surface),
+            greaterThanOrEqualTo(4.5),
+            reason: palette.code,
+          );
+          expect(
+            contrast(colors.onSurfaceVariant, surface),
+            greaterThanOrEqualTo(4.5),
+            reason: palette.code,
+          );
+        }
+      }
+      expect(accents, hasLength(ClientTheme.values.length));
+    },
+  );
 }

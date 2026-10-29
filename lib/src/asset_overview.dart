@@ -179,8 +179,8 @@ class _AssetOverviewState extends State<AssetOverview> {
               tooltip: label,
               icon: Icon(icon, size: 28),
               style: IconButton.styleFrom(
-                backgroundColor: exchangeAccent,
-                foregroundColor: Colors.black,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 minimumSize: const Size.square(54),
                 shape: const CircleBorder(),
                 side: BorderSide.none,

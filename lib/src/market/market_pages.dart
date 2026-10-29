@@ -128,8 +128,8 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: exchangeAccent,
-                      foregroundColor: Colors.black,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
                       shape: const StadiumBorder(),
                       minimumSize: const Size(0, 48),
                       textStyle: const TextStyle(
@@ -153,8 +153,8 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: exchangeAccent,
-                      foregroundColor: Colors.black,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
                       shape: const StadiumBorder(),
                       minimumSize: const Size(0, 48),
                       textStyle: const TextStyle(

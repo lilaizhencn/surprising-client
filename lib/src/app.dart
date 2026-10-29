@@ -15,6 +15,8 @@ import 'trading/trade_page.dart';
 import 'ui/client_components.dart';
 import 'ui/client_navigation.dart';
 import 'ui/client_theme.dart';
+import 'ui/adaptive_client_layout.dart';
+import 'market/market_chart.dart';
 import 'wallet/wallet_page.dart';
 
 export 'account/kyc_webview.dart';
@@ -56,6 +58,14 @@ class SurprisingClientApp extends StatefulWidget {
 class _SurprisingClientAppState extends State<SurprisingClientApp> {
   late final AppState state = widget.state ?? AppState();
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _secondaryRoute = ValueNotifier(false);
+  late final _routeObserver = ClientRouteObserver(() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _secondaryRoute.value = _navigatorKey.currentState?.canPop() ?? false;
+      }
+    });
+  });
   StreamSubscription<Uri>? _authLinks;
   String? _affiliateInviteOpen;
 
@@ -123,6 +133,7 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
   @override
   void dispose() {
     unawaited(_authLinks?.cancel());
+    _secondaryRoute.dispose();
     if (widget.state == null) state.dispose();
     super.dispose();
   }
@@ -138,6 +149,7 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
             debugShowCheckedModeBanner: false,
             title: 'Surprising',
             navigatorKey: _navigatorKey,
+            navigatorObservers: [_routeObserver],
             builder: (context, child) => BiometricLockGate(
               state: state,
               onUsePassword: () async {
@@ -147,7 +159,13 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
                 final context = _navigatorKey.currentState?.overlay?.context;
                 if (context != null && context.mounted) showAuthSheet(context);
               },
-              child: child ?? const SizedBox.shrink(),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _secondaryRoute,
+                child: child ?? const SizedBox.shrink(),
+                builder: (context, secondary, navigator) => secondary
+                    ? FoldAwareClientBody(primary: navigator!)
+                    : navigator!,
+              ),
             ),
             locale: Locale(preferences.$2.code),
             theme: buildClientTheme(preferences.$1),
@@ -168,6 +186,7 @@ class ClientShell extends StatefulWidget {
 
 class _ClientShellState extends State<ClientShell> {
   int index = 0;
+  final contentKey = GlobalKey();
   String? seenNotice;
   String? seenError;
   bool announcementsOpen = false;
@@ -204,20 +223,42 @@ class _ClientShellState extends State<ClientShell> {
             3 => const C2cPage(),
             _ => const WalletPage(),
           };
-    return Scaffold(
-      body: ClientNavigation(
-        openBuyCrypto: () => setTab(3),
-        openAnnouncements: openAnnouncements,
-        child: SafeArea(child: page),
-      ),
-      bottomNavigationBar: ExchangeBottomNav(
-        selectedIndex: index,
-        onSelected: (next) {
-          setState(() {
-            index = next;
-            announcementsOpen = false;
-          });
-        },
+    void select(int next) => setTab(next);
+    final content = KeyedSubtree(key: contentKey, child: page);
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surfaceDim,
+      child: FoldAwareClientBody(
+        secondary: index == 2 && !announcementsOpen
+            ? const MarketChartPage()
+            : null,
+        primary: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide =
+                constraints.maxWidth >= 600 && constraints.maxHeight >= 360;
+            return Scaffold(
+              body: Row(
+                children: [
+                  if (wide)
+                    ExchangeSideNav(
+                      selectedIndex: index,
+                      onSelected: select,
+                      extended: constraints.maxWidth >= 1400,
+                    ),
+                  Expanded(
+                    child: ClientNavigation(
+                      openBuyCrypto: () => setTab(3),
+                      openAnnouncements: openAnnouncements,
+                      child: SafeArea(child: content),
+                    ),
+                  ),
+                ],
+              ),
+              bottomNavigationBar: wide
+                  ? null
+                  : ExchangeBottomNav(selectedIndex: index, onSelected: select),
+            );
+          },
+        ),
       ),
     );
   }

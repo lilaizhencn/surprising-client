@@ -8,6 +8,7 @@ import 'models.dart';
 import 'option_market.dart';
 import 'account_records.dart';
 import 'c2c_models.dart';
+import 'account/kyc_status.dart';
 
 part 'c2c_api.dart';
 
@@ -786,7 +787,15 @@ class ApiClient {
 
   Future<Map<String, dynamic>> kycStatus() async {
     final response = await _send('GET', '/api/v1/compliance/kyc');
-    return asMap(response);
+    if (response == null || (response is Map && response.isEmpty)) return {};
+    final profile = asMap(response);
+    if (!kycStatuses.contains(profile['status']) ||
+        parseInt64(profile['userId']) != _sessionUserId ||
+        (profile['expiresAt'] != null &&
+            DateTime.tryParse('${profile['expiresAt']}') == null)) {
+      throw const FormatException('身份认证资料无效，请刷新重试');
+    }
+    return profile;
   }
 
   Future<Map<String, dynamic>> announcements({

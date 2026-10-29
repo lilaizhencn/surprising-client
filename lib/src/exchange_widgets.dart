@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'models.dart';
 
-const exchangeAccent = Color(0xFFB7FF26);
 const exchangeNumberFeatures = [FontFeature.tabularFigures()];
 
 Color exchangePanel(BuildContext context) =>

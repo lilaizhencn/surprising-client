@@ -150,131 +150,159 @@ class _TradePageState extends State<TradePage> {
                   onSelected: (symbol) => unawaited(state.selectSymbol(symbol)),
                 ),
                 const SizedBox(height: 6),
-                SizedBox(
-                  height: 376,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        flex: 12,
-                        child: OrderTicket(
-                          side: side,
-                          orderType: orderType,
-                          timeInForce: timeInForce,
-                          marginMode: marginMode,
-                          positionMode: state.positionMode,
-                          positionSide: positionSide,
-                          reduceOnly: reduceOnly,
-                          postOnly: postOnly,
-                          bboEnabled: bboEnabled,
-                          bboPriceMode: bboPriceMode,
-                          onBboEnabled: (value) =>
-                              setState(() => bboEnabled = value),
-                          onBboPriceMode: (value) =>
-                              setState(() => bboPriceMode = value),
-                          priceController: priceController,
-                          quantityController: quantityController,
-                          instrument: instrument,
-                          loggedIn: state.isLoggedIn,
-                          onSide: (value) => setState(() => side = value),
-                          onOrderType: (value) => setState(() {
-                            orderType = value;
-                            postOnly = false;
-                            bboEnabled = false;
-                            timeInForce = value == 'MARKET' ? 'IOC' : 'GTC';
-                          }),
-                          onTimeInForce: (value) => setState(() {
-                            timeInForce = value;
-                            postOnly = value == 'GTX';
-                          }),
-                          onMarginMode: (value) =>
-                              setState(() => marginMode = value),
-                          onPositionSide: (value) =>
-                              setState(() => positionSide = value),
-                          onReduceOnly: (value) =>
-                              setState(() => reduceOnly = value),
-                          onPostOnly: (value) => setState(() {
-                            postOnly = value;
-                            timeInForce = value ? 'GTX' : 'GTC';
-                          }),
-                          onSubmit: () {
-                            if (state.submittingOrder) return;
-                            if (!state.isLoggedIn) {
-                              showAuthSheet(context);
-                              return;
-                            }
-                            if (orderType != 'MARKET' &&
-                                !bboEnabled &&
-                                instrument.priceTicksFromText(
-                                      priceController.text,
-                                    ) ==
-                                    null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('价格必须符合最小价格变动')),
-                              );
-                              return;
-                            }
-                            unawaited(
-                              state.placeOrder(
-                                side: side,
-                                orderType: orderType,
-                                timeInForce: timeInForce,
-                                price:
-                                    double.tryParse(priceController.text) ?? 0,
-                                priceText: priceController.text,
-                                quantitySteps: instrument.isSpot
-                                    ? decimalIncrement(
-                                            quantityController.text,
-                                            instrument.quantityStepUnits,
-                                            scaleUnits:
-                                                instrument.baseScaleUnits ?? 0,
-                                          ) ??
-                                          0
-                                    : int.tryParse(quantityController.text) ??
-                                          0,
-                                marginMode: instrument.isSpot
-                                    ? 'CROSS'
-                                    : marginMode,
-                                positionSide:
-                                    instrument.isSpot ||
-                                        state.positionMode == 'ONE_WAY'
-                                    ? 'NET'
-                                    : positionSide == 'NET'
-                                    ? (side == 'SELL' ? 'SHORT' : 'LONG')
-                                    : positionSide,
-                                reduceOnly: instrument.isSpot
-                                    ? false
-                                    : reduceOnly,
-                                postOnly: postOnly,
-                                bboPriceMode: orderType == 'LIMIT' && bboEnabled
-                                    ? bboPriceMode
-                                    : null,
-                              ),
-                            );
-                          },
-                        ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final entry = SizedBox(
+                      height: 376,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: 12,
+                            child: OrderTicket(
+                              side: side,
+                              orderType: orderType,
+                              timeInForce: timeInForce,
+                              marginMode: marginMode,
+                              positionMode: state.positionMode,
+                              positionSide: positionSide,
+                              reduceOnly: reduceOnly,
+                              postOnly: postOnly,
+                              bboEnabled: bboEnabled,
+                              bboPriceMode: bboPriceMode,
+                              onBboEnabled: (value) =>
+                                  setState(() => bboEnabled = value),
+                              onBboPriceMode: (value) =>
+                                  setState(() => bboPriceMode = value),
+                              priceController: priceController,
+                              quantityController: quantityController,
+                              instrument: instrument,
+                              loggedIn: state.isLoggedIn,
+                              onSide: (value) => setState(() => side = value),
+                              onOrderType: (value) => setState(() {
+                                orderType = value;
+                                postOnly = false;
+                                bboEnabled = false;
+                                timeInForce = value == 'MARKET' ? 'IOC' : 'GTC';
+                              }),
+                              onTimeInForce: (value) => setState(() {
+                                timeInForce = value;
+                                postOnly = value == 'GTX';
+                              }),
+                              onMarginMode: (value) =>
+                                  setState(() => marginMode = value),
+                              onPositionSide: (value) =>
+                                  setState(() => positionSide = value),
+                              onReduceOnly: (value) =>
+                                  setState(() => reduceOnly = value),
+                              onPostOnly: (value) => setState(() {
+                                postOnly = value;
+                                timeInForce = value ? 'GTX' : 'GTC';
+                              }),
+                              onSubmit: () {
+                                if (state.submittingOrder) return;
+                                if (!state.isLoggedIn) {
+                                  showAuthSheet(context);
+                                  return;
+                                }
+                                if (orderType != 'MARKET' &&
+                                    !bboEnabled &&
+                                    instrument.priceTicksFromText(
+                                          priceController.text,
+                                        ) ==
+                                        null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('价格必须符合最小价格变动'),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                unawaited(
+                                  state.placeOrder(
+                                    side: side,
+                                    orderType: orderType,
+                                    timeInForce: timeInForce,
+                                    price:
+                                        double.tryParse(priceController.text) ??
+                                        0,
+                                    priceText: priceController.text,
+                                    quantitySteps: instrument.isSpot
+                                        ? decimalIncrement(
+                                                quantityController.text,
+                                                instrument.quantityStepUnits,
+                                                scaleUnits:
+                                                    instrument.baseScaleUnits ??
+                                                    0,
+                                              ) ??
+                                              0
+                                        : int.tryParse(
+                                                quantityController.text,
+                                              ) ??
+                                              0,
+                                    marginMode: instrument.isSpot
+                                        ? 'CROSS'
+                                        : marginMode,
+                                    positionSide:
+                                        instrument.isSpot ||
+                                            state.positionMode == 'ONE_WAY'
+                                        ? 'NET'
+                                        : positionSide == 'NET'
+                                        ? (side == 'SELL' ? 'SHORT' : 'LONG')
+                                        : positionSide,
+                                    reduceOnly: instrument.isSpot
+                                        ? false
+                                        : reduceOnly,
+                                    postOnly: postOnly,
+                                    bboPriceMode:
+                                        orderType == 'LIMIT' && bboEnabled
+                                        ? bboPriceMode
+                                        : null,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            flex: 9,
+                            child: OrderBookPanel(
+                              instrument: instrument,
+                              orderBook: state.orderBook,
+                              recovering: state.market.depthRecovering,
+                              latestPrice: latestPrice,
+                              onPrice: (price) {
+                                setState(() {
+                                  bboEnabled = false;
+                                  orderType = 'LIMIT';
+                                  timeInForce = 'GTC';
+                                  postOnly = false;
+                                  priceController.text = price;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        flex: 9,
-                        child: OrderBookPanel(
-                          instrument: instrument,
-                          orderBook: state.orderBook,
-                          recovering: state.market.depthRecovering,
-                          latestPrice: latestPrice,
-                          onPrice: (price) {
-                            setState(() {
-                              bboEnabled = false;
-                              orderType = 'LIMIT';
-                              timeInForce = 'GTC';
-                              postOnly = false;
-                              priceController.text = price;
-                            });
-                          },
+                    );
+                    if (constraints.maxWidth < 1000) return entry;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 6,
+                          child: KlinePanel(
+                            candles: state.candles,
+                            period: state.period,
+                            onPeriod: (period) =>
+                                unawaited(state.selectPeriod(period)),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 7, child: entry),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
                 if (state.submittingOrder) const LinearProgressIndicator(),

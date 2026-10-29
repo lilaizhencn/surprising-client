@@ -15,6 +15,7 @@ import '../models.dart';
 import '../ui/client_components.dart';
 import 'kyc_webview.dart';
 import 'api_key_edit_dialog.dart';
+import 'kyc_status.dart';
 
 class SecuritySheet extends StatefulWidget {
   const SecuritySheet({this.kycOnly = false, super.key});
@@ -25,7 +26,8 @@ class SecuritySheet extends StatefulWidget {
   State<SecuritySheet> createState() => _SecuritySheetState();
 }
 
-class _SecuritySheetState extends State<SecuritySheet> {
+class _SecuritySheetState extends State<SecuritySheet>
+    with WidgetsBindingObserver {
   Timer? _kycStatusPoll;
   bool _pollingSecurity = false;
   bool _operationCancelled = false;
@@ -65,12 +67,14 @@ class _SecuritySheetState extends State<SecuritySheet> {
   String? error;
   String? notice;
 
-  String? loadedToken;
-  String? operationToken;
+  (int?, int)? loadedIdentity;
+  (int?, int)? operationIdentity;
+  (int?, int)? _identity(AppState state) =>
+      state.isLoggedIn ? (state.userId, state.auth.revision) : null;
   bool get operationCurrent =>
       mounted &&
-      operationToken == loadedToken &&
-      AppScope.of(context).session?.accessToken == operationToken;
+      operationIdentity == loadedIdentity &&
+      _identity(AppScope.of(context)) == operationIdentity;
   bool loading = true;
   bool mfaLoaded = false;
   bool kycLoaded = false;
@@ -81,6 +85,19 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Map<String, dynamic> historyPage = const {};
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && !loading && !busy) {
+      unawaited(_load());
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _kycStatusPoll ??= Timer.periodic(const Duration(seconds: 12), (_) {
@@ -88,12 +105,15 @@ class _SecuritySheetState extends State<SecuritySheet> {
           _pollingSecurity ||
           loading ||
           busy ||
-          loadedToken == null) {
+          (WidgetsBinding.instance.lifecycleState != null &&
+              WidgetsBinding.instance.lifecycleState !=
+                  AppLifecycleState.resumed) ||
+          loadedIdentity == null) {
         return;
       }
       final state = AppScope.of(context);
-      if (state.session?.accessToken != loadedToken) return;
-      final version = loadVersion, token = loadedToken;
+      if (_identity(state) != loadedIdentity) return;
+      final version = loadVersion, token = loadedIdentity;
       _pollingSecurity = true;
       unawaited(() async {
         try {
@@ -101,30 +121,36 @@ class _SecuritySheetState extends State<SecuritySheet> {
             final value = await state.api.kycStatus();
             if (mounted &&
                 version == loadVersion &&
-                state.session?.accessToken == token) {
-              setState(() => kyc = value);
+                _identity(state) == token) {
+              setState(() {
+                kyc = value;
+                if (kyc['status'] != 'PENDING') kycVerificationSession = {};
+                loadErrors.remove('认证状态更新');
+              });
             }
           }
           if (mfaRecovery['status'] == 'PENDING' &&
               version == loadVersion &&
-              state.session?.accessToken == token) {
+              _identity(state) == token) {
             final value = await state.api.mfaRecoveryStatus();
             if (mounted &&
                 version == loadVersion &&
-                state.session?.accessToken == token) {
+                _identity(state) == token) {
               setState(() => mfaRecovery = value);
             }
           }
         } catch (_) {
-          // The next poll retries; a transient read must not overwrite the form.
+          if (mounted && version == loadVersion && _identity(state) == token) {
+            setState(() => loadErrors['认证状态更新'] = '认证状态更新失败，请刷新重试');
+          }
         } finally {
           _pollingSecurity = false;
         }
       }());
     });
-    final token = AppScope.of(context).session?.accessToken;
-    if (token == loadedToken) return;
-    loadedToken = token;
+    final token = _identity(AppScope.of(context));
+    if (token == loadedIdentity) return;
+    loadedIdentity = token;
     ++loadVersion;
     mfa = {};
     mfaRecovery = {};
@@ -171,6 +197,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   @override
   void dispose() {
     _kycStatusPoll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     totp.dispose();
     emailCode.dispose();
     securityEmailCode.dispose();
@@ -193,7 +220,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
   Future<void> _load() async {
     final state = AppScope.of(context);
     if (!state.isLoggedIn) return;
-    final token = state.session!.accessToken;
+    final token = _identity(state);
     final version = ++loadVersion;
     loading = true;
     mfaLoaded = false;
@@ -210,9 +237,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
     kycDocumentRecords = [];
     loadErrors.clear();
     bool current() =>
-        mounted &&
-        version == loadVersion &&
-        state.session?.accessToken == token;
+        mounted && version == loadVersion && _identity(state) == token;
     Future<void> read<T>(
       String label,
       Future<T> Function() request,
@@ -274,14 +299,14 @@ class _SecuritySheetState extends State<SecuritySheet> {
 
   Future<void> _loadMoreSecurity(bool history) async {
     final state = AppScope.of(context);
-    final token = state.session?.accessToken;
+    final token = _identity(state);
     final page = history ? historyPage : sessionsPage;
     final cursor = nullableString(page['nextCursor']);
     if (cursor == null) return;
     final next = history
         ? await state.api.loginHistory(cursor: cursor)
         : await state.api.userSessions(cursor: cursor);
-    if (!mounted || state.session?.accessToken != token) return;
+    if (!mounted || _identity(state) != token) return;
     final field = history ? 'logs' : 'sessions';
     setState(() {
       final merged = {
@@ -324,13 +349,14 @@ class _SecuritySheetState extends State<SecuritySheet> {
           throw const FormatException('身份核验需要相机和麦克风权限');
         }
       }
-      if (!mounted) return;
+      if (!mounted || !operationCurrent) return;
       await showDialog<void>(
         context: context,
         builder: (_) => KycSumsubWebView(
           token: token,
           language: state.language,
           refreshToken: () async {
+            if (!operationCurrent) throw const FormatException('登录状态已变化');
             final refreshed = await state.api.refreshKycSession();
             final nextToken = asString(refreshed['launchToken']);
             if (nextToken.isEmpty) throw const FormatException('无法刷新核验令牌');
@@ -338,9 +364,14 @@ class _SecuritySheetState extends State<SecuritySheet> {
           },
         ),
       );
-      if (mounted) {
+      if (operationCurrent) {
         await state.api.kycStatus().then((value) {
-          if (mounted) setState(() => kyc = value);
+          if (operationCurrent) {
+            setState(() {
+              kyc = value;
+              if (kyc['status'] != 'PENDING') kycVerificationSession = {};
+            });
+          }
         });
       }
       return;
@@ -350,7 +381,9 @@ class _SecuritySheetState extends State<SecuritySheet> {
       if (uri == null || !uri.hasScheme || uri.scheme != 'https') {
         throw const FormatException('服务商核验链接无效');
       }
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw const FormatException('无法打开身份核验，请重试');
+      }
       return;
     }
     throw const FormatException('当前核验会话暂不可启动');
@@ -411,7 +444,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
 
   Future<void> _run(Future<void> Function() action, String message) async {
     if (busy) return;
-    operationToken = loadedToken;
+    operationIdentity = loadedIdentity;
     _operationCancelled = false;
     setState(() {
       busy = true;
@@ -617,12 +650,9 @@ class _SecuritySheetState extends State<SecuritySheet> {
             TextButton.icon(
               onPressed: loading || busy
                   ? null
-                  : () {
-                      setState(() => loading = true);
-                      unawaited(_load());
-                    },
+                  : () => _run(_load, widget.kycOnly ? '认证状态已更新' : '安全状态已更新'),
               icon: const Icon(Icons.refresh),
-              label: const Text('刷新安全状态'),
+              label: Text(widget.kycOnly ? '刷新认证状态' : '刷新安全状态'),
             ),
             if (!widget.kycOnly) ...[
               if (primaryAuthentication?.reauthenticationRequired == true ||
@@ -1143,8 +1173,7 @@ class _SecuritySheetState extends State<SecuritySheet> {
               ],
             ],
             SectionTitle(
-              title:
-                  '身份认证 KYC · ${kycLoaded ? asString(kyc['status'], fallback: '未提交') : '状态未获取'}',
+              title: '身份认证 KYC · ${kycLoaded ? kycStatusLabel(kyc) : '状态未获取'}',
             ),
             Text(
               '提币前请完成身份认证。请提供清晰、真实且在有效期内的材料。',
@@ -1167,12 +1196,42 @@ class _SecuritySheetState extends State<SecuritySheet> {
             if (kyc['country'] != null)
               InfoLine(label: '国家 / 地区', value: asString(kyc['country'])),
             if (kyc['kycLevel'] != null)
-              InfoLine(label: '认证等级', value: asString(kyc['kycLevel'])),
-            if (kyc['reviewReason'] != null)
-              Text(asString(kyc['reviewReason'])),
-            if (!['PENDING', 'VERIFIED'].contains(kyc['status']))
+              InfoLine(
+                label: '认证等级',
+                value:
+                    const {
+                      'NONE': '未认证',
+                      'BASIC': '基础认证',
+                      'STANDARD': '标准认证',
+                      'ENHANCED': '增强认证',
+                      'INSTITUTIONAL': '机构认证',
+                    }[kyc['kycLevel']] ??
+                    '暂不可用',
+              ),
+            if (kyc['expiresAt'] != null)
+              InfoLine(
+                label: kyc['status'] == 'VERIFIED' ? '认证有效期至' : '证件有效期至',
+                value: '${kyc['expiresAt']}',
+              ),
+            if (kyc['rejectionReason'] != null)
+              Text('审核说明：${asString(kyc['rejectionReason'])}'),
+            if (!widget.kycOnly)
+              TextButton.icon(
+                onPressed: busy || loading
+                    ? null
+                    : () => _run(_load, '认证状态已更新'),
+                icon: const Icon(Icons.refresh),
+                label: const Text('刷新认证状态'),
+              ),
+            if (kycExpired(kyc) ||
+                (!['PENDING', 'VERIFIED'].contains(kyc['status']) &&
+                    (kyc.isEmpty || kycStatuses.contains(kyc['status']))))
               PrimaryAction(
-                label: '填写认证资料',
+                label: kycExpired(kyc)
+                    ? '重新认证'
+                    : kyc['status'] == 'REJECTED'
+                    ? '补正并重新提交'
+                    : '填写认证资料',
                 icon: Icons.badge_outlined,
                 onPressed:
                     busy || loading || !kycLoaded || kycProviderInfo.isEmpty
@@ -1203,6 +1262,8 @@ class _SecuritySheetState extends State<SecuritySheet> {
                         },
                         kycSimulationEnabled
                             ? '已提交模拟认证，请选择核验结果'
+                            : kycProvider == 'SELF'
+                            ? '材料已提交，请等待人工审核'
                             : '认证已提交，请继续核验',
                       ),
               ),
@@ -1282,7 +1343,10 @@ class _SecuritySheetState extends State<SecuritySheet> {
                 ],
               ),
             ],
-            if (!kycSimulationEnabled && kycVerificationSession.isNotEmpty) ...[
+            if (!kycSimulationEnabled &&
+                kyc['status'] == 'PENDING' &&
+                kycProvider != 'SELF' &&
+                kycVerificationSession.isNotEmpty) ...[
               const SizedBox(height: 8),
               PrimaryAction(
                 label: kycProvider == 'SUMSUB'

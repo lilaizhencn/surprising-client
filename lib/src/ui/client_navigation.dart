@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import 'client_components.dart';
+import 'client_glass.dart';
 
 class ClientNavigation extends InheritedWidget {
   const ClientNavigation({
@@ -20,69 +21,120 @@ class ClientNavigation extends InheritedWidget {
   bool updateShouldNotify(ClientNavigation oldWidget) => false;
 }
 
+List<_ExchangeNavItem> _exchangeItems(BuildContext context) {
+  final language = AppScope.of(context).language;
+  return [
+    _ExchangeNavItem(
+      Icons.grid_view_outlined,
+      Icons.grid_view,
+      clientText(language, '首页', 'Home'),
+    ),
+    _ExchangeNavItem(
+      Icons.show_chart,
+      Icons.show_chart,
+      clientText(language, '行情', 'Markets'),
+    ),
+    _ExchangeNavItem(
+      Icons.sync_alt,
+      Icons.sync_alt,
+      clientText(language, '交易', 'Trade'),
+    ),
+    const _ExchangeNavItem(Icons.handshake_outlined, Icons.handshake, 'C2C'),
+    _ExchangeNavItem(
+      Icons.account_balance_wallet_outlined,
+      Icons.account_balance_wallet,
+      clientText(language, '资产', 'Assets'),
+    ),
+  ];
+}
+
 class ExchangeBottomNav extends StatelessWidget {
   const ExchangeBottomNav({
     required this.selectedIndex,
     required this.onSelected,
     super.key,
   });
-
   final int selectedIndex;
   final ValueChanged<int> onSelected;
-
   @override
   Widget build(BuildContext context) {
-    final language = AppScope.of(context).language;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final exchangeItems = [
-      _ExchangeNavItem(
-        Icons.grid_view_outlined,
-        Icons.grid_view,
-        clientText(language, '首页', 'Home'),
-      ),
-      _ExchangeNavItem(
-        Icons.show_chart,
-        Icons.show_chart,
-        clientText(language, '行情', 'Markets'),
-      ),
-      _ExchangeNavItem(
-        Icons.sync_alt,
-        Icons.sync_alt,
-        clientText(language, '交易', 'Trade'),
-      ),
-      _ExchangeNavItem(Icons.handshake_outlined, Icons.handshake, 'C2C'),
-      _ExchangeNavItem(
-        Icons.account_balance_wallet_outlined,
-        Icons.account_balance_wallet,
-        clientText(language, '资产', 'Assets'),
-      ),
-    ];
-    return Container(
-      height: 56 + bottomInset,
-      padding: EdgeInsets.only(bottom: bottomInset),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-            width: .7,
+    final items = _exchangeItems(context);
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: ClientGlassSurface(
+            child: SizedBox(
+              height: 68,
+              child: Row(
+                children: [
+                  for (var i = 0; i < items.length; i++)
+                    Expanded(
+                      child: _ExchangeNavButton(
+                        item: items[i],
+                        selected: selectedIndex == i,
+                        onTap: () => onSelected(i),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < exchangeItems.length; i++)
-            Expanded(
-              child: InkWell(
-                onTap: () => onSelected(i),
-                child: _ExchangeNavButton(
-                  item: exchangeItems[i],
-                  selected: selectedIndex == i,
-                  central: i == 2,
-                ),
+    );
+  }
+}
+
+class ExchangeSideNav extends StatelessWidget {
+  const ExchangeSideNav({
+    required this.selectedIndex,
+    required this.onSelected,
+    this.extended = false,
+    super.key,
+  });
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final bool extended;
+  @override
+  Widget build(BuildContext context) {
+    final items = _exchangeItems(context);
+    return SafeArea(
+      right: false,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: ClientGlassSurface(
+          radius: 24,
+          child: SizedBox(
+            width: extended ? 152 : 88,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Icon(
+                    Icons.auto_awesome,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 20),
+                  for (var i = 0; i < items.length; i++)
+                    SizedBox(
+                      height: 76,
+                      child: _ExchangeNavButton(
+                        item: items[i],
+                        selected: selectedIndex == i,
+                        onTap: () => onSelected(i),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ],
               ),
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -90,9 +142,7 @@ class ExchangeBottomNav extends StatelessWidget {
 
 class _ExchangeNavItem {
   const _ExchangeNavItem(this.icon, this.selectedIcon, this.label);
-
-  final IconData icon;
-  final IconData selectedIcon;
+  final IconData icon, selectedIcon;
   final String label;
 }
 
@@ -100,90 +150,68 @@ class _ExchangeNavButton extends StatelessWidget {
   const _ExchangeNavButton({
     required this.item,
     required this.selected,
-    this.central = false,
+    required this.onTap,
   });
-
   final _ExchangeNavItem item;
   final bool selected;
-  final bool central;
-
+  final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
-    final selectedColor = Theme.of(context).colorScheme.primary;
-    if (central) {
-      return Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            top: -13,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: item.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: ExcludeSemantics(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? colors.primaryContainer
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: selected ? colors.primary : Colors.transparent,
+                    ),
+                  ),
+                  child: Icon(
+                    selected ? item.selectedIcon : item.icon,
+                    color: selected ? colors.primary : colors.onSurfaceVariant,
+                    size: 24,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.sync_alt,
-                  color: Colors.black,
-                  size: 31,
+                const SizedBox(height: 3),
+                Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected
+                        ? colors.onSurface
+                        : colors.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-          Positioned(
-            bottom: 4,
-            left: 0,
-            right: 0,
-            child: Text(
-              item.label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                color: selected
-                    ? selectedColor
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          selected ? item.selectedIcon : item.icon,
-          color: selected
-              ? selectedColor
-              : Theme.of(context).colorScheme.onSurfaceVariant,
-          size: 24,
         ),
-        const SizedBox(height: 2),
-        Text(
-          item.label,
-          style: TextStyle(
-            color: selected
-                ? selectedColor
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: 10,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Container(
-          width: selected ? 14 : 0,
-          height: 2,
-          decoration: BoxDecoration(
-            color: selectedColor,
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

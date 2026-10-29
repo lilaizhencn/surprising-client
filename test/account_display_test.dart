@@ -327,7 +327,7 @@ void main() {
       api.failKyc = false;
       await tester.tap(find.text('刷新安全状态'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('身份认证 KYC · APPROVED'), findsOneWidget);
+      expect(find.textContaining('身份认证 KYC · 状态暂不可用'), findsOneWidget);
       expect(find.text('身份认证加载失败，请重试'), findsNothing);
       await s.logout();
       await tester.pumpAndSettle();

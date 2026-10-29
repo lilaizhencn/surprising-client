@@ -12,6 +12,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LiquidGlassNavigation") {
+      registrar.register(LiquidGlassViewFactory(), withId: "surprising/liquid-glass")
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "GoogleLoginConfiguration") {
       let channel = FlutterMethodChannel(name: "surprising/google-login", binaryMessenger: registrar.messenger())
       channel.setMethodCallHandler { call, result in

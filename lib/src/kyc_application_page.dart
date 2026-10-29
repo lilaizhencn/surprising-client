@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'models.dart';
+import 'ui/adaptive_client_layout.dart';
 
 List<String> kycRequiredSlots(String type, String applicant, String level) => [
   if (type == 'ID_CARD') ...[
@@ -51,12 +52,17 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
     'BUSINESS_LICENSE': '企业登记证书',
     'FACE_IMAGE': '人脸照片',
   };
-  String? identity, country, error;
+  String? country, error;
+  (int?, int)? identity;
+  (int?, int)? get accountIdentity => widget.state.isLoggedIn
+      ? (widget.state.userId, widget.state.auth.revision)
+      : null;
   String provider = '',
       type = 'ID_CARD',
       applicant = 'INDIVIDUAL',
       level = 'BASIC';
   List<Map<String, dynamic>> countries = [];
+  List<Map<String, dynamic>> verificationOptions = [];
   final documents = <String, Map<String, dynamic>>{};
   DateTime? expires, issued, addressIssued;
   bool loading = true, busy = false;
@@ -64,9 +70,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
   int generation = 0;
   bool invalidated = false;
   bool get current =>
-      mounted &&
-      identity != null &&
-      identity == widget.state.session?.accessToken;
+      mounted && identity != null && identity == accountIdentity;
   List<String> get slots => kycRequiredSlots(type, applicant, level);
 
   int? _documentId(String slot) {
@@ -77,13 +81,13 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
   @override
   void initState() {
     super.initState();
-    identity = widget.state.session?.accessToken;
+    identity = accountIdentity;
     widget.state.addListener(_checkIdentity);
     unawaited(_load());
   }
 
   void _checkIdentity() {
-    if (identity == widget.state.session?.accessToken || invalidated) return;
+    if (identity == accountIdentity || invalidated) return;
     invalidated = true;
     generation++;
     setState(() {
@@ -110,6 +114,24 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
       setState(() {
         countries = result[0] as List<Map<String, dynamic>>;
         provider = asString(asMap(result[1])['provider']);
+        verificationOptions = asList(asMap(result[1])['verificationOptions'])
+            .map(asMap)
+            .where(
+              (option) =>
+                  [
+                    'INDIVIDUAL',
+                    'BUSINESS',
+                  ].contains(option['applicantType']) &&
+                  [
+                    'BASIC',
+                    'STANDARD',
+                    'ENHANCED',
+                  ].contains(option['kycLevel']),
+            )
+            .toList();
+        if (verificationOptions.isEmpty) throw const FormatException('认证流程未配置');
+        applicant = asString(verificationOptions.first['applicantType']);
+        level = asString(verificationOptions.first['kycLevel']);
       });
     } catch (_) {
       if (current && version == generation) {
@@ -223,7 +245,12 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
     String? invalid;
     if (!countries.any((c) => c['code'] == country)) {
       invalid = '请选择国家或地区';
-    } else if (!['SELF', 'SUMSUB', 'VERIFF'].contains(provider)) {
+    } else if (!['SELF', 'SUMSUB', 'VERIFF'].contains(provider) ||
+        !verificationOptions.any(
+          (option) =>
+              option['applicantType'] == applicant &&
+              option['kycLevel'] == level,
+        )) {
       invalid = '身份核验服务暂不可用';
     } else if (provider == 'SELF') {
       if (documentIds.any((id) => id == null)) {
@@ -274,8 +301,8 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
             : null,
       );
       if (mounted && current) Navigator.pop(context, result);
-    } catch (_) {
-      if (current) setState(() => error = '认证提交未完成，请检查材料并重试');
+    } catch (cause) {
+      if (current) setState(() => error = '认证提交未完成：$cause');
     } finally {
       if (current) setState(() => busy = false);
     }
@@ -320,109 +347,152 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
     );
     return Scaffold(
       appBar: AppBar(title: const Text('填写身份认证资料')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (loading) const LinearProgressIndicator(),
-          if (error != null)
-            Text(
-              error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          if (countries.isEmpty && !loading)
-            TextButton(
-              onPressed: current ? _load : null,
-              child: const Text('重新加载认证配置'),
-            ),
-          DropdownButtonFormField<String>(
-            initialValue: country,
-            isExpanded: true,
-            menuMaxHeight: 320,
-            decoration: const InputDecoration(labelText: '国家 / 地区'),
-            items: countries
-                .map(
-                  (c) => DropdownMenuItem<String>(
-                    value: asString(c['code']),
-                    child: Text(
-                      '${asMap(c['names'])['zh'] ?? c['code']}',
-                      overflow: TextOverflow.ellipsis,
+      body: FoldAwareClientBody(
+        primary: SafeArea(
+          child: ClientFormWidth(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (loading) const LinearProgressIndicator(),
+                if (error != null)
+                  Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
-                )
-                .toList(),
-            onChanged: blocked ? null : (v) => setState(() => country = v),
-          ),
-          choice('申请主体', applicant, {
-            'INDIVIDUAL': '个人',
-            'BUSINESS': '企业',
-          }, (v) => applicant = v),
-          choice('认证等级', level, {
-            'BASIC': '基础',
-            'STANDARD': '标准',
-            'ENHANCED': '增强',
-          }, (v) => level = v),
-          choice('证件类型', type, {
-            'ID_CARD': '身份证',
-            'PASSPORT': '护照',
-            'DRIVING_LICENSE': '驾驶证',
-            'RESIDENCE_PERMIT': '居留证',
-          }, (v) => type = v),
-          if (provider == 'SELF') ...[
-            const SizedBox(height: 12),
-            dateButton('证件到期日期', 'expires', expires),
-            if (type == 'ID_CARD') dateButton('身份证签发日期', 'issued', issued),
-            if (level != 'BASIC')
-              dateButton('地址证明签发日期', 'address', addressIssued),
-            const Text(
-              '材料需清晰完整，支持 JPG、PNG、PDF，每份不超过 10 MB。地址证明可使用账单、银行流水或政府居住证明。',
-            ),
-            for (final slot in slots)
-              Card(
-                child: ListTile(
-                  title: Text(labels[slot] ?? slot),
-                  subtitle: Text(
-                    documents.containsKey(slot) && _documentId(slot) == null
-                        ? '材料暂不可用，请重新上传'
-                        : asString(
-                            documents[slot]?['fileName'],
-                            fallback: '未上传',
-                          ),
+                if ((countries.isEmpty || verificationOptions.isEmpty) &&
+                    !loading)
+                  TextButton(
+                    onPressed: current ? _load : null,
+                    child: const Text('重新加载认证配置'),
                   ),
-                  trailing: uploading == slot
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Wrap(
-                          children: [
-                            IconButton(
-                              tooltip: '上传材料',
-                              onPressed: blocked ? null : () => _upload(slot),
-                              icon: const Icon(Icons.upload_file),
-                            ),
-                            if (documents.containsKey(slot))
-                              IconButton(
-                                tooltip: '移除材料',
-                                onPressed: blocked || _documentId(slot) == null
-                                    ? null
-                                    : () => _remove(slot),
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                          ],
+                DropdownButtonFormField<String>(
+                  initialValue: country,
+                  isExpanded: true,
+                  menuMaxHeight: 320,
+                  decoration: const InputDecoration(labelText: '国家 / 地区'),
+                  items: countries
+                      .map(
+                        (c) => DropdownMenuItem<String>(
+                          value: asString(c['code']),
+                          child: Text(
+                            '${asMap(c['names'])['zh'] ?? c['code']}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                      )
+                      .toList(),
+                  onChanged: blocked
+                      ? null
+                      : (v) => setState(() => country = v),
                 ),
-              ),
-          ] else if (provider.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text('提交后继续 $provider 证件与人脸核验。认证材料由核验服务采集。'),
-          ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: blocked || countries.isEmpty ? null : _submit,
-            child: Text(busy ? '提交中…' : '提交认证申请'),
+                if (verificationOptions.isNotEmpty) ...[
+                  choice(
+                    '申请主体',
+                    applicant,
+                    {
+                      for (final option in verificationOptions)
+                        asString(option['applicantType']):
+                            option['applicantType'] == 'BUSINESS' ? '企业' : '个人',
+                    },
+                    (v) {
+                      applicant = v;
+                      level = asString(
+                        verificationOptions.firstWhere(
+                          (option) => option['applicantType'] == v,
+                        )['kycLevel'],
+                      );
+                    },
+                  ),
+                  choice('认证等级', level, {
+                    for (final option in verificationOptions.where(
+                      (option) => option['applicantType'] == applicant,
+                    ))
+                      asString(option['kycLevel']): const {
+                        'BASIC': '基础',
+                        'STANDARD': '标准',
+                        'ENHANCED': '增强',
+                      }[option['kycLevel']]!,
+                  }, (v) => level = v),
+                ],
+                choice('证件类型', type, {
+                  'ID_CARD': '身份证',
+                  'PASSPORT': '护照',
+                  'DRIVING_LICENSE': '驾驶证',
+                  'RESIDENCE_PERMIT': '居留证',
+                }, (v) => type = v),
+                if (provider == 'SELF') ...[
+                  const SizedBox(height: 12),
+                  dateButton('证件到期日期', 'expires', expires),
+                  if (type == 'ID_CARD')
+                    dateButton('身份证签发日期', 'issued', issued),
+                  if (level != 'BASIC')
+                    dateButton('地址证明签发日期', 'address', addressIssued),
+                  const Text(
+                    '材料需清晰完整，支持 JPG、PNG、PDF，每份不超过 10 MB。地址证明可使用账单、银行流水或政府居住证明。',
+                  ),
+                  for (final slot in slots)
+                    Card(
+                      child: ListTile(
+                        title: Text(labels[slot] ?? slot),
+                        subtitle: Text(
+                          documents.containsKey(slot) &&
+                                  _documentId(slot) == null
+                              ? '材料暂不可用，请重新上传'
+                              : asString(
+                                  documents[slot]?['fileName'],
+                                  fallback: '未上传',
+                                ),
+                        ),
+                        trailing: uploading == slot
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Wrap(
+                                children: [
+                                  IconButton(
+                                    tooltip: '上传材料',
+                                    onPressed: blocked
+                                        ? null
+                                        : () => _upload(slot),
+                                    icon: const Icon(Icons.upload_file),
+                                  ),
+                                  if (documents.containsKey(slot))
+                                    IconButton(
+                                      tooltip: '移除材料',
+                                      onPressed:
+                                          blocked || _documentId(slot) == null
+                                          ? null
+                                          : () => _remove(slot),
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                ],
+                              ),
+                      ),
+                    ),
+                ] else if (provider.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('提交后继续 $provider 证件与人脸核验。认证材料由核验服务采集。'),
+                ],
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed:
+                      blocked ||
+                          countries.isEmpty ||
+                          verificationOptions.isEmpty
+                      ? null
+                      : _submit,
+                  child: Text(busy ? '提交中…' : '提交认证申请'),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }

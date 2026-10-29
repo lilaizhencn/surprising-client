@@ -156,12 +156,12 @@ class _UserScannerPageState extends State<UserScannerPage>
                     children: [
                       CircleAvatar(
                         radius: 32,
-                        backgroundColor: exchangeAccent,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         child: Text(
                           name.characters.first,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 26,
-                            color: Colors.black,
+                            color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         ),
                       ),
@@ -325,7 +325,9 @@ class _UserScannerPageState extends State<UserScannerPage>
                                   height: 220,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: exchangeAccent,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
                                       width: 2,
                                     ),
                                     borderRadius: BorderRadius.circular(16),

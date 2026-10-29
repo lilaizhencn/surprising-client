@@ -266,7 +266,15 @@ class BadDisplayApi extends ApiClient {
   ];
 
   @override
-  Future<Map<String, dynamic>> kycProvider() async => {'provider': 'SELF'};
+  Future<Map<String, dynamic>> kycProvider() async => {
+    'provider': 'SELF',
+    'verificationOptions': [
+      {'applicantType': 'INDIVIDUAL', 'kycLevel': 'BASIC'},
+      {'applicantType': 'INDIVIDUAL', 'kycLevel': 'STANDARD'},
+      {'applicantType': 'INDIVIDUAL', 'kycLevel': 'ENHANCED'},
+      {'applicantType': 'BUSINESS', 'kycLevel': 'BASIC'},
+    ],
+  };
 
   @override
   Future<Map<String, String>> assetScales() async => {

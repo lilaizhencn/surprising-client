@@ -68,7 +68,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
   String subject = '', line = '', memberCursor = '0', entryCursor = '0';
   String queryScope = '';
   String? memberNext, entryNext, error, notice;
-  bool loading = false, busy = false, initialized = false;
+  bool loading = false, busy = false, initialized = false, kolEnabled = false;
   int generation = 0;
   @override
   void didChangeDependencies() {
@@ -78,10 +78,12 @@ class _AffiliatePageState extends State<AffiliatePage> {
     if (initialized && owner == state.userId) return;
     initialized = true;
     owner = state.userId;
+    kolEnabled = false;
     subject = '';
     selected = null;
     created = null;
     target.clear();
+    share.text = '50';
     data = null;
     members = [];
     entries = [];
@@ -115,16 +117,32 @@ class _AffiliatePageState extends State<AffiliatePage> {
       }
     });
     try {
+      final self = await state.api.get(
+        '/api/v1/affiliate/me',
+        query: {'productLine': line},
+      );
+      if (!mounted || current != generation || state.userId != user) return;
+      final ownProfile = asMap(self['profile']);
+      if (ownProfile['userId'] != '$user' ||
+          ownProfile['kolEnabled'] is! bool) {
+        throw const FormatException('邀请资料与当前用户不匹配');
+      }
+      final enabled = ownProfile['kolEnabled'] == true;
+      final branch = enabled && subject.isNotEmpty && subject != '$user'
+          ? subject
+          : '';
       final values = await Future.wait([
-        state.api.get(
-          '/api/v1/affiliate/${subject.isEmpty ? 'me' : 'members/$subject'}',
-          query: {'productLine': line},
-        ),
+        branch.isEmpty
+            ? Future.value(self)
+            : state.api.get(
+                '/api/v1/affiliate/members/$branch',
+                query: {'productLine': line},
+              ),
         state.api.get(
           '/api/v1/affiliate/members',
           query: {
-            'cursor': memberCursor,
-            if (subject.isNotEmpty) 'parentId': subject,
+            'cursor': !enabled && subject.isNotEmpty ? '0' : memberCursor,
+            if (branch.isNotEmpty) 'parentId': branch,
           },
         ),
         state.api.get(
@@ -197,6 +215,15 @@ class _AffiliatePageState extends State<AffiliatePage> {
       }
       setState(() {
         scales = assetScales;
+        kolEnabled = enabled;
+        if (!enabled) {
+          if (subject.isNotEmpty) memberCursor = '0';
+          subject = '';
+          selected = null;
+          created = null;
+          target.clear();
+          share.text = '50';
+        }
         data = overview;
         members = asList(values[1]['items']).map(asMap).toList();
         memberNext = nullableString(values[1]['nextCursor']);
@@ -206,7 +233,16 @@ class _AffiliatePageState extends State<AffiliatePage> {
       });
     } catch (failure) {
       if (mounted && current == generation) {
-        setState(() => error = clientErrorMessage(failure));
+        setState(() {
+          error = clientErrorMessage(failure);
+          kolEnabled = false;
+          data = null;
+          members = [];
+          selected = null;
+          created = null;
+          target.clear();
+          share.text = '50';
+        });
       }
     } finally {
       if (mounted && current == generation) setState(() => loading = false);
@@ -230,7 +266,11 @@ class _AffiliatePageState extends State<AffiliatePage> {
       );
       if (mounted && affiliateCode(code.text) == value) {
         setState(() => preview = response);
-        if (owner == null) app!.pendingInvitationCode = value;
+        if (owner == null) {
+          app!.pendingInvitationCode = response['cooperation'] == true
+              ? null
+              : value;
+        }
       }
     } catch (failure) {
       if (mounted && affiliateCode(code.text) == value) {
@@ -318,10 +358,10 @@ class _AffiliatePageState extends State<AffiliatePage> {
     final state = AppScope.of(context);
     final profile = asMap(data?['profile']);
     final counts = asMap(data?['counts']);
-    final own = subject.isEmpty || subject == '$owner';
+    final own = !kolEnabled || subject.isEmpty || subject == '$owner';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('邀请与合作'),
+        title: Text(kolEnabled ? '邀请与合作' : '邀请返佣'),
         actions: [
           IconButton(
             tooltip: '刷新',
@@ -362,12 +402,15 @@ class _AffiliatePageState extends State<AffiliatePage> {
                 if (preview != null) ...[
                   Text('邀请人 UID ${preview!['inviterId']}'),
                   Text(
-                    preview!['cooperation'] == true
+                    preview!['cooperation'] == true && !kolEnabled
+                        ? '该邀请暂不可用，请联系邀请人。'
+                        : preview!['cooperation'] == true
                         ? '团队合作：你获得对应上级佣金的 ${requireInt64(preview!['sharePpm'], 'sharePpm') / 10000}%。加入后，本人交易不向团队上级返佣。'
                         : '普通邀请：接受后，符合条件的交易手续费自动进入邀请核算。',
                   ),
                   FilledButton(
-                    onPressed: busy
+                    onPressed:
+                        busy || (preview!['cooperation'] == true && !kolEnabled)
                         ? null
                         : () => owner == null
                               ? showAuthSheet(context)
@@ -400,7 +443,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
               else if (data != null) ...[
                 section(own ? '我的推广' : '成员 UID ${profile['userId']}', [
                   Text(
-                    '直接邀请 ${counts['directInviteCount']} 人 · 团队邀请 ${counts['teamInviteCount']} 人',
+                    '直接邀请 ${counts['directInviteCount']} 人${kolEnabled ? ' · 团队邀请 ${counts['teamInviteCount']} 人' : ''}',
                   ),
                   if (own) ...[
                     SelectableText('邀请码：${profile['inviteCode']}'),
@@ -410,6 +453,12 @@ class _AffiliatePageState extends State<AffiliatePage> {
                       ),
                       child: const Text('复制邀请链接'),
                     ),
+                    if (!kolEnabled && data!['teamActive'] == false)
+                      const Text('当前邀请返佣已暂停，历史记录保留。'),
+                    if (!kolEnabled)
+                      Text(
+                        '邀请返佣比例 ${requireInt64(data!['rootRatePpm'], 'rootRatePpm') / 10000}%',
+                      ),
                     Text(
                       profile['autoSettlement'] == true ? '自动结算已开启' : '自动结算已关闭',
                     ),
@@ -426,26 +475,27 @@ class _AffiliatePageState extends State<AffiliatePage> {
                       child: const Text('返回我的团队'),
                     ),
                 ]),
-                section('当前合作分配', [
-                  Text(
-                    '平台顶层比例 ${requireInt64(data!['rootRatePpm'], 'rootRatePpm') / 10000}%。下级从所属分支的上级佣金中获得约定份额。',
-                  ),
-                  if (data!['teamActive'] == false)
-                    const Text('顶层团队已暂停，新团队佣金暂不分配，历史记录保留。'),
-                  if (asList(data!['teamPath']).isNotEmpty)
-                    ExpansionTile(
-                      title: Text(
-                        '查看合作路径（${asList(data!['teamPath']).length} 层）',
-                      ),
-                      children: [
-                        for (final value in asList(data!['teamPath']))
-                          Text(
-                            'UID ${asMap(value)['parentId']} → UID ${asMap(value)['childId']}：上级额度的 ${requireInt64(asMap(value)['sharePpm'], 'sharePpm') / 10000}%',
-                          ),
-                      ],
+                if (kolEnabled)
+                  section('当前合作分配', [
+                    Text(
+                      '平台顶层比例 ${requireInt64(data!['rootRatePpm'], 'rootRatePpm') / 10000}%。下级从所属分支的上级佣金中获得约定份额。',
                     ),
-                ]),
-                section('贡献与佣金', [
+                    if (data!['teamActive'] == false)
+                      const Text('顶层团队已暂停，新团队佣金暂不分配，历史记录保留。'),
+                    if (asList(data!['teamPath']).isNotEmpty)
+                      ExpansionTile(
+                        title: Text(
+                          '查看合作路径（${asList(data!['teamPath']).length} 层）',
+                        ),
+                        children: [
+                          for (final value in asList(data!['teamPath']))
+                            Text(
+                              'UID ${asMap(value)['parentId']} → UID ${asMap(value)['childId']}：上级额度的 ${requireInt64(asMap(value)['sharePpm'], 'sharePpm') / 10000}%',
+                            ),
+                        ],
+                      ),
+                  ]),
+                section(kolEnabled ? '贡献与佣金' : '我的返佣', [
                   DropdownButtonFormField<String>(
                     initialValue: line,
                     decoration: const InputDecoration(labelText: '产品线'),
@@ -467,7 +517,11 @@ class _AffiliatePageState extends State<AffiliatePage> {
                       unawaited(load());
                     },
                   ),
-                  const Text('收益按产品与币种分别展示。获得额度包含下级份额，可结算的是本人留存。'),
+                  Text(
+                    kolEnabled
+                        ? '收益按产品与币种分别展示。获得额度包含下级份额，可结算的是本人留存。'
+                        : '返佣按产品与币种分别展示，包含历史记录；待结算和到账确认中的金额尚未到账。',
+                  ),
                   if (asList(data!['balances']).isEmpty)
                     const Text('暂无已确认佣金，产生合格手续费后自动更新。'),
                   for (final value in asList(data!['balances'])) ...[
@@ -477,11 +531,14 @@ class _AffiliatePageState extends State<AffiliatePage> {
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     for (final entry in {
-                      '团队费用贡献': 'teamFeeUnits',
-                      '直接费用贡献': 'directFeeUnits',
-                      '获得额度': 'receivedUnits',
-                      '下级分配': 'delegatedUnits',
-                      '本人留存': 'retainedUnits',
+                      if (kolEnabled) ...{
+                        '团队费用贡献': 'teamFeeUnits',
+                        '直接费用贡献': 'directFeeUnits',
+                        '获得额度': 'receivedUnits',
+                        '下级分配': 'delegatedUnits',
+                        '本人留存': 'retainedUnits',
+                      } else
+                        '累计返佣': 'retainedUnits',
                       '待结算': 'pendingUnits',
                       '在途': 'inFlightUnits',
                       '已到账': 'paidUnits',
@@ -491,8 +548,9 @@ class _AffiliatePageState extends State<AffiliatePage> {
                       ),
                   ],
                 ]),
-                section('邀请用户与团队成员', [
-                  if (members.isEmpty) const Text('该分支还没有邀请用户。'),
+                section(kolEnabled ? '邀请用户与团队成员' : '我邀请的好友', [
+                  if (members.isEmpty)
+                    Text(kolEnabled ? '该分支还没有邀请用户。' : '你还没有邀请好友。'),
                   for (final member in members)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -500,23 +558,29 @@ class _AffiliatePageState extends State<AffiliatePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'UID ${member['userId']} · 直接邀请 ${member['directInviteCount']} 人',
+                            kolEnabled
+                                ? 'UID ${member['userId']} · 直接邀请 ${member['directInviteCount']} 人'
+                                : 'UID ${member['userId']}',
                           ),
-                          Text(
-                            member['teamParentId'] == null
-                                ? '普通邀请用户'
-                                : '团队下级 · 分配 ${requireInt64(member['sharePpm'], 'sharePpm') / 10000}%',
-                          ),
+                          Text('邀请时间：${member['acceptedAt']}'),
+                          if (kolEnabled)
+                            Text(
+                              member['teamParentId'] == null
+                                  ? '普通邀请用户'
+                                  : '团队下级 · 分配 ${requireInt64(member['sharePpm'], 'sharePpm') / 10000}%',
+                            ),
                           if (asList(member['contributions']).isEmpty)
-                            const Text('暂无交易贡献'),
+                            Text(kolEnabled ? '暂无交易贡献' : '暂无已确认返佣'),
                           for (final value in asList(member['contributions']))
                             Text(
-                              '${asMap(value)['productLine']} / ${asMap(value)['asset']}：手续费 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'feeUnits')), scales[asString(asMap(value)['asset'])])} · 获得 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'receivedUnits')), scales[asString(asMap(value)['asset'])])} · 留存 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'retainedUnits')), scales[asString(asMap(value)['asset'])])}',
+                              kolEnabled
+                                  ? '${asMap(value)['productLine']} / ${asMap(value)['asset']}：手续费 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'feeUnits')), scales[asString(asMap(value)['asset'])])} · 获得 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'receivedUnits')), scales[asString(asMap(value)['asset'])])} · 留存 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'retainedUnits')), scales[asString(asMap(value)['asset'])])}'
+                                  : '${asMap(value)['productLine']} / ${asMap(value)['asset']} · 为我产生的返佣 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'retainedUnits')), scales[asString(asMap(value)['asset'])])}',
                             ),
                           Wrap(
                             spacing: 8,
                             children: [
-                              if (member['teamParentId'] != null)
+                              if (kolEnabled && member['teamParentId'] != null)
                                 OutlinedButton(
                                   onPressed: () {
                                     setState(() {
@@ -528,7 +592,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                   },
                                   child: const Text('查看贡献'),
                                 ),
-                              if (own && profile['kolEnabled'] == true)
+                              if (own && kolEnabled)
                                 OutlinedButton(
                                   onPressed: () => setState(() {
                                     selected = member;
@@ -572,56 +636,50 @@ class _AffiliatePageState extends State<AffiliatePage> {
                     ],
                   ),
                 ]),
-                if (own)
-                  section(
-                    'KOL 合作管理',
-                    profile['kolEnabled'] != true
-                        ? [const Text('普通邀请返佣已可使用。团队合作管理请联系平台开通 KOL。')]
-                        : [
-                            field('合作用户 UID（留空生成链接）', target, numeric: true),
-                            field('下级获得上级佣金的比例（%）', share, numeric: true),
-                            FilledButton(
-                              onPressed: busy
-                                  ? null
-                                  : () => act(() async {
-                                      final ppm = affiliatePercent(share.text);
-                                      if (selected?['teamParentId'] != null) {
-                                        await state.api.post(
-                                          '/api/v1/affiliate/members/${selected!['userId']}/share',
-                                          {'sharePpm': ppm},
-                                        );
-                                        selected = null;
-                                        target.clear();
-                                        created = null;
-                                      } else {
-                                        created = await state.api.post(
-                                          '/api/v1/affiliate/invitations',
-                                          {
-                                            'targetUserId':
-                                                target.text.trim().isEmpty
-                                                ? null
-                                                : target.text.trim(),
-                                            'sharePpm': ppm,
-                                          },
-                                        );
-                                      }
-                                    }, '合作设置已保存，首次入队须对方接受'),
-                              child: Text(
-                                selected?['teamParentId'] != null
-                                    ? '保存未来分配比例'
-                                    : '生成合作邀请',
-                              ),
-                            ),
-                            if (created != null)
-                              OutlinedButton(
-                                onPressed: () => copy(
-                                  '${state.api.config.publicWebBaseUrl}/affiliate?invite=${created!['code']}',
-                                ),
-                                child: const Text('复制合作邀请链接'),
-                              ),
-                          ],
-                  ),
-                if (own && asList(data!['invitations']).isNotEmpty)
+                if (own && kolEnabled)
+                  section('KOL 合作管理', [
+                    field('合作用户 UID（留空生成链接）', target, numeric: true),
+                    field('下级获得上级佣金的比例（%）', share, numeric: true),
+                    FilledButton(
+                      onPressed: busy
+                          ? null
+                          : () => act(() async {
+                              final ppm = affiliatePercent(share.text);
+                              if (selected?['teamParentId'] != null) {
+                                await state.api.post(
+                                  '/api/v1/affiliate/members/${selected!['userId']}/share',
+                                  {'sharePpm': ppm},
+                                );
+                                selected = null;
+                                target.clear();
+                                created = null;
+                              } else {
+                                created = await state.api
+                                    .post('/api/v1/affiliate/invitations', {
+                                      'targetUserId': target.text.trim().isEmpty
+                                          ? null
+                                          : target.text.trim(),
+                                      'sharePpm': ppm,
+                                    });
+                              }
+                            }, '合作设置已保存，首次入队须对方接受'),
+                      child: Text(
+                        selected?['teamParentId'] != null
+                            ? '保存未来分配比例'
+                            : '生成合作邀请',
+                      ),
+                    ),
+                    if (created != null)
+                      OutlinedButton(
+                        onPressed: () => copy(
+                          '${state.api.config.publicWebBaseUrl}/affiliate?invite=${created!['code']}',
+                        ),
+                        child: const Text('复制合作邀请链接'),
+                      ),
+                  ]),
+                if (own &&
+                    kolEnabled &&
+                    asList(data!['invitations']).isNotEmpty)
                   section('待接受的合作邀请', [
                     for (final value in asList(data!['invitations']))
                       ListTile(

@@ -3,6 +3,8 @@ import argparse
 import datetime
 import http.server
 import os
+import json
+import urllib.request
 from pathlib import Path
 import subprocess
 import threading
@@ -15,6 +17,7 @@ parser.add_argument('platform', choices=['ios', 'android'])
 parser.add_argument('--device', required=True)
 parser.add_argument('--database', default='surprising_affiliate_qa_20261028')
 parser.add_argument('--owner-id', type=int, default=3)
+parser.add_argument('--admin-session', type=Path, required=True, help='Local QA administrator session JSON; never printed')
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[1]
 artifacts = repo.parent / 'surprising-ex/docs/validation/affiliate-20261028'
@@ -74,6 +77,18 @@ try:
                         subprocess.run(['adb', '-s', args.device, 'exec-out', 'screencap', '-p'],
                                        stdout=screenshot, check=True)
                 acks.add(name)
+            if 'AFFILIATE_ADMIN_APPROVAL_REQUIRED:' in line:
+                member_id = line.split('AFFILIATE_ADMIN_APPROVAL_REQUIRED:', 1)[1].strip()
+                assert member_id.isdecimal() and int(member_id) > 0
+                admin_session = json.loads(args.admin_session.read_text())
+                request = urllib.request.Request(
+                    'http://127.0.0.1:19094/api/v1/admin/affiliate/users/' + member_id,
+                    method='POST', data=json.dumps({'kolEnabled': True, 'autoSettlement': True,
+                                                   'ratePpm': None, 'reason': 'Isolated native QA administrator approval'}).encode(),
+                    headers={'Authorization': 'Bearer ' + admin_session['accessToken'],
+                             'Content-Type': 'application/json'})
+                with urllib.request.urlopen(request) as response:
+                    assert response.status == 200
             if 'AFFILIATE_DEEP_LINK_READY' in line:
                 log.write(f'HOST deep link start {datetime.datetime.now().isoformat()}\n')
                 uri = 'surprising://affiliate?invite=' + code

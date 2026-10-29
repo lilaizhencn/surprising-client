@@ -408,3 +408,14 @@ Web 最近订单更新曾在直接切换已登录账户时保留前一账户缓�
 强平列表读取后端当前`liquidationOrderId`、`instrumentId`和整数数量步数，不再依赖不存在的symbol字段或旧orderId别名。页面按当前产品与标的身份查找合约，复用交易数量格式化；资料未就绪时明确提示，不把原始步数当作数量展示。
 
 投影未就绪的503和格式错误向现有账户错误状态传播，不返回伪造空历史；失败保留上次成功记录，平行账户读取完成后仍保留本次强平错误。已就绪且orders为空才显示真实空历史。当前任务只做Flutter bundle/kernel编译及回归场景源码编译，未运行测试、模拟器或iOS/Android交互。
+
+
+## 邀请返佣与 KOL 开通边界（2026-10-29）
+
+未开通时入口为“邀请返佣”，保留邀请码/复制链接、普通邀请、好友列表、逐人已确认返佣及个人明细/结算；金额按产品和币种展示，累计返佣不代表已到账。团队数量、合作身份/路径、下级比例、KOL 管理及合作邀请列表均不显示，也不显示“尚未开通 KOL”提示。
+
+开关来自登录人本人的后端资料；查看成员时不误用成员开关。刷新关闭状态后退出分支并清除合作草稿；资料读取失败清除旧页面。后台管理员开通后再允许加入团队，接受合作邀请不会自动授予权限。普通注册不要使用尚未获批的合作邀请码；先完成普通注册，获批后接受原合作邀请。
+
+本轮权限、截图、Web 和设备验证及未测范围见[开通边界验证](../surprising-ex/docs/validation/affiliate-access-20261029/README.md)。
+
+本地 UI 契约验证：启动 Web 项目的 `scripts/affiliate-access-fixture.py`，再运行 `python3 integration_test/affiliate_access_host.py ios --device <simulator> --output <artifacts>`（Android 同理）。夹具不连接交易、不执行真实资金操作。原真实 Gateway 全流程的 `affiliate_host.py` 现在还需 `--admin-session <local-qa-admin-session.json>`，由本机 QA 管理员 API 开通新成员，替代原来的自动授权；不要使用生产凭证。

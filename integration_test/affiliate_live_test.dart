@@ -106,7 +106,7 @@ void main() {
     websocketUrl: 'ws://127.0.0.1:19094/ws/v1',
   );
   testWidgets(
-    'real Gateway registration, invitation acceptance and native team management',
+    'real Gateway registration and administrator-approved native team management',
     (tester) async {
       final ownerApi = ApiClient(config);
       final ownerSession = await ownerApi.login(
@@ -221,6 +221,22 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       ownerState.dispose();
       final memberApi = ApiClient(config)..setSession(memberSession);
+      expect(
+        asMap(
+          (await memberApi.get('/api/v1/affiliate/me'))['profile'],
+        )['kolEnabled'],
+        isFalse,
+      );
+      debugPrint('AFFILIATE_ADMIN_APPROVAL_REQUIRED:$memberId');
+      await tester.runAsync(() async {
+        final deadline = DateTime.now().add(const Duration(seconds: 60));
+        while (DateTime.now().isBefore(deadline)) {
+          final approved = await memberApi.get('/api/v1/affiliate/me');
+          if (asMap(approved['profile'])['kolEnabled'] == true) return;
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+        fail('The isolated QA administrator did not approve this member');
+      });
       final memberState = AppState(
         config: config,
         apiClient: memberApi,

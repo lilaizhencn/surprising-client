@@ -123,7 +123,7 @@ class ProfilePage extends StatelessWidget {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.group_add_outlined),
-                title: const Text('邀请与合作'),
+                title: const Text('邀请返佣'),
                 subtitle: const Text('邀请好友、团队贡献与返佣结算'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(

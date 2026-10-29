@@ -307,7 +307,7 @@ class _AuthSheetState extends State<AuthSheet> {
                   decoration: const InputDecoration(
                     labelText: '邀请码（选填）',
                     border: OutlineInputBorder(),
-                    helperText: '接受邀请后自动参与合格手续费核算；合作邀请请先在邀请页核对比例。',
+                    helperText: '普通邀请码用于建立邀请归属，符合条件的手续费将自动参与返佣核算。',
                     helperMaxLines: 3,
                   ),
                 ),

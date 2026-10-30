@@ -803,82 +803,61 @@ class WalletAssetRow extends StatelessWidget {
 
 class WalletOrderRecordRow extends StatelessWidget {
   const WalletOrderRecordRow({required this.record, super.key});
-
   final WalletOrderRecord record;
-
   @override
   Widget build(BuildContext context) {
-    final isOut =
-        record.type.contains('WITHDRAW') || record.type.contains('OUT');
+    final isOut = record.type == 'WITHDRAWAL';
     return Panel(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: isOut
-                ? Theme.of(context).colorScheme.error.withValues(alpha: 0.12)
-                : Theme.of(
-                    context,
-                  ).colorScheme.tertiary.withValues(alpha: 0.12),
-            child: Icon(
-              isOut ? Icons.call_made : Icons.call_received,
-              color: isOut
-                  ? Theme.of(context).colorScheme.error
-                  : Theme.of(context).colorScheme.tertiary,
-              size: 18,
+          Text(
+            '${isOut ? '提币' : '充值'} · ${record.chain}/${record.symbol}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          Text(
+            '${record.status} · ${record.refNo}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${record.type} · ${record.chain}/${record.symbol}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  '${record.status} · ${record.refNo}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (record.errorMessage.isNotEmpty)
-                  Text(
-                    record.errorMessage,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 12,
-                    ),
-                  ),
-              ],
-            ),
+          const SizedBox(height: 8),
+          Text(
+            '${isOut ? '总扣款' : '到账金额'}：${record.amount} ${record.symbol}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${isOut ? '-' : '+'}${money(record.amount, digits: 8)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: isOut
-                      ? Theme.of(context).colorScheme.error
-                      : Theme.of(context).colorScheme.tertiary,
-                ),
+          if (isOut) ...[
+            Text('平台手续费：${record.platformFee ?? '—'} ${record.symbol}'),
+            Text('净到账：${record.receivedAmount ?? '—'} ${record.symbol}'),
+            Text(
+              '实际链上手续费：${record.networkFee ?? '—'} ${record.networkFeeAsset ?? ''}',
+            ),
+          ],
+          if (record.toAddress.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('收款地址'),
+            SelectableText(record.toAddress),
+          ],
+          if (record.txHash.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('交易哈希'),
+            SelectableText(record.txHash),
+          ],
+          if (record.errorMessage.isNotEmpty)
+            Text(
+              record.errorMessage,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
               ),
-              if (record.fee > 0)
-                Text(
-                  'fee ${money(record.fee, digits: 8)}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                ),
-            ],
+            ),
+          Text(
+            record.updatedAt,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11,
+            ),
           ),
         ],
       ),

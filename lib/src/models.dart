@@ -2265,41 +2265,54 @@ class WalletOrderRecord {
     required this.chain,
     required this.symbol,
     required this.amount,
-    required this.fee,
     required this.status,
     required this.toAddress,
     required this.txHash,
     required this.errorMessage,
     required this.updatedAt,
+    this.platformFee,
+    this.receivedAmount,
+    this.networkFee,
+    this.networkFeeAsset,
   });
-
-  final String type;
-  final String refNo;
-  final String chain;
-  final String symbol;
-  final double amount;
-  final double fee;
-  final String status;
-  final String toAddress;
-  final String txHash;
-  final String errorMessage;
-  final String updatedAt;
-
+  final String type,
+      refNo,
+      chain,
+      symbol,
+      amount,
+      status,
+      toAddress,
+      txHash,
+      errorMessage,
+      updatedAt;
+  final String? platformFee, receivedAmount, networkFee, networkFeeAsset;
   factory WalletOrderRecord.fromJson(Map<String, dynamic> json) {
+    String? decimal(String field, {bool required = false}) {
+      final value = json[field];
+      if (value == null && !required) return null;
+      if (value is! String ||
+          value.length > 120 ||
+          plainNonnegativeDecimal(value) == null) {
+        throw FormatException('资金记录金额格式无效：$field');
+      }
+      return plainNonnegativeDecimal(value);
+    }
+
     return WalletOrderRecord(
       type: asString(json['type']),
-      refNo: asString(json['refNo'] ?? json['ref_no']),
+      refNo: asString(json['refNo']),
       chain: asString(json['chain']),
-      symbol: asString(
-        json['assetSymbol'] ?? json['asset_symbol'] ?? json['symbol'],
-      ),
-      amount: requireFiniteDouble(json['amount'], 'amount'),
-      fee: requireFiniteDouble(json['fee'], 'fee'),
+      symbol: asString(json['assetSymbol'] ?? json['asset']),
+      amount: decimal('amount', required: true)!,
+      platformFee: decimal('platformFee'),
+      receivedAmount: decimal('receivedAmount'),
+      networkFee: decimal('networkFee'),
+      networkFeeAsset: nullableString(json['networkFeeAsset']),
       status: asString(json['status']),
-      toAddress: asString(json['toAddress'] ?? json['to_address']),
-      txHash: asString(json['txHash'] ?? json['tx_hash']),
-      errorMessage: asString(json['errorMessage'] ?? json['error_message']),
-      updatedAt: asString(json['updatedAt'] ?? json['updated_at']),
+      toAddress: asString(json['toAddress']),
+      txHash: asString(json['txHash']),
+      errorMessage: asString(json['errorMessage']),
+      updatedAt: asString(json['updatedAt']),
     );
   }
 }

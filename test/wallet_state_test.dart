@@ -51,7 +51,14 @@ class _Api extends ApiClient {
   final requests = <Map<String, dynamic>>[];
   int challenges = 0;
   Future<Map<String, dynamic>> Function(Map<String, dynamic>) withdrawReply =
-      (_) async => {'withdrawalId': 'withdrawal-1', 'status': 'PENDING'};
+      (request) async => {
+        'withdrawalId': 'withdrawal-1',
+        'status': 'SUBMITTED',
+        'amount': request['amount'],
+        'platformFee': '0',
+        'receivedAmount': request['amount'],
+        'networkRevision': 0,
+      };
   Future<Map<String, dynamic>> Function() challengeReply = () async => {
     'destination': 'test-only',
   };
@@ -71,6 +78,7 @@ class _Api extends ApiClient {
     required String toAddress,
     required String amount,
     required String idempotencyKey,
+    required int networkRevision,
     String? emailCode,
     String? totpCode,
   }) {
@@ -184,11 +192,22 @@ class _Fixture {
     String address = _address,
     String? emailCode,
     String? totpCode,
+    WithdrawalQuote? quote,
   }) => wallet.withdrawWallet(
     chain: 'ETH',
     symbol: 'USDT',
     toAddress: address,
     amount: amount,
+    quote:
+        quote ??
+        WithdrawalQuote(
+          chain: "ETH",
+          symbol: "USDT",
+          amount: amount,
+          fee: "0",
+          receivedAmount: amount,
+          networkRevision: 0,
+        ),
     emailCode: emailCode,
     totpCode: totpCode,
   );
@@ -207,7 +226,15 @@ void main() {
       addTearDown(f.dispose);
       f.api.withdrawReply = (_) async =>
           throw ApiException(428, 'verification required');
-      await f.send();
+      const quote = WithdrawalQuote(
+        chain: 'ETH',
+        symbol: 'USDT',
+        amount: '1',
+        fee: '0.01',
+        receivedAmount: '0.99',
+        networkRevision: 0,
+      );
+      await f.send(quote: quote);
       expect(f.wallet.withdrawalVerificationRequired, isTrue);
       expect(f.wallet.withdrawalTotpRequired, isTrue);
       final key = f.wallet.pending!.key;
@@ -216,11 +243,13 @@ void main() {
       expect(f.wallet.error, contains('原提币'));
       f.api.withdrawReply = (_) async => {
         'withdrawalId': 'withdrawal-2',
-        'status': 'PENDING',
-        'fee': '0.01',
-        'netAmount': '0.99',
+        'status': 'SUBMITTED',
+        'amount': '1',
+        'platformFee': '0.01',
+        'receivedAmount': '0.99',
+        'networkRevision': 0,
       };
-      await f.send(emailCode: '123456', totpCode: '654321');
+      await f.send(emailCode: '123456', totpCode: '654321', quote: quote);
       expect(f.api.requests.map((row) => row['key']).toSet(), {key});
       expect(f.wallet.withdrawalConfirmation!.receivedAmount, '0.99');
       expect(f.wallet.withdrawalOutcomeLocked, isTrue);
@@ -288,7 +317,14 @@ void main() {
       f.wallet.clearAccountView();
       f.seed();
       final notifications = f.notifications;
-      result.complete({'withdrawalId': 'owner-7-only', 'status': 'PENDING'});
+      result.complete({
+        'withdrawalId': 'owner-7-only',
+        'status': 'SUBMITTED',
+        'amount': '1',
+        'platformFee': '0',
+        'receivedAmount': '1',
+        'networkRevision': 0,
+      });
       await submitting;
       expect(f.wallet.withdrawalConfirmation, isNull);
       expect(f.wallet.pending, isNull);
@@ -346,7 +382,11 @@ void main() {
       f.seed();
       f.api.withdrawReply = (_) async => {
         'withdrawalId': 'next-receipt',
-        'status': 'PENDING',
+        'status': 'SUBMITTED',
+        'amount': '1',
+        'platformFee': '0',
+        'receivedAmount': '1',
+        'networkRevision': 0,
       };
       await f.send();
       expect(f.wallet.pendingSnapshot, hasLength(2));
@@ -361,7 +401,7 @@ void main() {
   );
 
   test(
-    'legacy single-user receipts migrate conservatively without generating a new key',
+    'obsolete withdrawal storage requires reconciliation and never generates a new key',
     () async {
       final settings = _Settings()
         ..values = {
@@ -371,16 +411,10 @@ void main() {
         };
       final f = _Fixture(settings: settings)..seed();
       addTearDown(f.dispose);
-      expect(await f.wallet.restore(), isTrue);
-      expect(f.wallet.pending!.key, 'app-withdraw-7-legacy');
-      expect(f.wallet.pending!.amount, '1.00');
-      expect(f.wallet.withdrawalOutcomeUnknown, isTrue);
-      await f.persist();
-      expect(settings.values.containsKey('withdrawalKey'), isFalse);
-      expect(
-        jsonDecode(settings.values['pendingWithdrawals']!).single['key'],
-        'app-withdraw-7-legacy',
-      );
+      expect(await f.wallet.restore(), isFalse);
+      await f.send();
+      expect(f.api.requests, isEmpty);
+      expect(settings.values['withdrawalKey'], 'app-withdraw-7-legacy');
     },
   );
 
@@ -451,7 +485,11 @@ void main() {
       f.wallet.dispose();
       result.complete({
         'withdrawalId': 'accepted-before-shutdown',
-        'status': 'PENDING',
+        'status': 'SUBMITTED',
+        'amount': '1',
+        'platformFee': '0',
+        'receivedAmount': '1',
+        'networkRevision': 0,
       });
       await submitting;
       expect(f.notifications, notifications);

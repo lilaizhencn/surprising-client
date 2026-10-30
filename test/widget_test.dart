@@ -176,7 +176,11 @@ void main() {
   test('submits withdrawal once with a stable idempotency key', () async {
     final api = _WithdrawalApiClient(const {
       'status': 'SUBMITTED',
-      'id': 'w-1',
+      'withdrawalId': 'w-1',
+      'amount': '1.000001',
+      'platformFee': '0',
+      'receivedAmount': '1.000001',
+      'networkRevision': 0,
     });
     final state =
         AppState(
@@ -226,12 +230,28 @@ void main() {
       symbol: 'USDT',
       toAddress: 'TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
       amount: '1.000001',
+      quote: const WithdrawalQuote(
+        chain: 'TRON',
+        symbol: 'USDT',
+        amount: '1.000001',
+        fee: '0',
+        receivedAmount: '1.000001',
+        networkRevision: 0,
+      ),
     );
     await state.withdrawWallet(
       chain: 'TRON',
       symbol: 'USDT',
       toAddress: 'TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
       amount: '1.000001',
+      quote: const WithdrawalQuote(
+        chain: 'TRON',
+        symbol: 'USDT',
+        amount: '1.000001',
+        fee: '0',
+        receivedAmount: '1.000001',
+        networkRevision: 0,
+      ),
     );
 
     expect(api.idempotencyKeys, hasLength(1));
@@ -242,6 +262,10 @@ void main() {
   testWidgets('locks transfer fields and action after a pending result', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final state = AppState(
       initialSession: const AuthSession(
         user: AuthUser(
@@ -1099,12 +1123,13 @@ void main() {
       ],
     });
     final order = WalletOrderRecord.fromJson({
-      'type': 'WITHDRAW',
-      'ref_no': 'WD-1',
+      'type': 'WITHDRAWAL',
+      'refNo': 'WD-1',
       'chain': 'ETH',
-      'asset_symbol': 'USDT',
+      'assetSymbol': 'USDT',
       'amount': '1.25',
-      'fee': '0.01',
+      'platformFee': '0.01',
+      'receivedAmount': '1.24',
       'status': 'PENDING_REVIEW',
     });
 
@@ -1112,7 +1137,7 @@ void main() {
     expect(portfolio.assets.first.chains.first.chain, 'ETH');
     expect(order.refNo, 'WD-1');
     expect(order.symbol, 'USDT');
-    expect(order.amount, 1.25);
+    expect(order.amount, '1.25');
   });
 
   test('parses trigger orders with position side', () {
@@ -1463,6 +1488,7 @@ class _WithdrawalApiClient extends ApiClient {
     required String toAddress,
     required String amount,
     required String idempotencyKey,
+    required int networkRevision,
     String? emailCode,
     String? totpCode,
   }) async {

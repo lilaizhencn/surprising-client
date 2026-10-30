@@ -10,6 +10,7 @@ import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/session_store.dart';
+import 'package:surprising_client/src/wallet/wallet_state.dart';
 
 void main() {
   test(
@@ -30,6 +31,7 @@ void main() {
         toAddress: '0x1111111111111111111111111111111111111111',
         amount: '1.25',
         idempotencyKey: 'app-withdraw-7-stable-key',
+        networkRevision: 17,
         emailCode: '123456',
         totpCode: '654321',
       );
@@ -47,6 +49,7 @@ void main() {
       expect(http.request.headers.value('x-security-totp-code'), '654321');
       final capturedBody = asMap(jsonDecode(http.request.body.toString()));
       expect(capturedBody['assetSymbol'], 'USDT');
+      expect(capturedBody['networkRevision'], 17);
       expect(capturedBody['externalReference'], contains('app-withdraw-7'));
       expect(result['status'], 'PENDING');
     },
@@ -58,9 +61,11 @@ void main() {
         ApiException(428, 'security verification is required'),
         <String, dynamic>{
           'withdrawalId': 'withdrawal-2',
-          'status': 'PENDING',
-          'fee': '0.01',
-          'netAmount': '0.99',
+          'status': 'SUBMITTED',
+          'amount': '1',
+          'platformFee': '0.01',
+          'receivedAmount': '0.99',
+          'networkRevision': 0,
         },
       ],
     );
@@ -71,6 +76,14 @@ void main() {
       symbol: 'USDT',
       toAddress: '0x1111111111111111111111111111111111111111',
       amount: '1',
+      quote: const WithdrawalQuote(
+        chain: 'ETH',
+        symbol: 'USDT',
+        amount: '1',
+        fee: '0.01',
+        receivedAmount: '0.99',
+        networkRevision: 0,
+      ),
     );
 
     expect(state.withdrawalVerificationRequired, isTrue);
@@ -82,6 +95,14 @@ void main() {
       symbol: 'USDT',
       toAddress: '0x1111111111111111111111111111111111111111',
       amount: '1',
+      quote: const WithdrawalQuote(
+        chain: 'ETH',
+        symbol: 'USDT',
+        amount: '1',
+        fee: '0.01',
+        receivedAmount: '0.99',
+        networkRevision: 0,
+      ),
       emailCode: '123456',
       totpCode: '654321',
     );
@@ -106,12 +127,28 @@ void main() {
       symbol: 'USDT',
       toAddress: '0x1111111111111111111111111111111111111111',
       amount: '1',
+      quote: const WithdrawalQuote(
+        chain: 'ETH',
+        symbol: 'USDT',
+        amount: '1',
+        fee: '0.01',
+        receivedAmount: '0.99',
+        networkRevision: 0,
+      ),
     );
     await state.withdrawWallet(
       chain: 'ETH',
       symbol: 'USDT',
       toAddress: '0x1111111111111111111111111111111111111111',
       amount: '1',
+      quote: const WithdrawalQuote(
+        chain: 'ETH',
+        symbol: 'USDT',
+        amount: '1',
+        fee: '0.01',
+        receivedAmount: '0.99',
+        networkRevision: 0,
+      ),
     );
 
     expect(api.idempotencyKeys, hasLength(1));
@@ -188,6 +225,66 @@ void main() {
     expect(state.biometricLoginEnabled, isFalse);
     expect(state.lastNotice, contains('已关闭'));
   });
+
+  testWidgets(
+    'a receipt cannot turn a held Retry gesture into another withdrawal',
+    (tester) async {
+      final api = _ReceiptRaceApiClient();
+      final settings = _MemorySettingsStore();
+      final original = PendingWithdrawal(
+        userId: _session.user.userId,
+        key: 'native-pointer-race',
+        chain: 'ETH',
+        symbol: 'USDT',
+        toAddress: '0x${'1' * 40}',
+        amount: '5',
+        status: 'UNKNOWN',
+        quote: const WithdrawalQuote(
+          chain: 'ETH',
+          symbol: 'USDT',
+          amount: '5',
+          fee: '0.1',
+          receivedAmount: '4.9',
+          networkRevision: 0,
+        ),
+      );
+      settings.values['pendingWithdrawals'] = jsonEncode([original.toJson()]);
+      final state = _withdrawalState(api: api, settings: settings);
+      addTearDown(state.dispose);
+      expect(await state.wallet.restore(), isTrue);
+      await tester.pumpWidget(
+        AppScope(
+          notifier: state,
+          child: const MaterialApp(
+            home: WithdrawalPage(initialSymbol: 'USDT', initialChain: 'ETH'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final retry = find.widgetWithText(TextButton, '重试原请求');
+      await tester.ensureVisible(retry);
+      final gesture = await tester.startGesture(tester.getCenter(retry));
+      final query = state.refreshWithdrawalSubmission();
+      api.receipt.complete({
+        'id': 'race-wallet',
+        'withdrawalId': 'race-wallet',
+        'status': 'SUBMITTED',
+        'success': true,
+        'amount': '5',
+        'platformFee': '0.1',
+        'receivedAmount': '4.9',
+        'networkRevision': 0,
+      });
+      await query;
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextButton, '发起另一笔提币'), findsOneWidget);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(state.wallet.pending?.key, original.key);
+      expect(state.wallet.pending?.status, 'ACCEPTED');
+      expect(api.idempotencyKeys, isEmpty);
+    },
+  );
 
   testWidgets('top withdrawal action opens the real withdrawal form', (
     tester,
@@ -457,6 +554,7 @@ class _WithdrawalApiClient extends ApiClient {
     required String toAddress,
     required String amount,
     required String idempotencyKey,
+    required int networkRevision,
     String? emailCode,
     String? totpCode,
   }) async {
@@ -476,6 +574,16 @@ class _WithdrawalApiClient extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> mfaStatus() async => {'enabled': true};
+}
+
+class _ReceiptRaceApiClient extends _WithdrawalApiClient {
+  _ReceiptRaceApiClient() : super(responses: const []);
+  final receipt = Completer<Map<String, dynamic>>();
+  @override
+  Future<Map<String, dynamic>> walletWithdrawalSubmission(
+    int userId,
+    String reference,
+  ) => receipt.future;
 }
 
 class _MemorySettingsStore implements ClientSettingsStore {

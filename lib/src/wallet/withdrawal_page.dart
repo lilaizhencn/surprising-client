@@ -25,6 +25,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
   String? localError;
   int? owner;
   bool ownerCaptured = false;
+  bool quoting = false;
 
   @override
   void initState() {
@@ -77,6 +78,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     if (!state.isLoggedIn || owner != state.userId) {
       return _unavailable(state, '账户已变化，请重新打开提币');
     }
+    if (state.wallet.pending != null) return _recovery(state);
     if (!state.walletReady) {
       return _unavailable(state, state.walletError ?? '可提币余额暂不可用，请刷新');
     }
@@ -151,7 +153,8 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
         ? ''
         : chainValues.first;
     final rule = state.withdrawalRuleFor(chain, symbol);
-    final locked = state.withdrawalSubmitting || state.withdrawalOutcomeLocked;
+    final locked =
+        quoting || state.withdrawalSubmitting || state.withdrawalOutcomeLocked;
     final minimum = rule?.minimumAmount;
     final previewReceived = rule?.receivedAmount(amountController.text.trim());
 
@@ -343,13 +346,16 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                     ],
                   ),
                   if (rule?.feeAmount != null)
-                    InfoLine(label: '手续费', value: '${rule!.feeAmount} $symbol'),
+                    InfoLine(
+                      label: '平台提现手续费',
+                      value: '${rule!.feeAmount} $symbol',
+                    ),
                   if (previewReceived != null &&
                       !previewReceived.startsWith('-'))
                     InfoLine(label: '预计到账', value: '$previewReceived $symbol'),
                   const SizedBox(height: 8),
                   Text(
-                    '请确认网络与收款地址一致，转出后无法撤回。',
+                    '平台手续费从总扣款内扣，链上 Gas 单独结算。请确认网络与收款地址一致，转出后无法撤回。',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
@@ -412,7 +418,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             ],
             const SizedBox(height: 14),
             PrimaryAction(
-              label: state.withdrawalSubmitting
+              label: quoting
+                  ? '获取报价…'
+                  : state.withdrawalSubmitting
                   ? '提交中…'
                   : state.withdrawalOutcomeUnknown
                   ? '结果待核对'
@@ -451,6 +459,121 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     );
   }
 
+  Widget _recovery(AppState state) {
+    final pending = state.wallet.pending!;
+    final working = state.withdrawalSubmitting;
+    return Scaffold(
+      backgroundColor: exchangeBackground(context),
+      appBar: AppBar(title: const Text('原提币请求')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SectionTitle(title: '原请求与金额快照'),
+                  InfoLine(label: '网络', value: pending.chain),
+                  InfoLine(
+                    label: '总扣款',
+                    value: '${pending.amount} ${pending.symbol}',
+                  ),
+                  InfoLine(
+                    label: '平台提现手续费',
+                    value: '${pending.quote.fee} ${pending.symbol}',
+                  ),
+                  InfoLine(
+                    label: '净到账',
+                    value: '${pending.quote.receivedAmount} ${pending.symbol}',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('接收地址'),
+                  SelectableText(pending.toAddress),
+                  const SizedBox(height: 8),
+                  const Text('原请求编号'),
+                  SelectableText(pending.key),
+                  const SizedBox(height: 8),
+                  Text('状态：${pending.confirmation?.status ?? pending.status}'),
+                  const SizedBox(height: 8),
+                  const Text('平台手续费包含在总扣款中；链上 Gas 单独记账。未知结果请查询或重试原请求，不要更换编号。'),
+                ],
+              ),
+            ),
+            if (state.withdrawalVerificationRequired) ...[
+              const SizedBox(height: 12),
+              Panel(
+                child: Column(
+                  children: [
+                    AppTextField(
+                      controller: emailCodeController,
+                      label: '邮箱验证码',
+                      enabled: !working,
+                    ),
+                    const SizedBox(height: 8),
+                    AppTextField(
+                      controller: totpCodeController,
+                      label: '验证器动态码',
+                      enabled: !working,
+                    ),
+                    TextButton(
+                      onPressed: working
+                          ? null
+                          : () => unawaited(state.requestWithdrawalChallenge()),
+                      child: const Text('发送邮箱验证码'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (state.wallet.error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  state.wallet.error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            if (state.wallet.notice != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(state.wallet.notice!),
+              ),
+            const SizedBox(height: 12),
+            PrimaryAction(
+              label: working ? '核对中…' : '查询原请求状态',
+              icon: Icons.refresh,
+              onPressed: working
+                  ? null
+                  : () => unawaited(state.refreshWithdrawalSubmission()),
+            ),
+            if (pending.status != 'ACCEPTED')
+              TextButton(
+                key: const ValueKey('retry-original-withdrawal'),
+                onPressed: working
+                    ? null
+                    : () => unawaited(
+                        state.retryOriginalWithdrawal(
+                          emailCode: emailCodeController.text,
+                          totpCode: totpCodeController.text,
+                        ),
+                      ),
+                child: const Text('重试原请求'),
+              ),
+            if (pending.status == 'ACCEPTED')
+              TextButton(
+                key: const ValueKey('start-another-withdrawal'),
+                onPressed: working
+                    ? null
+                    : () => unawaited(_startAnotherWithdrawal(state)),
+                child: const Text('发起另一笔提币'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _reviewAndSubmit(
     AppState state,
     String symbol,
@@ -478,55 +601,73 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       return;
     }
     final amount = amountController.text.trim();
-    final fee = rule?.feeAmount;
-    final received = rule?.receivedAmount(amount);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认提币信息'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InfoLine(
-              label: '网络',
-              value: rule?.network.isNotEmpty == true
-                  ? '$chain · ${rule!.network}'
-                  : chain,
+    final address = addressController.text.trim();
+    setState(() {
+      quoting = true;
+      localError = null;
+    });
+    try {
+      final quote = await state.quoteWithdrawal(
+        chain: chain,
+        symbol: symbol,
+        amount: amount,
+      );
+      if (!mounted) return;
+      final fee = quote.fee, received = quote.receivedAmount;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('确认提币信息'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InfoLine(
+                  label: '网络',
+                  value: rule?.network.isNotEmpty == true
+                      ? '$chain · ${rule!.network}'
+                      : chain,
+                ),
+                InfoLine(label: '地址', value: address),
+                InfoLine(label: '总扣款', value: '$amount $symbol'),
+                InfoLine(label: '平台提现手续费', value: '$fee $symbol'),
+                InfoLine(label: '净到账', value: '$received $symbol'),
+                const SizedBox(height: 10),
+                const Text(
+                  '请确认网络与接收地址完全一致。提交后不可撤销。',
+                  style: TextStyle(color: ClientColors.muted, fontSize: 11),
+                ),
+              ],
             ),
-            InfoLine(label: '地址', value: addressController.text.trim()),
-            InfoLine(label: '数量', value: '$amount $symbol'),
-            if (fee != null) InfoLine(label: '手续费', value: '$fee $symbol'),
-            if (received != null)
-              InfoLine(label: '预计到账', value: '$received $symbol'),
-            const SizedBox(height: 10),
-            const Text(
-              '请确认网络与接收地址完全一致。提交后不可撤销。',
-              style: TextStyle(color: ClientColors.muted, fontSize: 11),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('返回修改'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认提交'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('返回修改'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认提交'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await state.withdrawWallet(
-      chain: chain,
-      symbol: symbol,
-      toAddress: addressController.text,
-      amount: amount,
-      emailCode: emailCodeController.text,
-      totpCode: totpCodeController.text,
-    );
+      );
+      if (confirmed != true || !mounted) return;
+      await state.withdrawWallet(
+        chain: chain,
+        symbol: symbol,
+        toAddress: address,
+        amount: quote.amount,
+        quote: quote,
+        emailCode: emailCodeController.text,
+        totpCode: totpCodeController.text,
+      );
+    } catch (error) {
+      if (mounted) setState(() => localError = error.toString());
+    } finally {
+      if (mounted) setState(() => quoting = false);
+    }
   }
 
   Future<void> _startAnotherWithdrawal(AppState state) async {
@@ -562,12 +703,12 @@ class WithdrawalConfirmationPanel extends StatelessWidget {
           ),
           InfoLine(label: '地址', value: confirmation.toAddress),
           InfoLine(
-            label: '数量',
+            label: '总扣款',
             value: '${confirmation.amount} ${confirmation.symbol}',
           ),
           if (confirmation.fee != null)
             InfoLine(
-              label: '手续费',
+              label: '平台提现手续费',
               value: '${confirmation.fee} ${confirmation.symbol}',
             ),
           if (confirmation.receivedAmount != null)

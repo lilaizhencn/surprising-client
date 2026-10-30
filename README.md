@@ -448,3 +448,13 @@ iOS 26+ 导航采用原生 `UIGlassEffect`，旧版 iOS 使用系统材质，And
 六个主题分别为石墨黑金、晨光钴蓝、深海青蓝、森林绿、暮光紫和暖沙棕。各主题有独立背景、表面、边框、主色及辅色；首页和资产操作按钮也跟随主题，不再共用固定荧光绿。浅色主题保留明亮属性，同时加强底色和正文对比；涨跌红绿语义保持一致。
 
 设备验收可复用 `python3 tool/native_kyc_acceptance.py --device <模拟器ID> --output <记录目录> --api <隔离Gateway地址>`。该脚本依赖后端的 `KycClosureBrowserQaTest` 隔离夹具，只使用合成身份材料；不能指向生产。系统文件选择器在验收中使用合成文件提供器，上传、提交、审核与读取走真实 HTTP/PostgreSQL，文件选择器本身与真实活体不计入该验收。最终步骤、截图及未测范围见 [验证记录](../surprising-ex/docs/validation/kyc-adaptive-themes-20261029/README.md)。
+
+### 提现报价、恢复与充提记录
+
+提币确认前读取服务端报价，显示总扣款、平台手续费（内扣）及净到账，并提交报价版本。原请求与报价在写入前持久保存；未知结果允许查询或重试原编号，App 重启、最新规则或余额暂不可用时仍保留恢复入口。充提记录分别读取钱包专用接口，金额以十进制字符串保留精度，平台费、净到账、实际链费与完整哈希分别展示。
+
+原生故障回归：`python3 integration_test/wallet_closure_host.py --device <设备ID> --platform ios|android --output <临时证据目录>`。这是隔离 HTTP 场景；真实 PostgreSQL 和本地链资金验证在后端运行。
+
+## 钱包提现金额与原单恢复
+
+iOS/Android 使用相同的服务端报价与网络版本，显示总扣款、平台费、净到账和独立链费。提交前保存原请求，重新进入后查询或重试原引用；不保存验证码。交易所提现通过 Core 授权与租户本金池出款，无需用户持有原充值地址余额。专项脚本为 `integration_test/wallet_closure_test.dart` 与 `wallet_closure_host.py`。

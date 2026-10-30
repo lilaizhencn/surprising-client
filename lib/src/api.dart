@@ -2008,22 +2008,40 @@ class ApiClient {
     int userId, {
     int limit = 30,
   }) async {
-    final page = await accountRecords(
-      category: 'external-transfer',
-      userId: userId,
-      product: ProductMode.spot,
-    );
-    return page.rows
-        .take(limit)
-        .map(
-          (row) => WalletOrderRecord.fromJson({
+    final boundedLimit = limit.clamp(1, 200);
+    final responses = await Future.wait([
+      _send(
+        'GET',
+        '/api/v1/wallet/withdrawals',
+        query: {'limit': '$boundedLimit'},
+        userId: userId,
+      ),
+      _send(
+        'GET',
+        '/api/v1/wallet/deposits',
+        query: {'limit': '$boundedLimit'},
+        userId: userId,
+      ),
+    ]);
+    final records = <WalletOrderRecord>[];
+    for (var index = 0; index < responses.length; index++) {
+      final rows = responses[index];
+      if (rows is! List) throw const FormatException('充提记录格式异常，请重试');
+      for (final value in rows) {
+        final row = asMap(value);
+        records.add(
+          WalletOrderRecord.fromJson({
             ...row,
-            'type': row['referenceType'],
-            'refNo': row['withdrawalId'] ?? row['id'] ?? row['orderNo'],
+            'type': index == 0 ? 'WITHDRAWAL' : 'DEPOSIT',
+            'refNo':
+                row['gatewayWithdrawalId'] ?? row['withdrawalId'] ?? row['id'],
             'updatedAt': row['updatedAt'] ?? row['createdAt'],
           }),
-        )
-        .toList();
+        );
+      }
+    }
+    records.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return records.take(boundedLimit).toList();
   }
 
   Future<WalletDepositAddress> walletDepositAddress(
@@ -2049,6 +2067,26 @@ class ApiClient {
     });
   }
 
+  Future<Map<String, dynamic>> walletWithdrawalQuote(
+    int userId, {
+    required String chain,
+    required String symbol,
+    required String amount,
+  }) => post('/api/v1/wallet/withdrawals/quote', {
+    'chain': chain,
+    'assetSymbol': symbol,
+    'amount': amount,
+  }, userId: userId);
+
+  Future<Map<String, dynamic>> walletWithdrawalSubmission(
+    int userId,
+    String reference,
+  ) => get(
+    '/api/v1/wallet/withdrawals/submission',
+    query: {'reference': reference},
+    userId: userId,
+  );
+
   Future<Map<String, dynamic>> walletWithdraw(
     int userId, {
     required String chain,
@@ -2056,6 +2094,7 @@ class ApiClient {
     required String toAddress,
     required String amount,
     required String idempotencyKey,
+    required int networkRevision,
     String? emailCode,
     String? totpCode,
   }) {
@@ -2067,6 +2106,7 @@ class ApiClient {
         'toAddress': toAddress,
         'amount': amount,
         'externalReference': 'mobile-withdrawal:$idempotencyKey',
+        'networkRevision': networkRevision,
       },
       userId: userId,
       headers: {

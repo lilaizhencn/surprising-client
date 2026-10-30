@@ -19,7 +19,7 @@ import 'wallet/account_transfer_state.dart';
 import 'wallet/wallet_state.dart';
 
 export 'wallet/wallet_state.dart'
-    show WithdrawalAssetRule, WithdrawalConfirmation;
+    show WithdrawalAssetRule, WithdrawalConfirmation, WithdrawalQuote;
 import 'portfolio_income.dart';
 import 'portfolio_income_state.dart';
 
@@ -569,6 +569,7 @@ class AppState extends ChangeNotifier {
   List<WithdrawalAssetRule> get withdrawalRules => wallet.rules;
   set withdrawalRules(List<WithdrawalAssetRule> values) =>
       wallet.rules = values;
+  WithdrawalQuote? get pendingWithdrawalQuote => wallet.pending?.quote;
   WithdrawalConfirmation? get withdrawalConfirmation =>
       wallet.withdrawalConfirmation;
   String? lastError;
@@ -1685,11 +1686,21 @@ class AppState extends ChangeNotifier {
     toAddress: toAddress,
     amount: amount,
   );
+  Future<WithdrawalQuote> quoteWithdrawal({
+    required String chain,
+    required String symbol,
+    required String amount,
+  }) => wallet.quoteWithdrawal(chain: chain, symbol: symbol, amount: amount);
+  Future<void> refreshWithdrawalSubmission() =>
+      wallet.refreshWithdrawalSubmission();
+  Future<void> retryOriginalWithdrawal({String? emailCode, String? totpCode}) =>
+      wallet.retryOriginalWithdrawal(emailCode: emailCode, totpCode: totpCode);
   Future<void> withdrawWallet({
     required String chain,
     required String symbol,
     required String toAddress,
     required String amount,
+    required WithdrawalQuote quote,
     String? emailCode,
     String? totpCode,
   }) => wallet.withdrawWallet(
@@ -1697,6 +1708,7 @@ class AppState extends ChangeNotifier {
     symbol: symbol,
     toAddress: toAddress,
     amount: amount,
+    quote: quote,
     emailCode: emailCode,
     totpCode: totpCode,
   );

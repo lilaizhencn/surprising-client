@@ -52,6 +52,59 @@ class WithdrawalAssetRule {
   }
 }
 
+/// The exact server quotation approved before any funds command is sent.
+class WithdrawalQuote {
+  const WithdrawalQuote({
+    required this.chain,
+    required this.symbol,
+    required this.amount,
+    required this.fee,
+    required this.receivedAmount,
+    required this.networkRevision,
+  });
+  final String chain, symbol, amount, fee, receivedAmount;
+  final int networkRevision;
+  Map<String, dynamic> toJson() => {
+    'chain': chain,
+    'asset': symbol,
+    'amount': amount,
+    'fee': fee,
+    'receivedAmount': receivedAmount,
+    'networkRevision': networkRevision,
+  };
+  factory WithdrawalQuote.fromJson(Map<String, dynamic> json) {
+    if (['amount', 'fee', 'receivedAmount'].any(
+      (field) => json[field] is! String || asString(json[field]).length > 120,
+    )) {
+      throw const FormatException('提币报价金额必须是有界十进制字符串');
+    }
+    final chain = asString(json['chain']), symbol = asString(json['asset']);
+    final amount = plainNonnegativeDecimal(asString(json['amount']));
+    final fee = plainNonnegativeDecimal(asString(json['fee']));
+    final received = plainNonnegativeDecimal(asString(json['receivedAmount']));
+    final revision = parseInt64(json['networkRevision']);
+    if (chain.isEmpty ||
+        symbol.isEmpty ||
+        amount == null ||
+        fee == null ||
+        received == null ||
+        revision == null ||
+        revision < 0 ||
+        _compareDecimals(received, '0') <= 0 ||
+        _compareDecimals(_subtractDecimal(amount, fee), received) != 0) {
+      throw const FormatException('提币报价资料无效，请重新加载');
+    }
+    return WithdrawalQuote(
+      chain: chain,
+      symbol: symbol,
+      amount: amount,
+      fee: fee,
+      receivedAmount: received,
+      networkRevision: revision,
+    );
+  }
+}
+
 class WithdrawalConfirmation {
   const WithdrawalConfirmation({
     required this.chain,
@@ -79,15 +132,6 @@ class WithdrawalConfirmation {
 int? _nullableInt(Object? value) {
   final parsed = parseInt64(value);
   return parsed != null && parsed >= 0 && parsed <= 36 ? parsed : null;
-}
-
-String? _firstDecimal(Map<String, dynamic> values, List<String> keys) {
-  for (final key in keys) {
-    if (values[key] == null) continue;
-    final value = plainNonnegativeDecimal(asString(values[key]));
-    if (value != null) return value;
-  }
-  return null;
 }
 
 // Retain malformed supplied metadata so validation cannot treat it as absent.
@@ -184,6 +228,7 @@ class PendingWithdrawal {
     required this.symbol,
     required this.toAddress,
     required this.amount,
+    required this.quote,
     this.status = 'PREPARED',
     this.totpRequired = false,
     this.confirmation,
@@ -191,6 +236,7 @@ class PendingWithdrawal {
   final int userId;
   final String key, chain, symbol, toAddress, amount, status;
   final bool totpRequired;
+  final WithdrawalQuote quote;
   final WithdrawalConfirmation? confirmation;
 
   PendingWithdrawal withStatus(
@@ -204,6 +250,7 @@ class PendingWithdrawal {
     symbol: symbol,
     toAddress: toAddress,
     amount: amount,
+    quote: quote,
     status: status,
     totpRequired: totpRequired ?? this.totpRequired,
     confirmation: confirmation ?? this.confirmation,
@@ -216,6 +263,7 @@ class PendingWithdrawal {
     'symbol': symbol,
     'toAddress': toAddress,
     'amount': amount,
+    'quote': quote.toJson(),
     'status': status,
     'totpRequired': totpRequired,
     if (confirmation case final value?)
@@ -234,6 +282,7 @@ class PendingWithdrawal {
     final symbol = asString(json['symbol']),
         address = asString(json['toAddress']);
     final amount = asString(json['amount']), status = asString(json['status']);
+    final quote = WithdrawalQuote.fromJson(asMap(json['quote']));
     final normalized = plainNonnegativeDecimal(amount);
     if (userId <= 0 ||
         !RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(key) ||
@@ -244,6 +293,9 @@ class PendingWithdrawal {
         RegExp(r'\s').hasMatch(address) ||
         normalized == null ||
         _compareDecimals(normalized, '0') <= 0 ||
+        quote.chain != chain ||
+        quote.symbol != symbol ||
+        _compareDecimals(quote.amount, normalized) != 0 ||
         !const {'PREPARED', 'VERIFY', 'UNKNOWN', 'ACCEPTED'}.contains(status)) {
       throw const FormatException('提币恢复资料无效');
     }
@@ -263,29 +315,46 @@ class PendingWithdrawal {
         receivedAmount: nullableString(raw['receivedAmount']),
       );
     }
+    const known = {
+      'PENDING_APPROVAL',
+      'PROCESSING',
+      'DEBIT_UNKNOWN',
+      'DEBITED',
+      'SUBMITTED',
+      'BROADCAST_UNKNOWN',
+      'FAILED_PENDING',
+      'REFUND_PENDING',
+      'REFUNDED',
+      'REJECTED',
+      'COMPLETED',
+    };
+    const recorded = {
+      'PENDING_APPROVAL',
+      'SUBMITTED',
+      'COMPLETED',
+      'REFUNDED',
+      'REJECTED',
+    };
     if (confirmation != null &&
-        (!RegExp(r'^[A-Z][A-Z0-9_]{0,63}$').hasMatch(confirmation.status) ||
+        (!known.contains(confirmation.status) ||
             confirmation.reference.isEmpty ||
             confirmation.reference.length > 128 ||
-            confirmation.network.length > 256 ||
-            (confirmation.fee != null &&
-                plainNonnegativeDecimal(confirmation.fee!) == null) ||
-            (confirmation.receivedAmount != null &&
-                plainNonnegativeDecimal(confirmation.receivedAmount!) ==
-                    null))) {
-      throw const FormatException('提币确认资料无效');
+            confirmation.network != chain ||
+            confirmation.fee == null ||
+            confirmation.receivedAmount == null ||
+            plainNonnegativeDecimal(confirmation.fee!) == null ||
+            plainNonnegativeDecimal(confirmation.receivedAmount!) == null ||
+            _compareDecimals(confirmation.fee!, quote.fee) != 0 ||
+            _compareDecimals(
+                  confirmation.receivedAmount!,
+                  quote.receivedAmount,
+                ) !=
+                0)) {
+      throw const FormatException('提币确认资料与原报价不一致');
     }
-    if (status == 'ACCEPTED' && confirmation == null) {
-      // Old storage has an accepted marker but no receipt, so stay conservative.
-      return PendingWithdrawal(
-        userId: userId,
-        key: key,
-        chain: chain,
-        symbol: symbol,
-        toAddress: address,
-        amount: amount,
-        status: 'UNKNOWN',
-      );
+    if (status == 'ACCEPTED' &&
+        (confirmation == null || !recorded.contains(confirmation.status))) {
+      throw const FormatException('提币受理凭证缺失或仍需确认');
     }
     return PendingWithdrawal(
       userId: userId,
@@ -294,6 +363,7 @@ class PendingWithdrawal {
       symbol: symbol,
       toAddress: address,
       amount: amount,
+      quote: quote,
       status: status,
       totpRequired: json['totpRequired'] == true,
       confirmation: confirmation,
@@ -395,25 +465,11 @@ class WalletState {
         throw const FormatException('提币恢复资料无效');
       }
       rows = raw;
-    } else if ((values['withdrawalKey'] ?? '').isNotEmpty) {
-      final parts = (values['withdrawalFingerprint'] ?? '').split('|');
-      if (parts.length != 4) throw const FormatException('原提币恢复资料无效');
-      // The old unlocked marker cannot prove a request was never sent.
-      rows = [
-        {
-          'userId': values['withdrawalUserId'],
-          'key': values['withdrawalKey'],
-          'chain': parts[0],
-          'symbol': parts[1],
-          'toAddress': parts[2],
-          'amount': parts[3],
-          'status': 'UNKNOWN',
-        },
-      ];
     } else {
       if (values['withdrawalLocked'] == 'true' ||
-          values['withdrawalUnknown'] == 'true') {
-        throw const FormatException('原提币恢复资料缺少请求身份');
+          values['withdrawalUnknown'] == 'true' ||
+          (values['withdrawalKey'] ?? '').isNotEmpty) {
+        throw const FormatException('原提币恢复资料需要人工核对');
       }
       rows = const [];
     }
@@ -707,11 +763,36 @@ class WalletState {
     );
   }
 
+  Future<WithdrawalQuote> quoteWithdrawal({
+    required String chain,
+    required String symbol,
+    required String amount,
+  }) async {
+    final identity = owner();
+    if (identity.userId == null || _closed) throw StateError('请先登录再提币');
+    final result = WithdrawalQuote.fromJson(
+      await api.walletWithdrawalQuote(
+        identity.userId!,
+        chain: chain,
+        symbol: symbol,
+        amount: amount,
+      ),
+    );
+    if (!_current(identity) ||
+        result.chain != chain ||
+        result.symbol != symbol ||
+        _compareDecimals(result.amount, amount) != 0) {
+      throw const FormatException('提币报价与当前账户或请求不匹配');
+    }
+    return result;
+  }
+
   Future<void> withdrawWallet({
     required String chain,
     required String symbol,
     required String toAddress,
     required String amount,
+    required WithdrawalQuote quote,
     String? emailCode,
     String? totpCode,
   }) async {
@@ -741,6 +822,11 @@ class WalletState {
       final normalizedChain = chain.trim().toUpperCase(),
           currency = symbol.trim().toUpperCase();
       final address = toAddress.trim(), value = amount.trim();
+      if (quote.chain != normalizedChain ||
+          quote.symbol != currency ||
+          _compareDecimals(quote.amount, value) != 0) {
+        throw const FormatException('提币参数与已确认报价不一致');
+      }
       final original = _pending[id];
       PendingWithdrawal intent;
       if (original != null) {
@@ -766,6 +852,7 @@ class WalletState {
           symbol: currency,
           toAddress: address,
           amount: value,
+          quote: quote,
         );
         _pending[id] = intent;
       }
@@ -787,7 +874,6 @@ class WalletState {
       await _submitWithdrawal(
         intent,
         identity,
-        withdrawalRuleFor(normalizedChain, currency),
         emailCode: emailCode,
         totpCode: totpCode,
       );
@@ -801,10 +887,10 @@ class WalletState {
 
   Future<void> _submitWithdrawal(
     PendingWithdrawal intent,
-    ({int? userId, int epoch, String? accessToken}) identity,
-    WithdrawalAssetRule? rule, {
+    ({int? userId, int epoch, String? accessToken}) identity, {
     String? emailCode,
     String? totpCode,
+    bool recovery = false,
   }) async {
     try {
       final result = await api.walletWithdraw(
@@ -814,44 +900,22 @@ class WalletState {
         toAddress: intent.toAddress,
         amount: intent.amount,
         idempotencyKey: intent.key,
+        networkRevision: intent.quote.networkRevision,
         emailCode: emailCode,
         totpCode: totpCode,
       );
       if (!matches(intent)) return;
-      final status = asString(result['status']).toUpperCase();
-      final reference = asString(
-        result['withdrawalId'] ?? result['id'] ?? result['orderNo'],
-      ).trim();
-      if (!RegExp(r'^[A-Z][A-Z0-9_]{0,63}$').hasMatch(status) ||
-          reference.isEmpty ||
-          reference.length > 128) {
-        throw const FormatException('提币确认资料不完整，请核对原请求');
-      }
-      final confirmation = WithdrawalConfirmation(
-        chain: intent.chain,
-        network: rule?.network ?? '',
-        symbol: intent.symbol,
-        toAddress: intent.toAddress,
-        amount: intent.amount,
-        status: status,
-        reference: reference,
-        fee:
-            _firstDecimal(result, const [
-              'fee',
-              'withdrawalFee',
-              'networkFee',
-            ]) ??
-            rule?.feeAmount,
-        receivedAmount:
-            _firstDecimal(result, const [
-              'receivedAmount',
-              'netAmount',
-              'creditedAmount',
-            ]) ??
-            rule?.receivedAmount(intent.amount),
-      );
+      final confirmation = _confirmation(intent, result);
+      final reference = confirmation.reference;
+      final recorded = const {
+        'PENDING_APPROVAL',
+        'SUBMITTED',
+        'COMPLETED',
+        'REFUNDED',
+        'REJECTED',
+      }.contains(confirmation.status);
       _pending[intent.userId] = intent.withStatus(
-        'ACCEPTED',
+        recorded ? 'ACCEPTED' : 'UNKNOWN',
         confirmation: confirmation,
       );
       if (!await _save()) {
@@ -860,7 +924,10 @@ class WalletState {
       }
       if (_current(identity)) {
         _totpRequired = false;
-        _feedback(identity, notice: '提币请求已受理，编号 $reference');
+        _feedback(
+          identity,
+          notice: '提币请求已记录，状态 ${confirmation.status}，编号 $reference',
+        );
         await refresh();
       }
     } catch (error) {
@@ -871,7 +938,7 @@ class WalletState {
         _pending[intent.userId] = intent.withStatus('VERIFY');
         await _save();
         if (_current(identity)) await requestWithdrawalChallenge();
-      } else if (_resultUnknown(error)) {
+      } else if (recovery || _resultUnknown(error)) {
         // Already persisted UNKNOWN before the write; never discard its identity.
         await _save();
         _feedback(identity, error: '提币结果未知，请勿重复提交；请先核对提币记录');
@@ -889,6 +956,125 @@ class WalletState {
               : '提币未受理：${clientErrorMessage(error)}',
         );
       }
+    }
+  }
+
+  WithdrawalConfirmation _confirmation(
+    PendingWithdrawal intent,
+    Map<String, dynamic> result,
+  ) {
+    final status = asString(result['status']).toUpperCase();
+    final reference = asString(result['withdrawalId']);
+    final amount = plainNonnegativeDecimal(asString(result['amount']));
+    final fee = plainNonnegativeDecimal(asString(result['platformFee']));
+    final received = plainNonnegativeDecimal(
+      asString(result['receivedAmount']),
+    );
+    final revision = parseInt64(result['networkRevision']);
+    if (['amount', 'platformFee', 'receivedAmount'].any(
+          (field) =>
+              result[field] is! String || asString(result[field]).length > 120,
+        ) ||
+        !const {
+          'PENDING_APPROVAL',
+          'PROCESSING',
+          'DEBIT_UNKNOWN',
+          'DEBITED',
+          'SUBMITTED',
+          'BROADCAST_UNKNOWN',
+          'FAILED_PENDING',
+          'REFUND_PENDING',
+          'REFUNDED',
+          'REJECTED',
+          'COMPLETED',
+        }.contains(status) ||
+        reference.isEmpty ||
+        amount == null ||
+        fee == null ||
+        received == null ||
+        revision != intent.quote.networkRevision ||
+        _compareDecimals(amount, intent.amount) != 0 ||
+        _compareDecimals(fee, intent.quote.fee) != 0 ||
+        _compareDecimals(received, intent.quote.receivedAmount) != 0) {
+      throw const FormatException('提币回执与已确认报价不一致，请保留原请求编号');
+    }
+    return WithdrawalConfirmation(
+      chain: intent.chain,
+      network: intent.chain,
+      symbol: intent.symbol,
+      toAddress: intent.toAddress,
+      amount: intent.amount,
+      status: status,
+      reference: reference,
+      fee: fee,
+      receivedAmount: received,
+    );
+  }
+
+  Future<void> refreshWithdrawalSubmission() async {
+    final identity = owner(), intent = pending;
+    if (intent == null || withdrawalSubmitting || _closed) return;
+    _inFlight.add(intent.userId);
+    onChanged();
+    try {
+      final result = await api.walletWithdrawalSubmission(
+        intent.userId,
+        intent.key,
+      );
+      if (!_current(identity) || !matches(intent)) return;
+      final confirmation = _confirmation(intent, result);
+      final recorded = const {
+        'PENDING_APPROVAL',
+        'SUBMITTED',
+        'COMPLETED',
+        'REFUNDED',
+        'REJECTED',
+      }.contains(confirmation.status);
+      _pending[intent.userId] = intent.withStatus(
+        recorded ? 'ACCEPTED' : 'UNKNOWN',
+        confirmation: confirmation,
+      );
+      if (!await _save()) throw StateError('原提币回执无法安全保存');
+      _feedback(identity, notice: '原提币状态：${confirmation.status}');
+      await refresh();
+    } catch (error) {
+      _feedback(identity, error: '查询原提币失败：${clientErrorMessage(error)}');
+    } finally {
+      _inFlight.remove(intent.userId);
+      if (_current(identity)) onChanged();
+    }
+  }
+
+  Future<void> retryOriginalWithdrawal({
+    String? emailCode,
+    String? totpCode,
+  }) async {
+    final identity = owner(), intent = pending;
+    if (intent == null ||
+        withdrawalSubmitting ||
+        intent.status == 'ACCEPTED' ||
+        _closed) {
+      return;
+    }
+    _inFlight.add(intent.userId);
+    onChanged();
+    try {
+      final uncertain = intent.withStatus('UNKNOWN');
+      _pending[intent.userId] = uncertain;
+      if (!await _save()) throw StateError('原提币凭证无法安全保存，未发送请求');
+      if (!_current(identity)) return;
+      await _submitWithdrawal(
+        uncertain,
+        identity,
+        emailCode: emailCode,
+        totpCode: totpCode,
+        recovery: true,
+      );
+    } catch (error) {
+      _feedback(identity, error: clientErrorMessage(error));
+    } finally {
+      _inFlight.remove(intent.userId);
+      if (_current(identity)) onChanged();
     }
   }
 

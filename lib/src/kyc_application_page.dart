@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -327,7 +328,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
       initialValue: value,
       decoration: InputDecoration(labelText: label),
       items: values.entries
-          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+          .map((e) => DropdownMenuItem(value: e.key, child: LText(e.value)))
           .toList(),
       onChanged: blocked
           ? null
@@ -346,7 +347,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
       ),
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('填写身份认证资料')),
+      appBar: AppBar(title: const LText('填写身份认证资料')),
       body: FoldAwareClientBody(
         primary: SafeArea(
           child: ClientFormWidth(
@@ -355,7 +356,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
               children: [
                 if (loading) const LinearProgressIndicator(),
                 if (error != null)
-                  Text(
+                  LText(
                     error!,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
@@ -365,13 +366,15 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                     !loading)
                   TextButton(
                     onPressed: current ? _load : null,
-                    child: const Text('重新加载认证配置'),
+                    child: const LText('重新加载认证配置'),
                   ),
                 DropdownButtonFormField<String>(
                   initialValue: country,
                   isExpanded: true,
                   menuMaxHeight: 320,
-                  decoration: const InputDecoration(labelText: '国家 / 地区'),
+                  decoration: InputDecoration(
+                    labelText: clientLabel(context, '国家 / 地区'),
+                  ),
                   items: countries
                       .map(
                         (c) => DropdownMenuItem<String>(
@@ -429,20 +432,20 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                     dateButton('身份证签发日期', 'issued', issued),
                   if (level != 'BASIC')
                     dateButton('地址证明签发日期', 'address', addressIssued),
-                  const Text(
+                  const LText(
                     '材料需清晰完整，支持 JPG、PNG、PDF，每份不超过 10 MB。地址证明可使用账单、银行流水或政府居住证明。',
                   ),
                   for (final slot in slots)
                     Card(
                       child: ListTile(
-                        title: Text(labels[slot] ?? slot),
+                        title: LText(labels[slot] ?? slot),
                         subtitle: Text(
                           documents.containsKey(slot) &&
                                   _documentId(slot) == null
-                              ? '材料暂不可用，请重新上传'
+                              ? clientLabel(context, '材料暂不可用，请重新上传')
                               : asString(
                                   documents[slot]?['fileName'],
-                                  fallback: '未上传',
+                                  fallback: clientLabel(context, '未上传'),
                                 ),
                         ),
                         trailing: uploading == slot
@@ -456,7 +459,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                             : Wrap(
                                 children: [
                                   IconButton(
-                                    tooltip: '上传材料',
+                                    tooltip: clientLabel(context, '上传材料'),
                                     onPressed: blocked
                                         ? null
                                         : () => _upload(slot),
@@ -464,7 +467,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                                   ),
                                   if (documents.containsKey(slot))
                                     IconButton(
-                                      tooltip: '移除材料',
+                                      tooltip: clientLabel(context, '移除材料'),
                                       onPressed:
                                           blocked || _documentId(slot) == null
                                           ? null
@@ -477,7 +480,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                     ),
                 ] else if (provider.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  Text('提交后继续 $provider 证件与人脸核验。认证材料由核验服务采集。'),
+                  LText('提交后继续 $provider 证件与人脸核验。认证材料由核验服务采集。'),
                 ],
                 const SizedBox(height: 16),
                 FilledButton(
@@ -487,7 +490,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
                           verificationOptions.isEmpty
                       ? null
                       : _submit,
-                  child: Text(busy ? '提交中…' : '提交认证申请'),
+                  child: LText(busy ? '提交中…' : '提交认证申请'),
                 ),
               ],
             ),

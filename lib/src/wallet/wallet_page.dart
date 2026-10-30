@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../account/security_sheet.dart';
@@ -58,7 +59,7 @@ class WalletPage extends StatelessWidget {
             if (!state.isLoggedIn) ...[
               const SizedBox(height: 24),
               PrimaryAction(
-                label: '登录 / 注册',
+                label: clientLabel(context, '登录 / 注册'),
                 icon: Icons.login,
                 onPressed: () => showAuthSheet(context),
               ),
@@ -89,11 +90,11 @@ class WalletPage extends StatelessWidget {
                   vertical: 16,
                 ),
                 leading: const Icon(Icons.south, size: 30),
-                title: const Text(
+                title: const LText(
                   '充币',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                 ),
-                subtitle: const Text('从链上钱包或交易所转入数字货币'),
+                subtitle: const LText('从链上钱包或交易所转入数字货币'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.pop(sheet);
@@ -110,7 +111,7 @@ class WalletPage extends StatelessWidget {
                   vertical: 16,
                 ),
                 leading: const Icon(Icons.handshake_outlined, size: 30),
-                title: const Text(
+                title: const LText(
                   'C2C 交易',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                 ),

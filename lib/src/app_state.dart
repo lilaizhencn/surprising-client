@@ -58,6 +58,18 @@ class AppState extends ChangeNotifier {
         lastNotice = notice;
       },
     )..addListener(notifyListeners);
+    api.onLegalReviewRequired = () {
+      if (!_disposed) {
+        legalReviewRequired = true;
+        notifyListeners();
+      }
+    };
+    api.onLegalReviewCompleted = () {
+      if (!_disposed && legalReviewRequired) {
+        legalReviewRequired = false;
+        notifyListeners();
+      }
+    };
     if (apiClient == null) api.deviceIdLoader = _persistentDeviceId;
     final initialInstruments = offline
         ? fallbackInstruments()
@@ -87,6 +99,27 @@ class AppState extends ChangeNotifier {
   final ApiClient api;
   final RealtimeClient realtime;
   late final AuthState auth;
+  bool legalReviewRequired = false;
+  void dismissLegalReview() {
+    legalReviewRequired = false;
+    api.clearLegalAcceptance();
+    notifyListeners();
+  }
+
+  Future<void> resumeLegalReview() async {
+    final current = session;
+    if (current == null) {
+      await auth.restore();
+      if (legalReviewRequired) throw const FormatException('会话未能恢复，请重新登录');
+    } else {
+      final refreshed = await api.refresh(current.refreshToken);
+      if (session != current || refreshed.user.userId != current.user.userId) {
+        throw const FormatException('登录账户已变化，请重新登录');
+      }
+      await auth.persistRefreshedSession(refreshed);
+    }
+  }
+
   SessionStore get sessionStore => auth.sessionStore;
   TelegramLoginStore get telegramLoginStore => auth.telegramLoginStore;
   late final ClientSettingsStore settingsStore;
@@ -919,7 +952,7 @@ class AppState extends ChangeNotifier {
     final requestVersion = ++_announcementsRequestVersion;
     announcementsLoading = true;
     try {
-      final locale = language == ClientLanguage.zhHans ? 'zh-CN' : 'en-US';
+      final locale = language.contentLocale;
       final platform = defaultTargetPlatform == TargetPlatform.iOS
           ? 'IOS'
           : 'ANDROID';
@@ -975,7 +1008,7 @@ class AppState extends ChangeNotifier {
     announcementsLoading = true;
     final requestVersion = ++_announcementsRequestVersion;
     try {
-      final locale = language == ClientLanguage.zhHans ? 'zh-CN' : 'en-US';
+      final locale = language.contentLocale;
       final platform = defaultTargetPlatform == TargetPlatform.iOS
           ? 'IOS'
           : 'ANDROID';

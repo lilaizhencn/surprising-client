@@ -2,9 +2,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models.dart';
 import 'client_colors.dart';
+import '../i18n/client_messages.dart';
 
 String clientText(ClientLanguage language, String zh, String en) {
-  return language == ClientLanguage.en ? en : zh;
+  if (language == ClientLanguage.zhHans) return zh;
+  if (language == ClientLanguage.en) return en;
+  return translateClientLabel(zh, language.code);
 }
 
 class PageHeader extends StatelessWidget {
@@ -31,7 +34,7 @@ class PageHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                LText(
                   title,
                   style: TextStyle(
                     fontSize: 24,
@@ -123,7 +126,7 @@ class SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(2, 8, 2, 6),
       child: Row(
         children: [
-          Text(
+          LText(
             title,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
@@ -176,7 +179,7 @@ class SmallDropdown extends StatelessWidget {
               .map(
                 (item) => DropdownMenuItem(
                   value: item,
-                  child: Text(
+                  child: LText(
                     labelBuilder == null ? item : labelBuilder!(item),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -293,7 +296,7 @@ class ToggleLine extends StatelessWidget {
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           Expanded(
-            child: Text(
+            child: LText(
               label,
               style: TextStyle(
                 fontSize: 10.5,
@@ -354,7 +357,7 @@ class MetricPill extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          LText(
             label,
             style: TextStyle(
               fontSize: 9,
@@ -397,7 +400,7 @@ class QuickTile extends StatelessWidget {
         children: [
           Icon(icon, color: Theme.of(context).colorScheme.secondary),
           const SizedBox(height: 8),
-          Text(
+          LText(
             title,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -438,7 +441,7 @@ class PrimaryAction extends StatelessWidget {
       ),
       onPressed: onPressed,
       icon: Icon(icon),
-      label: Text(label),
+      label: LText(label),
     );
   }
 }
@@ -456,7 +459,7 @@ class InfoLine extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
+            child: LText(
               label,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -494,7 +497,7 @@ class EmptyState extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: LText(
               text,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,

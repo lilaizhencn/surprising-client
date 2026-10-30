@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'app_scope.dart';
@@ -63,10 +64,10 @@ class _WithdrawalSelectionPageState extends State<WithdrawalSelectionPage> {
           leading: IconButton(
             onPressed: back,
             style: exchangeIconStyle(context),
-            tooltip: '返回',
+            tooltip: clientLabel(context, '返回'),
             icon: const Icon(Icons.arrow_back_ios_new),
           ),
-          title: Text(symbol == null ? '选择资产' : '选择网络'),
+          title: LText(symbol == null ? '选择资产' : '选择网络'),
           actions: [
             IconButton(
               style: exchangeIconStyle(context),
@@ -83,19 +84,19 @@ class _WithdrawalSelectionPageState extends State<WithdrawalSelectionPage> {
                         ),
                       ),
                     ),
-              tooltip: '提币记录',
+              tooltip: clientLabel(context, '提币记录'),
               icon: const Icon(Icons.history),
             ),
           ],
         ),
         body: token == null
-            ? const Center(child: Text('登录已失效，请重新登录'))
+            ? const Center(child: LText('登录已失效，请重新登录'))
             : !state.walletReady || !state.withdrawalRulesReady
             ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(state.walletError ?? '可提币资产暂不可用'),
+                    LText(state.walletError ?? '可提币资产暂不可用'),
                     TextButton(
                       onPressed: () => unawaited(
                         Future.wait([
@@ -103,7 +104,7 @@ class _WithdrawalSelectionPageState extends State<WithdrawalSelectionPage> {
                           state.refreshWithdrawalRules(),
                         ]),
                       ),
-                      child: const Text('刷新资产'),
+                      child: const LText('刷新资产'),
                     ),
                   ],
                 ),
@@ -114,20 +115,20 @@ class _WithdrawalSelectionPageState extends State<WithdrawalSelectionPage> {
                   if (symbol == null) ...[
                     ExchangeSearchField(
                       onChanged: (value) => setState(() => query = value),
-                      hintText: '搜索数字货币',
+                      hintText: clientLabel(context, '搜索数字货币'),
                     ),
                     const SizedBox(height: 28),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        const LText(
                           '数字货币',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text(
+                        LText(
                           '可用余额',
                           style: TextStyle(color: colors.onSurfaceVariant),
                         ),
@@ -159,10 +160,10 @@ class _WithdrawalSelectionPageState extends State<WithdrawalSelectionPage> {
                     if (assets.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 40),
-                        child: Center(child: Text('暂无可提币资产')),
+                        child: Center(child: LText('暂无可提币资产')),
                       ),
                   ] else ...[
-                    Text(
+                    LText(
                       '请选择与收款平台一致的网络',
                       style: TextStyle(color: colors.onSurfaceVariant),
                     ),
@@ -198,7 +199,7 @@ class _WithdrawalSelectionPageState extends State<WithdrawalSelectionPage> {
                         },
                       ),
                     if (chains == null || chains.isEmpty)
-                      const Center(child: Text('暂无可用提币网络')),
+                      const Center(child: LText('暂无可用提币网络')),
                   ],
                 ],
               ),

@@ -45,7 +45,7 @@ void main() {
         clientColorScheme(ClientTheme.ocean).surface,
       );
       expect(find.byType(AuthSheet), findsNothing);
-      await tester.pageBack();
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.text('交易所'), findsOneWidget);
       final homeMaterial = tester.widget<Material>(

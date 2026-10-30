@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'exchange_widgets.dart';
@@ -54,7 +55,7 @@ class _AssetOverviewState extends State<AssetOverview> {
                   },
                 ),
               CheckboxListTile(
-                title: const Text('隐藏零余额'),
+                title: const LText('隐藏零余额'),
                 value: hideZero,
                 onChanged: (value) {
                   setState(() => hideZero = value ?? false);
@@ -187,7 +188,7 @@ class _AssetOverviewState extends State<AssetOverview> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            LText(
               label,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
@@ -220,7 +221,7 @@ class _AssetOverviewState extends State<AssetOverview> {
                   color: account == key ? colors.onSurface : muted,
                 ),
                 const SizedBox(height: 10),
-                Text(
+                LText(
                   labels[key]!,
                   style: TextStyle(color: muted, fontSize: 15),
                 ),
@@ -249,12 +250,12 @@ class _AssetOverviewState extends State<AssetOverview> {
       children: [
         Row(
           children: [
-            Text(
+            LText(
               account == 'overview' ? '总资产估值' : labels[account]!,
               style: TextStyle(color: muted, fontSize: 14),
             ),
             IconButton(
-              tooltip: hidden ? '显示资产' : '隐藏资产',
+              tooltip: clientLabel(context, hidden ? '显示资产' : '隐藏资产'),
               onPressed: () => setState(() => hidden = !hidden),
               icon: Icon(
                 hidden
@@ -273,14 +274,14 @@ class _AssetOverviewState extends State<AssetOverview> {
               IconButton(
                 onPressed: widget.onSecurity,
                 style: exchangeIconStyle(context),
-                tooltip: '资产安全',
+                tooltip: clientLabel(context, '资产安全'),
                 icon: const Icon(Icons.shield_outlined),
               ),
             if (widget.onRecords != null)
               IconButton(
                 onPressed: widget.onRecords,
                 style: exchangeIconStyle(context),
-                tooltip: '资金记录',
+                tooltip: clientLabel(context, '资金记录'),
                 icon: const Icon(Icons.history),
               ),
           ],
@@ -305,7 +306,7 @@ class _AssetOverviewState extends State<AssetOverview> {
         Row(
           children: [
             const Expanded(
-              child: Text(
+              child: LText(
                 '资产组合',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
@@ -313,7 +314,7 @@ class _AssetOverviewState extends State<AssetOverview> {
             IconButton(
               onPressed: filters,
               style: exchangeIconStyle(context),
-              tooltip: '资产筛选',
+              tooltip: clientLabel(context, '资产筛选'),
               icon: const Icon(Icons.tune),
             ),
           ],
@@ -330,7 +331,7 @@ class _AssetOverviewState extends State<AssetOverview> {
         Row(
           children: [
             const Expanded(
-              child: Text(
+              child: LText(
                 '代币',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
               ),
@@ -338,7 +339,7 @@ class _AssetOverviewState extends State<AssetOverview> {
             if (account != 'overview')
               TextButton(
                 onPressed: () => setState(() => account = 'overview'),
-                child: const Text('总览'),
+                child: const LText('总览'),
               ),
           ],
         ),
@@ -346,15 +347,15 @@ class _AssetOverviewState extends State<AssetOverview> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('名称/数量', style: TextStyle(color: muted)),
-            Text('价值', style: TextStyle(color: muted)),
+            LText('名称/数量', style: TextStyle(color: muted)),
+            LText('价值', style: TextStyle(color: muted)),
           ],
         ),
         const SizedBox(height: 8),
         if (state.isLoggedIn && !detailsReady)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(
+            child: LText(
               account == 'funding' ? state.walletError ?? '资金账户同步中' : '资产明细同步中',
               style: TextStyle(color: muted),
             ),
@@ -362,7 +363,7 @@ class _AssetOverviewState extends State<AssetOverview> {
         if (state.isLoggedIn && detailsReady && assets.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
-            child: Center(child: Text('暂无资产')),
+            child: Center(child: LText('暂无资产')),
           ),
         for (final asset in assets)
           Builder(
@@ -417,7 +418,7 @@ class _AssetOverviewState extends State<AssetOverview> {
                         children: [
                           Align(
                             alignment: Alignment.centerLeft,
-                            child: Text(
+                            child: LText(
                               row.account,
                               style: TextStyle(color: muted),
                             ),
@@ -427,12 +428,12 @@ class _AssetOverviewState extends State<AssetOverview> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Flexible(
-                                child: Text(
+                                child: LText(
                                   '可用 ${hidden ? '••••••' : assetQuantity(row.available)}',
                                 ),
                               ),
                               Flexible(
-                                child: Text(
+                                child: LText(
                                   '冻结 ${hidden ? '••••••' : assetQuantity(row.locked)}',
                                   textAlign: TextAlign.end,
                                 ),

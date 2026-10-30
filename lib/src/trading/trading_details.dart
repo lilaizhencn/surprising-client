@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
@@ -81,7 +82,7 @@ class TradingDetails extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                LText(
                   entry.key,
                   style: TextStyle(
                     fontSize: 11,

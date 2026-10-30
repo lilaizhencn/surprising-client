@@ -1,6 +1,8 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'announcements/announcement_center.dart';
 import 'app_scope.dart';
 import 'affiliate/affiliate_page.dart';
@@ -18,6 +20,7 @@ import 'ui/client_theme.dart';
 import 'ui/adaptive_client_layout.dart';
 import 'market/market_chart.dart';
 import 'wallet/wallet_page.dart';
+import 'legal/legal_pages.dart';
 
 export 'account/kyc_webview.dart';
 export 'account/profile_page.dart';
@@ -68,11 +71,33 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
   });
   StreamSubscription<Uri>? _authLinks;
   String? _affiliateInviteOpen;
+  bool _legalDialogOpen = false;
+  void _checkLegalReview() {
+    if (!state.legalReviewRequired || _legalDialogOpen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _legalDialogOpen || !state.legalReviewRequired) return;
+      final context = _navigatorKey.currentState?.overlay?.context;
+      if (context == null || !context.mounted) return;
+      _legalDialogOpen = true;
+      try {
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          isDismissible: false,
+          enableDrag: false,
+          builder: (_) => const LegalUpdateSheet(),
+        );
+      } finally {
+        _legalDialogOpen = false;
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     state.presentation.value = (state.clientTheme, state.language);
+    state.addListener(_checkLegalReview);
     if (widget.bootstrap) {
       _authLinks = AppLinks().uriLinkStream.listen(
         (link) => unawaited(_returnFromTelegram(link)),
@@ -123,15 +148,16 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
       if (!mounted) return;
       final context = _navigatorKey.currentState?.overlay?.context;
       if (context != null && context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Telegram 登录未完成，请重新发起登录')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: LText('Telegram 登录未完成，请重新发起登录')),
+        );
       }
     }
   }
 
   @override
   void dispose() {
+    state.removeListener(_checkLegalReview);
     unawaited(_authLinks?.cancel());
     _secondaryRoute.dispose();
     if (widget.state == null) state.dispose();
@@ -167,7 +193,17 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
                     : navigator!,
               ),
             ),
-            locale: Locale(preferences.$2.code),
+            locale: Locale(
+              preferences.$2.contentLocale.split('-').first,
+              preferences.$2.contentLocale.split('-').last,
+            ),
+            supportedLocales: ClientLanguage.values.map(
+              (language) => Locale(
+                language.contentLocale.split('-').first,
+                language.contentLocale.split('-').last,
+              ),
+            ),
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
             theme: buildClientTheme(preferences.$1),
             home: const ClientShell(),
           );
@@ -298,7 +334,7 @@ class _ClientShellState extends State<ClientShell> {
           final language = state.language;
           return AlertDialog(
             icon: const Icon(Icons.campaign_outlined),
-            title: Text(
+            title: LText(
               '${next['title'] ?? clientText(language, '公告', 'Announcement')}',
             ),
             content: SingleChildScrollView(
@@ -319,7 +355,7 @@ class _ClientShellState extends State<ClientShell> {
                   Navigator.pop(dialogContext);
                   openAnnouncements();
                 },
-                child: Text(
+                child: LText(
                   clientText(language, '公告中心', 'Announcement center'),
                 ),
               ),
@@ -332,7 +368,7 @@ class _ClientShellState extends State<ClientShell> {
                   );
                   if (success && navigator.mounted) navigator.pop();
                 },
-                child: Text(clientText(language, '已阅读', 'Read')),
+                child: LText(clientText(language, '已阅读', 'Read')),
               ),
             ],
           );
@@ -354,7 +390,7 @@ class _ClientShellState extends State<ClientShell> {
         messenger.clearSnackBars();
         messenger.showSnackBar(
           SnackBar(
-            content: Text(
+            content: LText(
               state.lastError!,
               style: TextStyle(color: Theme.of(context).colorScheme.onError),
             ),
@@ -366,7 +402,7 @@ class _ClientShellState extends State<ClientShell> {
       if (state.lastNotice != null && state.lastNotice != seenNotice) {
         seenNotice = state.lastNotice;
         messenger.clearSnackBars();
-        messenger.showSnackBar(SnackBar(content: Text(state.lastNotice!)));
+        messenger.showSnackBar(SnackBar(content: LText(state.lastNotice!)));
       }
     });
   }

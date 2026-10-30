@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'api.dart';
@@ -217,11 +218,11 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialog, false),
-              child: const Text('返回'),
+              child: const LText('返回'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialog, true),
-              child: const Text('确认'),
+              child: const LText('确认'),
             ),
           ],
         ),
@@ -352,7 +353,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (!loaded) return const Center(child: CircularProgressIndicator());
-    if (!enabled) return const Center(child: Text('C2C 暂未开放'));
+    if (!enabled) return const Center(child: LText('C2C 暂未开放'));
     return Column(
       children: [
         SingleChildScrollView(
@@ -390,16 +391,16 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
                     padding: const EdgeInsets.all(12),
                     children: [
                       if (error.isNotEmpty)
-                        Text(
+                        LText(
                           error,
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ),
-                      if (notice.isNotEmpty) Text(notice),
+                      if (notice.isNotEmpty) LText(notice),
                       if (pending != null)
                         card([
-                          Text(
+                          LText(
                             '原请求结果待确认${receiptState.isEmpty ? '' : '：$receiptState'}',
                           ),
                           button('查询原请求', () => receipt(pending!)),
@@ -431,7 +432,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
     Wrap(
       children: [
         ChoiceChip(
-          label: const Text('我要买'),
+          label: const LText('我要买'),
           selected: side == 'BUY',
           onSelected: (_) {
             setState(() {
@@ -445,7 +446,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
         ),
         const SizedBox(width: 12),
         ChoiceChip(
-          label: const Text('我要卖'),
+          label: const LText('我要卖'),
           selected: side == 'SELL',
           onSelected: (_) {
             setState(() {
@@ -462,7 +463,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
     DropdownButton<String>(
       value: marketId.isEmpty ? null : marketId,
       isExpanded: true,
-      hint: const Text('交易市场'),
+      hint: const LText('交易市场'),
       items: markets
           .map(
             (m) => DropdownMenuItem(
@@ -481,10 +482,10 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
       },
     ),
     if (offers.isEmpty)
-      const Padding(padding: EdgeInsets.all(20), child: Text('暂无符合条件的广告')),
+      const Padding(padding: EdgeInsets.all(20), child: LText('暂无符合条件的广告')),
     ...offers.map(
       (ad) => card([
-        Text(
+        LText(
           asString(
             asMap(ad['merchant'])['nickname'],
             fallback: '商家 ${ad['makerUserId']}',
@@ -494,8 +495,8 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
           '${c2cDecimal(asString(ad['price']))} ${asMap(ad['market'])['fiat']}',
           style: Theme.of(context).textTheme.titleLarge,
         ),
-        Text('可交易 ${ad['availableQuantity']} ${asMap(ad['market'])['asset']}'),
-        Text(
+        LText('可交易 ${ad['availableQuantity']} ${asMap(ad['market'])['asset']}'),
+        LText(
           '限额 ${c2cDecimal(asString(ad['minFiat']))} – ${c2cDecimal(asString(ad['maxFiat']))}',
         ),
         Text(asList(ad['methodCodes']).join(' · ')),
@@ -523,14 +524,14 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
               .toList();
     return [
       card([
-        Text('确认${ad['side'] == 'SELL' ? '购买' : '出售'} ${m['asset']}'),
+        LText('确认${ad['side'] == 'SELL' ? '购买' : '出售'} ${m['asset']}'),
         input('交易数量', quantity, decimal: true),
         DropdownButton<String>(
           isExpanded: true,
           value: options.any((a) => a['accountId'] == paymentId)
               ? paymentId
               : null,
-          hint: const Text('收款方式'),
+          hint: const LText('收款方式'),
           items: options
               .map(
                 (a) => DropdownMenuItem(
@@ -556,13 +557,13 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
           if (current) setState(() => quote = value);
         }, disabled: pending != null || paymentId.isEmpty),
         if (quote != null) ...[
-          Text(
+          LText(
             '付款 ${c2cDecimal(asString(quote!['fiatAmount']))} ${m['fiat']} · 数量 ${quote!['quantity']} ${m['asset']}',
           ),
-          Text(
+          LText(
             '手续费 ${amount(quote!['buyerFeeUnits'], m)} · 买方实收 ${amount(quote!['buyerReceivesUnits'], m)}',
           ),
-          Text('有效至 ${quote!['expiresAt']}'),
+          LText('有效至 ${quote!['expiresAt']}'),
           if (ad['side'] == 'BUY') security(),
           button('确认下单', () async {
             if (await confirm('核对金额、费用及收款方式后确认下单？')) {
@@ -577,10 +578,10 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
   List<Widget> orderList() => order != null
       ? orderView()
       : [
-          if (orders.isEmpty) const Text('暂无订单'),
+          if (orders.isEmpty) const LText('暂无订单'),
           ...orders.map(
             (row) => card([
-              Text(
+              LText(
                 '${row['buyerUserId']}' == '${widget.owner}'
                     ? '购买 ${row['quantity']}'
                     : '出售 ${row['quantity']}',
@@ -602,7 +603,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
     final state = asString(row['status']);
     return [
       card([
-        Text(
+        LText(
           c2cOrderStatus(state),
           style: Theme.of(context).textTheme.titleLarge,
         ),
@@ -610,11 +611,11 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
         Text(
           '${row['quantity']} ${m['asset']} · ${c2cDecimal(asString(row['fiatAmount']))} ${m['fiat']}',
         ),
-        Text(
+        LText(
           '手续费 ${amount(row['buyerFeeUnits'], m)} · 买方实收 ${amount(row['buyerReceivesUnits'], m)}',
         ),
         if (row['paymentExpiresAt'] != null)
-          Text('付款截止 ${row['paymentExpiresAt']}'),
+          LText('付款截止 ${row['paymentExpiresAt']}'),
         Text(asString(row['terms'])),
         button('查看本订单收款资料', () async {
           final detail = await get('/orders/${row['orderId']}');
@@ -623,11 +624,14 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
         if (row['payment'] != null)
           ...['holderName', 'accountNumber', 'bankName', 'methodCode'].map(
             (key) => SelectableText(
-              '${{'holderName': '姓名', 'accountNumber': '账号', 'bankName': '银行', 'methodCode': '方式'}[key]}：${asString(asMap(row['payment'])[key])}',
+              clientLabel(
+                context,
+                '${{'holderName': '姓名', 'accountNumber': '账号', 'bankName': '银行', 'methodCode': '方式'}[key]}：${asString(asMap(row['payment'])[key])}',
+              ),
             ),
           ),
         if (state == 'PAYMENT_PENDING' && buyer) ...[
-          const Text('请使用本人账户完成站外转账后再确认付款。'),
+          const LText('请使用本人账户完成站外转账后再确认付款。'),
           button('我已付款，通知卖家', () async {
             if (await confirm('已按本订单收款资料实际完成付款？')) {
               await post('/orders/${row['orderId']}/paid', {'proofId': null});
@@ -642,7 +646,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
           }),
         ],
         if (state == 'PAID' && !buyer) ...[
-          const Text('务必核对收款账户实际到账，再确认放币。'),
+          const LText('务必核对收款账户实际到账，再确认放币。'),
           security(),
           button('确认到账并放币', () async {
             if (await confirm('已核实实际到账，确认放币？')) {
@@ -688,8 +692,8 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
         pledge = asMap(bond['bond']);
     return [
       card([
-        Text('商家资格：${merchant.isEmpty ? '未申请' : merchant['status']}'),
-        Text('身份认证：${me['kycVerified'] == true ? '已认证' : '待认证'}'),
+        LText('商家资格：${merchant.isEmpty ? '未申请' : merchant['status']}'),
+        LText('身份认证：${me['kycVerified'] == true ? '已认证' : '待认证'}'),
         if (merchant.isEmpty ||
             ['REJECTED', 'WITHDRAWN', 'PENDING'].contains(merchant['status']))
           button(
@@ -702,7 +706,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
                   });
                 }),
           ),
-        Text(
+        LText(
           rule['configured'] == true
               ? '保证金 ${rule['amount']} ${rule['asset']}'
               : '质押规则尚未配置',
@@ -747,10 +751,10 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
       ]),
       ...ads.map(
         (ad) => card([
-          Text(
+          LText(
             '${ad['side'] == 'SELL' ? '商家出售' : '商家购买'} ${asMap(ad['market'])['asset']}',
           ),
-          Text(
+          LText(
             '${ad['price']} · 剩余 ${ad['availableQuantity']} · ${ad['status']}',
           ),
           if (['ACTIVE', 'PAUSED'].contains(ad['status']))
@@ -844,7 +848,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
   }
 
   List<Widget> accountsView() => [
-    const Text('本人实名收款账户'),
+    const LText('本人实名收款账户'),
     ...accounts.map(
       (account) => card([
         Text('${account['methodCode']} · ${account['fiat']}'),
@@ -945,7 +949,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
                           : input(field.value, controllers[field.key]!),
                     ),
                     if (failure != null)
-                      Text(
+                      LText(
                         failure!,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
@@ -958,7 +962,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
             actions: [
               TextButton(
                 onPressed: saving ? null : () => Navigator.pop(dialog),
-                child: const Text('取消'),
+                child: const LText('取消'),
               ),
               FilledButton(
                 onPressed: saving
@@ -980,7 +984,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
                           if (dialog.mounted) update(() => saving = false);
                         }
                       },
-                child: const Text('确认提交'),
+                child: const LText('确认提交'),
               ),
             ],
           ),

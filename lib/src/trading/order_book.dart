@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
@@ -57,7 +58,7 @@ class OrderBookPanel extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: LText(
                   '价格',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -65,7 +66,7 @@ class OrderBookPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
+              LText(
                 instrument.isSpot ? '数量 (${instrument.baseAsset})' : '数量（张）',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -78,7 +79,7 @@ class OrderBookPanel extends StatelessWidget {
           if (recovering)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 4),
-              child: Text(
+              child: LText(
                 '盘口恢复中',
                 key: ValueKey('depth-recovering'),
                 style: TextStyle(fontSize: 10),
@@ -128,7 +129,7 @@ class OrderBookPanel extends StatelessWidget {
                 child: FullOrderBookSheet(onPrice: onPrice),
               ),
             ),
-            child: const Text('查看20档', style: TextStyle(fontSize: 11)),
+            child: const LText('查看20档', style: TextStyle(fontSize: 11)),
           ),
         ],
       ),
@@ -359,10 +360,10 @@ class RecentTradesPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final instrument = state.selectedInstrument;
     return ExpansionTile(
-      title: const Text('最新成交'),
+      title: const LText('最新成交'),
       children: [
         if (state.recentTrades.isEmpty)
-          const Padding(padding: EdgeInsets.all(16), child: Text('暂无成交')),
+          const Padding(padding: EdgeInsets.all(16), child: LText('暂无成交')),
         for (final trade in state.recentTrades.take(50))
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -428,10 +429,10 @@ class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
       child: Column(
         children: [
           ListTile(
-            title: Text('${instrument.displayName} · 盘口'),
-            subtitle: const Text('实时完整快照，最多 20 档'),
+            title: LText('${instrument.displayName} · 盘口'),
+            subtitle: const LText('实时完整快照，最多 20 档'),
             trailing: IconButton(
-              tooltip: '关闭',
+              tooltip: clientLabel(context, '关闭'),
               onPressed: () => Navigator.pop(context),
               icon: const Icon(Icons.close),
             ),
@@ -440,7 +441,7 @@ class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                const Text('价格档位'),
+                const LText('价格档位'),
                 const SizedBox(width: 8),
                 Expanded(
                   child: DropdownButton<int>(
@@ -471,7 +472,7 @@ class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                const Text('档数'),
+                const LText('档数'),
                 const SizedBox(width: 8),
                 DropdownButton<int>(
                   key: const ValueKey('book-depth'),
@@ -490,9 +491,9 @@ class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
               padding: const EdgeInsets.all(16),
               children: [
                 if (state.market.depthRecovering)
-                  const Text('盘口恢复中，请稍候')
+                  const LText('盘口恢复中，请稍候')
                 else if (bids.isEmpty && asks.isEmpty)
-                  const Text('暂无盘口'),
+                  const LText('暂无盘口'),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -538,7 +539,7 @@ class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        LText(
           title,
           style: TextStyle(color: color, fontWeight: FontWeight.w700),
         ),
@@ -575,11 +576,11 @@ class _FullOrderBookSheetState extends State<FullOrderBookSheet> {
                     style: TextStyle(color: color),
                   ),
                 ),
-                Text(
+                LText(
                   '数量 ${tradingQuantity(instrument, row.level.quantitySteps)}',
                   style: const TextStyle(fontSize: 11),
                 ),
-                Text(
+                LText(
                   '累计 ${instrument.isSpot ? '${scaledAmount(row.total * BigInt.from(instrument.quantityStepUnits), instrument.baseScaleUnits)} ${instrument.baseAsset}' : '${row.total} 张'}',
                   style: const TextStyle(fontSize: 11),
                 ),

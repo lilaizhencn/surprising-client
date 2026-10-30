@@ -54,7 +54,7 @@ void main() {
     state.selectLanguage(ClientLanguage.en);
     await tester.pumpAndSettle();
     final translatedApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-    expect(translatedApp.locale, const Locale('en'));
+    expect(translatedApp.locale, const Locale('en', 'US'));
     expect(tester.takeException(), isNull);
   });
 }

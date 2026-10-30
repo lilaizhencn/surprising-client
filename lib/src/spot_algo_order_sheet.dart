@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'models.dart';
@@ -108,18 +109,18 @@ class _SpotAlgoOrderSheetState extends State<SpotAlgoOrderSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              LText(
                 '创建现货策略 · ${instrument.symbol}',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              if (!owns) const Text('账户或交易对已变化，请关闭后重新打开'),
+              if (!owns) const LText('账户或交易对已变化，请关闭后重新打开'),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 key: const ValueKey('spot-algo-type'),
                 initialValue: type,
                 items: const [
-                  DropdownMenuItem(value: 'TWAP', child: Text('TWAP 定时切片')),
-                  DropdownMenuItem(value: 'ICEBERG', child: Text('冰山委托')),
+                  DropdownMenuItem(value: 'TWAP', child: LText('TWAP 定时切片')),
+                  DropdownMenuItem(value: 'ICEBERG', child: LText('冰山委托')),
                 ],
                 onChanged: owns && !busy
                     ? (v) => setState(() {
@@ -131,8 +132,8 @@ class _SpotAlgoOrderSheetState extends State<SpotAlgoOrderSheet> {
               const SizedBox(height: 12),
               SegmentedButton<String>(
                 segments: const [
-                  ButtonSegment(value: 'BUY', label: Text('买入')),
-                  ButtonSegment(value: 'SELL', label: Text('卖出')),
+                  ButtonSegment(value: 'BUY', label: LText('买入')),
+                  ButtonSegment(value: 'SELL', label: LText('卖出')),
                 ],
                 selected: {side},
                 onSelectionChanged: owns && !busy
@@ -142,7 +143,7 @@ class _SpotAlgoOrderSheetState extends State<SpotAlgoOrderSheet> {
               if (type == 'TWAP')
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('市价切片'),
+                  title: const LText('市价切片'),
                   value: market,
                   onChanged: owns && !busy
                       ? (v) => setState(() => market = v)
@@ -162,7 +163,7 @@ class _SpotAlgoOrderSheetState extends State<SpotAlgoOrderSheet> {
               if (type == 'ICEBERG')
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('只挂单'),
+                  title: const LText('只挂单'),
                   value: postOnly,
                   onChanged: owns && !busy
                       ? (v) => setState(() => postOnly = v ?? false)
@@ -170,15 +171,15 @@ class _SpotAlgoOrderSheetState extends State<SpotAlgoOrderSheet> {
                 ),
               const SizedBox(height: 12),
               if (error != null)
-                Text(
+                LText(
                   error,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-              if (state.lastNotice != null) Text(state.lastNotice!),
+              if (state.lastNotice != null) LText(state.lastNotice!),
               if (state.lastError != null)
-                Text(
+                LText(
                   state.lastError!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
@@ -200,7 +201,7 @@ class _SpotAlgoOrderSheetState extends State<SpotAlgoOrderSheet> {
                           Navigator.of(context).pop();
                         }
                       },
-                child: Text(
+                child: LText(
                   state.submittingOrder
                       ? '处理中'
                       : state.tradingCommandPending

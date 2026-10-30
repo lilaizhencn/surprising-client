@@ -101,16 +101,42 @@ enum ClientTheme {
 
 enum ClientLanguage {
   zhHans('简体中文', 'zh'),
-  en('English', 'en');
+  en('English', 'en'),
+  zhHant('繁體中文', 'zh-TW'),
+  es('Español', 'es'),
+  fr('Français', 'fr'),
+  de('Deutsch', 'de'),
+  pt('Português (Brasil)', 'pt'),
+  ru('Русский', 'ru'),
+  ar('العربية', 'ar'),
+  ja('日本語', 'ja'),
+  ko('한국어', 'ko'),
+  hi('हिन्दी', 'hi');
 
   const ClientLanguage(this.label, this.code);
 
   final String label;
   final String code;
+  String get contentLocale => switch (this) {
+    ClientLanguage.zhHans => 'zh-CN',
+    ClientLanguage.zhHant => 'zh-TW',
+    ClientLanguage.en => 'en-US',
+    ClientLanguage.es => 'es-ES',
+    ClientLanguage.fr => 'fr-FR',
+    ClientLanguage.de => 'de-DE',
+    ClientLanguage.pt => 'pt-BR',
+    ClientLanguage.ru => 'ru-RU',
+    ClientLanguage.ar => 'ar-SA',
+    ClientLanguage.ja => 'ja-JP',
+    ClientLanguage.ko => 'ko-KR',
+    ClientLanguage.hi => 'hi-IN',
+  };
 
   static ClientLanguage fromCode(String value) {
     return ClientLanguage.values.firstWhere(
-      (language) => language.code == value.trim().toLowerCase(),
+      (language) =>
+          language.code.toLowerCase() == value.trim().toLowerCase() ||
+          language.contentLocale.toLowerCase() == value.trim().toLowerCase(),
       orElse: () => ClientLanguage.zhHans,
     );
   }

@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'app_scope.dart';
@@ -133,7 +134,7 @@ class _TransferPageState extends State<TransferPage> {
                       .map((p) => p.accountType),
                 ])
                   ListTile(
-                    title: Text(
+                    title: LText(
                       entry == 'FUNDING' ? '资金账户' : productAccountLabel(entry),
                     ),
                     enabled: entry != (from ? target : source),
@@ -171,7 +172,7 @@ class _TransferPageState extends State<TransferPage> {
               child: Column(
                 children: [
                   ExchangeSearchField(
-                    hintText: '搜索数字货币',
+                    hintText: clientLabel(context, '搜索数字货币'),
                     onChanged: (value) => update(() => query = value),
                   ),
                   const SizedBox(height: 12),
@@ -256,7 +257,7 @@ class _TransferPageState extends State<TransferPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    LText(
                       label,
                       style: TextStyle(
                         color: colors.onSurfaceVariant,
@@ -267,7 +268,7 @@ class _TransferPageState extends State<TransferPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
+                          child: LText(
                             value == 'FUNDING' ? '资金账户' : '交易账户',
                             style: const TextStyle(fontSize: 16),
                           ),
@@ -278,7 +279,7 @@ class _TransferPageState extends State<TransferPage> {
                     if (value != 'FUNDING')
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Text(
+                        child: LText(
                           productAccountLabel(value),
                           style: TextStyle(
                             fontSize: 11,
@@ -298,7 +299,7 @@ class _TransferPageState extends State<TransferPage> {
         backgroundColor: exchangeBackground(context),
         leading: BackButton(style: exchangeIconStyle(context)),
         centerTitle: true,
-        title: const Text('划转'),
+        title: const LText('划转'),
         actions: [
           IconButton(
             style: exchangeIconStyle(context),
@@ -311,13 +312,13 @@ class _TransferPageState extends State<TransferPage> {
                 ),
               ),
             ),
-            tooltip: '划转记录',
+            tooltip: clientLabel(context, '划转记录'),
             icon: const Icon(Icons.history),
           ),
         ],
       ),
       body: !state.isLoggedIn
-          ? const Center(child: Text('请先登录'))
+          ? const Center(child: LText('请先登录'))
           : SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
@@ -342,7 +343,7 @@ class _TransferPageState extends State<TransferPage> {
                                   Center(
                                     child: IconButton(
                                       key: const ValueKey('transfer-swap'),
-                                      tooltip: '互换账户',
+                                      tooltip: clientLabel(context, '互换账户'),
                                       style: IconButton.styleFrom(
                                         minimumSize: const Size.square(44),
                                         backgroundColor: colors.onSurface,
@@ -374,7 +375,7 @@ class _TransferPageState extends State<TransferPage> {
                             Row(
                               children: [
                                 const Expanded(
-                                  child: Text(
+                                  child: LText(
                                     '数量',
                                     style: TextStyle(fontSize: 16),
                                   ),
@@ -441,7 +442,7 @@ class _TransferPageState extends State<TransferPage> {
                                     foregroundColor: colors.onSurface,
                                     shape: const StadiumBorder(),
                                   ),
-                                  child: const Text('最大'),
+                                  child: const LText('最大'),
                                 ),
                               ],
                             ),
@@ -449,22 +450,22 @@ class _TransferPageState extends State<TransferPage> {
                             if (error != null)
                               TextButton(
                                 onPressed: () => _load(state),
-                                child: Text('$error，重试'),
+                                child: LText('$error，重试'),
                               ),
                             if (state.transferVerificationRequired) ...[
                               const SizedBox(height: 12),
                               TextField(
                                 controller: email,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: '邮箱验证码',
+                                decoration: InputDecoration(
+                                  labelText: clientLabel(context, '邮箱验证码'),
                                 ),
                               ),
                               TextField(
                                 controller: totp,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: '2FA 验证码',
+                                decoration: InputDecoration(
+                                  labelText: clientLabel(context, '2FA 验证码'),
                                 ),
                               ),
                             ],
@@ -474,7 +475,7 @@ class _TransferPageState extends State<TransferPage> {
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 10,
                                 ),
-                                child: Text(
+                                child: LText(
                                   state.transferOutcomeTerminalFailure
                                       ? '本次划转未完成，请查看资金记录'
                                       : '划转结果待确认，请勿重复提交',
@@ -483,7 +484,7 @@ class _TransferPageState extends State<TransferPage> {
                             if (state.transferOutcomeTerminalFailure)
                               TextButton(
                                 onPressed: state.resetTransferIntent,
-                                child: const Text('重新填写'),
+                                child: const LText('重新填写'),
                               ),
                             if (state.pendingTransfer != null &&
                                 !state.transferOutcomeTerminalFailure)
@@ -497,7 +498,7 @@ class _TransferPageState extends State<TransferPage> {
                                           totpCode: totp.text,
                                         ),
                                       ),
-                                child: Text(
+                                child: LText(
                                   state.transferVerificationRequired
                                       ? '验证并继续原划转'
                                       : '确认原划转结果',
@@ -507,7 +508,7 @@ class _TransferPageState extends State<TransferPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                const LText(
                                   '可用',
                                   style: TextStyle(fontSize: 15),
                                 ),
@@ -545,7 +546,7 @@ class _TransferPageState extends State<TransferPage> {
                                         totpCode: totp.text,
                                       ),
                                     ),
-                              child: Text(
+                              child: LText(
                                 state.transferSubmitting
                                     ? '提交中…'
                                     : state.transferOutcomeLocked

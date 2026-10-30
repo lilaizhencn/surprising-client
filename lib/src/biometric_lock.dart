@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -138,19 +139,19 @@ class _BiometricLockGateState extends State<BiometricLockGate>
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(height: 24),
-                          Text(
+                          LText(
                             '验证身份以解锁',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 12),
-                          const Text(
+                          const LText(
                             '请使用设备生物识别，保护你的交易账户',
                             textAlign: TextAlign.center,
                           ),
                           if (locked) ...[
                             if (state.biometricUnlockError != null) ...[
                               const SizedBox(height: 20),
-                              Text(
+                              LText(
                                 state.biometricUnlockError!,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
@@ -179,7 +180,7 @@ class _BiometricLockGateState extends State<BiometricLockGate>
                                         ),
                                       )
                                     : const Icon(Icons.fingerprint),
-                                label: Text(
+                                label: LText(
                                   state.biometricUnlocking ? '正在验证…' : '验证解锁',
                                 ),
                               ),
@@ -207,7 +208,7 @@ class _BiometricLockGateState extends State<BiometricLockGate>
                                         }
                                       }
                                     },
-                              child: const Text('使用账号密码登录'),
+                              child: const LText('使用账号密码登录'),
                             ),
                           ],
                         ],

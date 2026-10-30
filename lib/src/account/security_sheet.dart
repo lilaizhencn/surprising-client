@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -482,16 +483,16 @@ class _SecuritySheetState extends State<SecuritySheet>
         await showDialog<bool>(
           context: context,
           builder: (dialog) => AlertDialog(
-            title: Text(title),
-            content: Text(message),
+            title: LText(title),
+            content: LText(message),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialog, false),
-                child: const Text('取消'),
+                child: const LText('取消'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(dialog, true),
-                child: const Text('确认'),
+                child: const LText('确认'),
               ),
             ],
           ),
@@ -523,16 +524,18 @@ class _SecuritySheetState extends State<SecuritySheet>
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(changeBinding ? '更换绑定' : '安全验证方式设置'),
+        title: LText(changeBinding ? '更换绑定' : '安全验证方式设置'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('绑定或变更安全信息后，24 小时内不能提现。'),
+            const LText('绑定或变更安全信息后，24 小时内不能提现。'),
             if (primary.passwordRequired)
               TextField(
                 controller: mfaPassword,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: '登录密码'),
+                decoration: InputDecoration(
+                  labelText: clientLabel(context, '登录密码'),
+                ),
               ),
             if (newDestination)
               TextField(
@@ -541,7 +544,10 @@ class _SecuritySheetState extends State<SecuritySheet>
                     ? TextInputType.emailAddress
                     : TextInputType.phone,
                 decoration: InputDecoration(
-                  labelText: method == 'EMAIL' ? '邮箱' : '手机号（国际区号）',
+                  labelText: clientLabel(
+                    context,
+                    method == 'EMAIL' ? '邮箱' : '手机号（国际区号）',
+                  ),
                 ),
               ),
           ],
@@ -549,11 +555,11 @@ class _SecuritySheetState extends State<SecuritySheet>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
+            child: const LText('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('发送验证码'),
+            child: const LText('发送验证码'),
           ),
         ],
       ),
@@ -585,7 +591,7 @@ class _SecuritySheetState extends State<SecuritySheet>
     if (!state.isLoggedIn) {
       return const Padding(
         padding: EdgeInsets.all(24),
-        child: Text('登录已失效，请重新登录'),
+        child: LText('登录已失效，请重新登录'),
       );
     }
     final mfaEnabled = mfa['enabled'] == true || mfa['enrolled'] == true;
@@ -618,7 +624,7 @@ class _SecuritySheetState extends State<SecuritySheet>
           children: [
             Row(
               children: [
-                Text(
+                LText(
                   widget.kycOnly
                       ? clientText(
                           state.language,
@@ -636,23 +642,23 @@ class _SecuritySheetState extends State<SecuritySheet>
               ],
             ),
             if (notice != null)
-              Text(
+              LText(
                 notice!,
                 style: TextStyle(color: Theme.of(context).colorScheme.tertiary),
               ),
             if (error != null)
-              Text(
+              LText(
                 error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             if (loading) const LinearProgressIndicator(),
-            for (final message in loadErrors.values) Text(message),
+            for (final message in loadErrors.values) LText(message),
             TextButton.icon(
               onPressed: loading || busy
                   ? null
                   : () => _run(_load, widget.kycOnly ? '认证状态已更新' : '安全状态已更新'),
               icon: const Icon(Icons.refresh),
-              label: Text(widget.kycOnly ? '刷新认证状态' : '刷新安全状态'),
+              label: LText(widget.kycOnly ? '刷新认证状态' : '刷新安全状态'),
             ),
             if (!widget.kycOnly) ...[
               if (primaryAuthentication?.reauthenticationRequired == true ||
@@ -660,16 +666,16 @@ class _SecuritySheetState extends State<SecuritySheet>
                 TextButton.icon(
                   onPressed: busy ? null : () => showAuthSheet(context),
                   icon: const Icon(Icons.login),
-                  label: const Text('重新登录验证身份'),
+                  label: const LText('重新登录验证身份'),
                 ),
-              const SectionTitle(title: '登录验证方式'),
+              SectionTitle(title: clientLabel(context, '登录验证方式')),
               for (final method in methods)
                 if (method['type'] == 'TOTP')
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(10),
                       child: InfoLine(
-                        label: '谷歌验证器',
+                        label: clientLabel(context, '谷歌验证器'),
                         value:
                             '${method['bound'] == true ? asString(method['destination'], fallback: '已绑定') : '未绑定'} · ${method['enabled'] == true ? '已启用' : '未启用'}',
                       ),
@@ -702,7 +708,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                                         asString(method['type']),
                                         method['enabled'] != true,
                                       ),
-                                child: Text(
+                                child: LText(
                                   method['enabled'] == true ? '停用' : '启用/绑定',
                                 ),
                               ),
@@ -717,7 +723,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                                           true,
                                           changeBinding: true,
                                         ),
-                                  child: const Text('更换绑定'),
+                                  child: const LText('更换绑定'),
                                 ),
                             ],
                           ),
@@ -727,7 +733,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                   ),
               TextButton.icon(
                 icon: const Icon(Icons.devices_outlined),
-                label: const Text('下线其他设备'),
+                label: const LText('下线其他设备'),
                 onPressed: busy
                     ? null
                     : () => _run(() async {
@@ -744,14 +750,14 @@ class _SecuritySheetState extends State<SecuritySheet>
               ),
               DeviceAccessPanel(state: state),
               ExpansionTile(
-                title: const Text('活跃会话'),
+                title: const LText('活跃会话'),
                 children: [
                   for (final item in asList(sessionsPage['sessions']))
                     ListTile(
-                      title: Text(
+                      title: LText(
                         asString(asMap(item)['userAgent'], fallback: '未知设备'),
                       ),
-                      subtitle: Text(
+                      subtitle: LText(
                         '${asMap(item)['ipAddress'] ?? '—'}\n登录 ${asMap(item)['createdAt'] ?? '—'}\n到期 ${asMap(item)['expiresAt'] ?? '—'}',
                       ),
                       trailing: TextButton(
@@ -772,25 +778,25 @@ class _SecuritySheetState extends State<SecuritySheet>
                                 await state.api.revokeUserSession(id);
                                 if (operationCurrent) await _load();
                               }, '会话已下线'),
-                        child: const Text('下线'),
+                        child: const LText('下线'),
                       ),
                     ),
                   if (!loading &&
                       !loadErrors.containsKey('活跃会话') &&
                       asList(sessionsPage['sessions']).isEmpty)
-                    const Text('暂无活跃会话'),
+                    const LText('暂无活跃会话'),
                   if (sessionsPage['hasMore'] == true)
                     TextButton(
                       onPressed: busy
                           ? null
                           : () =>
                                 _run(() => _loadMoreSecurity(false), '已加载更多会话'),
-                      child: const Text('加载更多会话'),
+                      child: const LText('加载更多会话'),
                     ),
                 ],
               ),
               ExpansionTile(
-                title: const Text('登录历史'),
+                title: const LText('登录历史'),
                 children: [
                   for (final item in asList(historyPage['logs']))
                     ListTile(
@@ -804,7 +810,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                   if (!loading &&
                       !loadErrors.containsKey('登录历史') &&
                       asList(historyPage['logs']).isEmpty)
-                    const Text('暂无登录记录'),
+                    const LText('暂无登录记录'),
                   if (historyPage['hasMore'] == true)
                     TextButton(
                       onPressed: busy
@@ -813,7 +819,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                               () => _loadMoreSecurity(true),
                               '已加载更多登录记录',
                             ),
-                      child: const Text('加载更多登录记录'),
+                      child: const LText('加载更多登录记录'),
                     ),
                 ],
               ),
@@ -829,16 +835,19 @@ class _SecuritySheetState extends State<SecuritySheet>
                         '${mfa['withdrawalsRestrictedUntil']}',
                       )?.isAfter(DateTime.now()) ==
                       true)
-                Text(
+                LText(
                   '安全信息变更后提现暂不可用，可恢复时间：${mfa['withdrawalsRestrictedUntil']}',
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               if (!mfaEnabled && enrollment.isEmpty) ...[
-                const Text('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
+                const LText('绑定或变更邮箱、手机、谷歌验证码后，24 小时内不能提现。'),
                 if (primaryAuthentication?.passwordRequired == true)
-                  AppTextField(controller: mfaPassword, label: '登录密码'),
+                  AppTextField(
+                    controller: mfaPassword,
+                    label: clientLabel(context, '登录密码'),
+                  ),
                 PrimaryAction(
-                  label: '生成绑定信息',
+                  label: clientLabel(context, '生成绑定信息'),
                   icon: Icons.qr_code_2,
                   onPressed:
                       actionsBlocked ||
@@ -856,9 +865,12 @@ class _SecuritySheetState extends State<SecuritySheet>
                 ),
               ],
               if (mfaEnabled && enrollment.isEmpty) ...[
-                const Text('关闭谷歌验证码后将重新生成新密钥；安全信息变更后 24 小时内不能提现。'),
+                const LText('关闭谷歌验证码后将重新生成新密钥；安全信息变更后 24 小时内不能提现。'),
                 if (primaryAuthentication?.passwordRequired == true)
-                  AppTextField(controller: mfaPassword, label: '登录密码'),
+                  AppTextField(
+                    controller: mfaPassword,
+                    label: clientLabel(context, '登录密码'),
+                  ),
                 TextButton(
                   onPressed:
                       actionsBlocked ||
@@ -875,7 +887,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                             );
                           }
                         }, '验证码已发送，请完成双重验证'),
-                  child: const Text('关闭 2FA'),
+                  child: const LText('关闭 2FA'),
                 ),
               ],
               if (enrollment.isNotEmpty) ...[
@@ -899,21 +911,30 @@ class _SecuritySheetState extends State<SecuritySheet>
                         ),
                       ),
                     ),
-                  const Text('请使用身份验证器扫描二维码，或手动输入密钥。密钥只显示这一次，请勿截图或转发。'),
-                  InfoLine(label: '密钥', value: enrollmentSecret),
+                  const LText('请使用身份验证器扫描二维码，或手动输入密钥。密钥只显示这一次，请勿截图或转发。'),
+                  InfoLine(
+                    label: clientLabel(context, '密钥'),
+                    value: enrollmentSecret,
+                  ),
                 ],
                 for (final method in challengeMethods)
                   if (method['type'] == 'EMAIL')
-                    AppTextField(controller: mfaEmailCode, label: '邮箱验证码'),
+                    AppTextField(
+                      controller: mfaEmailCode,
+                      label: clientLabel(context, '邮箱验证码'),
+                    ),
                 for (final method in challengeMethods)
                   if (method['type'] == 'PHONE')
-                    AppTextField(controller: mfaPhoneCode, label: '手机验证码'),
+                    AppTextField(
+                      controller: mfaPhoneCode,
+                      label: clientLabel(context, '手机验证码'),
+                    ),
                 if (challengeMethods.any((method) => method['type'] == 'TOTP'))
                   AppTextField(
                     controller: totp,
                     label: disablingMfa ? '当前谷歌验证码' : '谷歌验证码',
                   ),
-                Text('安全信息变更后，提现将在 24 小时后恢复。'),
+                LText('安全信息变更后，提现将在 24 小时后恢复。'),
                 PrimaryAction(
                   label: disablingMfa ? '确认关闭' : '确认绑定',
                   icon: Icons.verified_user,
@@ -985,12 +1006,12 @@ class _SecuritySheetState extends State<SecuritySheet>
                   onPressed: busy
                       ? null
                       : () => setState(() => enrollment = const {}),
-                  child: const Text('取消'),
+                  child: const LText('取消'),
                 ),
               ],
               if (primaryAuthentication?.passwordRequired == true) ...[
-                const SectionTitle(title: '丢失谷歌验证码'),
-                Text(
+                SectionTitle(title: clientLabel(context, '丢失谷歌验证码')),
+                LText(
                   '恢复需要已通过的 KYC、登录密码、邮箱或手机验证码，并由运营人员人工审核。审核通过后会移除旧验证器，提现冻结 24 小时。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -999,18 +1020,24 @@ class _SecuritySheetState extends State<SecuritySheet>
                 ),
                 if (mfaRecovery['status'] == 'PENDING')
                   InfoLine(
-                    label: '恢复申请',
+                    label: clientLabel(context, '恢复申请'),
                     value: '审核中 · ${mfaRecovery['submittedAt'] ?? ''}',
                   )
                 else if (mfaRecovery['status'] == 'APPROVED')
-                  const InfoLine(label: '恢复申请', value: '已通过，可以重新绑定新的验证器密钥')
+                  InfoLine(
+                    label: clientLabel(context, '恢复申请'),
+                    value: '已通过，可以重新绑定新的验证器密钥',
+                  )
                 else ...[
                   if (mfaRecovery['status'] == 'REJECTED')
-                    Text('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
+                    LText('上次申请未通过：${mfaRecovery['decisionReason'] ?? ''}'),
                   if (mfaRecoveryChallenge.isEmpty) ...[
-                    AppTextField(controller: mfaPassword, label: '登录密码'),
+                    AppTextField(
+                      controller: mfaPassword,
+                      label: clientLabel(context, '登录密码'),
+                    ),
                     PrimaryAction(
-                      label: '发送恢复验证码',
+                      label: clientLabel(context, '发送恢复验证码'),
                       icon: Icons.mark_email_read_outlined,
                       onPressed: actionsBlocked || !mfaEnabled
                           ? null
@@ -1030,14 +1057,19 @@ class _SecuritySheetState extends State<SecuritySheet>
                             ),
                     ),
                   ] else ...[
-                    Text('验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}'),
-                    AppTextField(controller: mfaRecoveryCode, label: '恢复验证码'),
+                    LText(
+                      '验证码发送至 ${mfaRecoveryChallenge['destination'] ?? ''}',
+                    ),
+                    AppTextField(
+                      controller: mfaRecoveryCode,
+                      label: clientLabel(context, '恢复验证码'),
+                    ),
                     AppTextField(
                       controller: mfaRecoveryReason,
-                      label: '丢失原因（至少 8 个字符）',
+                      label: clientLabel(context, '丢失原因（至少 8 个字符）'),
                     ),
                     PrimaryAction(
-                      label: '提交人工审核',
+                      label: clientLabel(context, '提交人工审核'),
                       icon: Icons.support_agent,
                       onPressed: actionsBlocked
                           ? null
@@ -1069,15 +1101,15 @@ class _SecuritySheetState extends State<SecuritySheet>
                           ? null
                           : () =>
                                 setState(() => mfaRecoveryChallenge = const {}),
-                      child: const Text('取消'),
+                      child: const LText('取消'),
                     ),
                   ],
                 ],
               ] else if (mfaEnabled) ...[
-                const SectionTitle(title: '丢失谷歌验证码'),
-                const Text('快捷登录账户丢失验证器时，请联系平台支持申请恢复。'),
+                SectionTitle(title: clientLabel(context, '丢失谷歌验证码')),
+                const LText('快捷登录账户丢失验证器时，请联系平台支持申请恢复。'),
               ],
-              const SectionTitle(title: '敏感场景'),
+              SectionTitle(title: clientLabel(context, '敏感场景')),
               ...scenes.map((scene) {
                 final enabled = scene['enabled'] == true;
                 final code = asString(scene['sceneCode']);
@@ -1093,18 +1125,21 @@ class _SecuritySheetState extends State<SecuritySheet>
                         }, '安全场景已更新'),
                 );
               }),
-              const SectionTitle(title: '安全设置验证'),
-              Text(
+              SectionTitle(title: clientLabel(context, '安全设置验证')),
+              LText(
                 '修改敏感场景前需要邮箱验证码，绑定 2FA 后还需动态验证码。',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),
-              AppTextField(controller: securityEmailCode, label: '安全设置邮箱验证码'),
+              AppTextField(
+                controller: securityEmailCode,
+                label: clientLabel(context, '安全设置邮箱验证码'),
+              ),
               if (primaryAuthentication?.passwordRequired == true) ...[
-                const SectionTitle(title: '修改密码'),
-                Text(
+                SectionTitle(title: clientLabel(context, '修改密码')),
+                LText(
                   '修改密码后，其他设备的登录会话会失效。若开启修改密码场景，请先发送邮箱验证码。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1114,12 +1149,12 @@ class _SecuritySheetState extends State<SecuritySheet>
                 const SizedBox(height: 8),
                 AppTextField(
                   controller: currentPassword,
-                  label: '当前密码',
+                  label: clientLabel(context, '当前密码'),
                   obscure: true,
                 ),
                 AppTextField(
                   controller: newPassword,
-                  label: '新密码（至少 8 位）',
+                  label: clientLabel(context, '新密码（至少 8 位）'),
                   obscure: true,
                 ),
                 Row(
@@ -1127,14 +1162,14 @@ class _SecuritySheetState extends State<SecuritySheet>
                     Expanded(
                       child: AppTextField(
                         controller: changePasswordEmailCode,
-                        label: '邮箱验证码',
+                        label: clientLabel(context, '邮箱验证码'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: AppTextField(
                         controller: changePasswordTotpCode,
-                        label: '2FA 验证码',
+                        label: clientLabel(context, '2FA 验证码'),
                       ),
                     ),
                   ],
@@ -1152,13 +1187,13 @@ class _SecuritySheetState extends State<SecuritySheet>
                                 '验证码已发送到邮箱',
                               ),
                         icon: const Icon(Icons.email_outlined),
-                        label: const Text('发送验证码'),
+                        label: const LText('发送验证码'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: PrimaryAction(
-                        label: '确认修改',
+                        label: clientLabel(context, '确认修改'),
                         icon: Icons.password,
                         onPressed: actionsBlocked
                             ? null
@@ -1173,9 +1208,12 @@ class _SecuritySheetState extends State<SecuritySheet>
               ],
             ],
             SectionTitle(
-              title: '身份认证 KYC · ${kycLoaded ? kycStatusLabel(kyc) : '状态未获取'}',
+              title: clientLabel(
+                context,
+                '身份认证 KYC · ${kycLoaded ? kycStatusLabel(kyc) : '状态未获取'}',
+              ),
             ),
-            Text(
+            LText(
               '提币前请完成身份认证。请提供清晰、真实且在有效期内的材料。',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1191,13 +1229,16 @@ class _SecuritySheetState extends State<SecuritySheet>
                       ),
                     ),
               icon: const Icon(Icons.folder_outlined),
-              label: const Text('查看认证材料'),
+              label: const LText('查看认证材料'),
             ),
             if (kyc['country'] != null)
-              InfoLine(label: '国家 / 地区', value: asString(kyc['country'])),
+              InfoLine(
+                label: clientLabel(context, '国家 / 地区'),
+                value: asString(kyc['country']),
+              ),
             if (kyc['kycLevel'] != null)
               InfoLine(
-                label: '认证等级',
+                label: clientLabel(context, '认证等级'),
                 value:
                     const {
                       'NONE': '未认证',
@@ -1214,14 +1255,14 @@ class _SecuritySheetState extends State<SecuritySheet>
                 value: '${kyc['expiresAt']}',
               ),
             if (kyc['rejectionReason'] != null)
-              Text('审核说明：${asString(kyc['rejectionReason'])}'),
+              LText('审核说明：${asString(kyc['rejectionReason'])}'),
             if (!widget.kycOnly)
               TextButton.icon(
                 onPressed: busy || loading
                     ? null
                     : () => _run(_load, '认证状态已更新'),
                 icon: const Icon(Icons.refresh),
-                label: const Text('刷新认证状态'),
+                label: const LText('刷新认证状态'),
               ),
             if (kycExpired(kyc) ||
                 (!['PENDING', 'VERIFIED'].contains(kyc['status']) &&
@@ -1292,7 +1333,7 @@ class _SecuritySheetState extends State<SecuritySheet>
               ),
             if (kycSimulationEnabled && kycVerificationSession.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(
+              LText(
                 clientText(
                   state.language,
                   '模拟模式：未调用第三方服务，可选择结果验证完整状态流转。',
@@ -1309,7 +1350,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                             () => _completeKycSimulation(state, 'APPROVED'),
                             '模拟核验通过',
                           ),
-                    child: Text(
+                    child: LText(
                       clientText(state.language, '模拟自动通过', 'Simulate approval'),
                     ),
                   ),
@@ -1321,7 +1362,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                                 _completeKycSimulation(state, 'MANUAL_REVIEW'),
                             '已转人工复核',
                           ),
-                    child: Text(
+                    child: LText(
                       clientText(
                         state.language,
                         '模拟人工复核',
@@ -1336,7 +1377,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                             () => _completeKycSimulation(state, 'REJECTED'),
                             '模拟核验拒绝',
                           ),
-                    child: Text(
+                    child: LText(
                       clientText(state.language, '模拟拒绝', 'Simulate rejection'),
                     ),
                   ),
@@ -1373,27 +1414,30 @@ class _SecuritySheetState extends State<SecuritySheet>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text('Secret 仅显示这一次，请妥善保存'),
+                      const LText('Secret 仅显示这一次，请妥善保存'),
                       SelectableText(
                         apiSecret!,
                         key: const ValueKey('api-secret'),
                       ),
                       TextButton(
                         onPressed: () => setState(() => apiSecret = null),
-                        child: const Text('我已保存'),
+                        child: const LText('我已保存'),
                       ),
                     ],
                   ),
                 ),
-              AppTextField(controller: apiLabel, label: '名称'),
+              AppTextField(
+                controller: apiLabel,
+                label: clientLabel(context, '名称'),
+              ),
               AppTextField(
                 controller: apiAllowlist,
-                label: 'IP 白名单（多个地址以逗号分隔）',
+                label: clientLabel(context, 'IP 白名单（多个地址以逗号分隔）'),
               ),
-              const Text('默认只有读取权限。交易或提币权限必须设置 IP 白名单。'),
+              const LText('默认只有读取权限。交易或提币权限必须设置 IP 白名单。'),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('允许交易'),
+                title: const LText('允许交易'),
                 value: apiTradeEnabled,
                 onChanged: actionsBlocked
                     ? null
@@ -1401,15 +1445,21 @@ class _SecuritySheetState extends State<SecuritySheet>
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('允许提币'),
-                subtitle: const Text('仅在确有自动化提币需求时开启，并妥善保管 Secret'),
+                title: const LText('允许提币'),
+                subtitle: const LText('仅在确有自动化提币需求时开启，并妥善保管 Secret'),
                 value: apiWithdrawEnabled,
                 onChanged: actionsBlocked
                     ? null
                     : (enabled) => setState(() => apiWithdrawEnabled = enabled),
               ),
-              AppTextField(controller: emailCode, label: '邮箱验证码'),
-              AppTextField(controller: apiTotp, label: '2FA 验证码'),
+              AppTextField(
+                controller: emailCode,
+                label: clientLabel(context, '邮箱验证码'),
+              ),
+              AppTextField(
+                controller: apiTotp,
+                label: clientLabel(context, '2FA 验证码'),
+              ),
               Row(
                 children: [
                   Expanded(
@@ -1421,12 +1471,12 @@ class _SecuritySheetState extends State<SecuritySheet>
                                 'SECURITY_SETTINGS',
                               );
                             }, '验证码已发送'),
-                      child: const Text('发送邮箱验证码'),
+                      child: const LText('发送邮箱验证码'),
                     ),
                   ),
                   Expanded(
                     child: PrimaryAction(
-                      label: '创建 API Key',
+                      label: clientLabel(context, '创建 API Key'),
                       icon: Icons.key,
                       onPressed: actionsBlocked || apiSecret != null
                           ? null
@@ -1531,8 +1581,8 @@ class _SecuritySheetState extends State<SecuritySheet>
                       if (operationCurrent) await _load();
                     }, action == 'edit' ? 'API Key 设置已更新' : 'API Key 已撤销'),
                     itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'edit', child: Text('编辑名称、权限与 IP')),
-                      PopupMenuItem(value: 'revoke', child: Text('撤销')),
+                      PopupMenuItem(value: 'edit', child: LText('编辑名称、权限与 IP')),
+                      PopupMenuItem(value: 'revoke', child: LText('撤销')),
                     ],
                   ),
                 ),

@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
@@ -94,7 +95,7 @@ class _ExchangeSearchFieldState extends State<ExchangeSearchField> {
               suffixIcon: controller.text.isEmpty
                   ? null
                   : IconButton(
-                      tooltip: '清空搜索',
+                      tooltip: clientLabel(context, '清空搜索'),
                       style: exchangeIconStyle(context),
                       icon: const Icon(Icons.close, size: 18),
                       onPressed: () {
@@ -129,7 +130,7 @@ class _ExchangeSearchFieldState extends State<ExchangeSearchField> {
           const SizedBox(width: 9),
           IconButton.filledTonal(
             onPressed: widget.onScan,
-            tooltip: '扫一扫',
+            tooltip: clientLabel(context, '扫一扫'),
             style: IconButton.styleFrom(
               backgroundColor: fill,
               foregroundColor: Theme.of(context).colorScheme.onSurface,
@@ -357,10 +358,15 @@ class _AccountValueHeaderState extends State<AccountValueHeader> {
       children: [
         Row(
           children: [
-            Text('总资产估值', style: TextStyle(color: muted, fontSize: 14)),
+            Flexible(
+              child: LText(
+                '总资产估值',
+                style: TextStyle(color: muted, fontSize: 14),
+              ),
+            ),
             IconButton(
               onPressed: () => setState(() => hidden = !hidden),
-              tooltip: hidden ? '显示资产' : '隐藏资产',
+              tooltip: clientLabel(context, hidden ? '显示资产' : '隐藏资产'),
               icon: Icon(
                 hidden
                     ? Icons.visibility_off_outlined

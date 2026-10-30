@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models.dart';
@@ -21,7 +22,7 @@ class RechargeHeader extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: IconButton(
-              tooltip: '返回',
+              tooltip: clientLabel(context, '返回'),
               onPressed: () => Navigator.pop(context),
               style: IconButton.styleFrom(
                 backgroundColor: Colors.transparent,
@@ -31,7 +32,7 @@ class RechargeHeader extends StatelessWidget {
             ),
           ),
           if (title.isNotEmpty)
-            Text(
+            LText(
               title,
               style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900),
             ),
@@ -130,7 +131,7 @@ class RechargeCoinRow extends StatelessWidget {
                             ).colorScheme.tertiary.withValues(alpha: .16),
                             borderRadius: BorderRadius.circular(5),
                           ),
-                          child: Text(
+                          child: LText(
                             '3.5% 年化收益',
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.tertiary,
@@ -143,7 +144,7 @@ class RechargeCoinRow extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 7),
-                  Text(
+                  LText(
                     assetDisplayName(symbol),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -184,7 +185,7 @@ class RechargeNetworkRow extends StatelessWidget {
             CryptoAvatar(symbol: chainSymbol(chain), size: 52),
             const SizedBox(width: 18),
             Expanded(
-              child: Text(
+              child: LText(
                 networkDisplayName(chain, symbol),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -199,7 +200,7 @@ class RechargeNetworkRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
+                LText(
                   networkEta(chain),
                   style: const TextStyle(
                     fontSize: 22,
@@ -248,7 +249,7 @@ class RechargeInfoLine extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
+              LText(
                 label,
                 style: const TextStyle(
                   fontSize: 22,
@@ -346,7 +347,7 @@ class AssetPortfolioCard extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Text(
+          LText(
             title,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -503,7 +504,7 @@ class WalletTokenRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
+              LText(
                 value == null ? '暂无实时估值' : '现货账户余额',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -541,7 +542,7 @@ class BalanceRow extends StatelessWidget {
             children: [
               Expanded(
                 child: MetricPill(
-                  label: '可用',
+                  label: clientLabel(context, '可用'),
                   value: scaledAmount(
                     BigInt.from(balance.availableUnits),
                     balance.scaleUnits,
@@ -551,7 +552,7 @@ class BalanceRow extends StatelessWidget {
               ),
               Expanded(
                 child: MetricPill(
-                  label: '冻结',
+                  label: clientLabel(context, '冻结'),
                   value: scaledAmount(
                     BigInt.from(balance.lockedUnits),
                     balance.scaleUnits,
@@ -619,7 +620,7 @@ class DepositAddressCard extends StatelessWidget {
             for (final warning in address.warnings.take(3))
               Padding(
                 padding: const EdgeInsets.only(top: 3),
-                child: Text(
+                child: LText(
                   warning,
                   style: TextStyle(
                     color: ClientColors.warningFor(context),
@@ -767,14 +768,14 @@ class WalletAssetRow extends StatelessWidget {
             children: [
               Expanded(
                 child: MetricPill(
-                  label: '可用',
+                  label: clientLabel(context, '可用'),
                   value: money(asset.availableBalance, digits: 8),
                   color: Theme.of(context).colorScheme.tertiary,
                 ),
               ),
               Expanded(
                 child: MetricPill(
-                  label: '冻结',
+                  label: clientLabel(context, '冻结'),
                   value: money(asset.lockedBalance, digits: 8),
                   color: ClientColors.warningFor(context),
                 ),
@@ -811,7 +812,7 @@ class WalletOrderRecordRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          LText(
             '${isOut ? '提币' : '充值'} · ${record.chain}/${record.symbol}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
@@ -823,29 +824,29 @@ class WalletOrderRecordRow extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          LText(
             '${isOut ? '总扣款' : '到账金额'}：${record.amount} ${record.symbol}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           if (isOut) ...[
-            Text('平台手续费：${record.platformFee ?? '—'} ${record.symbol}'),
-            Text('净到账：${record.receivedAmount ?? '—'} ${record.symbol}'),
-            Text(
+            LText('平台手续费：${record.platformFee ?? '—'} ${record.symbol}'),
+            LText('净到账：${record.receivedAmount ?? '—'} ${record.symbol}'),
+            LText(
               '实际链上手续费：${record.networkFee ?? '—'} ${record.networkFeeAsset ?? ''}',
             ),
           ],
           if (record.toAddress.isNotEmpty) ...[
             const SizedBox(height: 8),
-            const Text('收款地址'),
+            const LText('收款地址'),
             SelectableText(record.toAddress),
           ],
           if (record.txHash.isNotEmpty) ...[
             const SizedBox(height: 8),
-            const Text('交易哈希'),
+            const LText('交易哈希'),
             SelectableText(record.txHash),
           ],
           if (record.errorMessage.isNotEmpty)
-            Text(
+            LText(
               record.errorMessage,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
@@ -918,7 +919,7 @@ class WalletAction extends StatelessWidget {
               child: Icon(icon, color: Colors.black, size: 25),
             ),
             const SizedBox(height: 6),
-            Text(
+            LText(
               label,
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
             ),

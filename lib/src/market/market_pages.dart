@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../account/profile_page.dart';
@@ -61,13 +62,13 @@ class _HomePageState extends State<HomePage> {
             Row(
               children: [
                 const Expanded(
-                  child: Text(
+                  child: LText(
                     '交易所',
                     style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
                   ),
                 ),
                 IconButton(
-                  tooltip: '通知',
+                  tooltip: clientLabel(context, '通知'),
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     side: BorderSide.none,
@@ -85,7 +86,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 IconButton(
-                  tooltip: '个人设置',
+                  tooltip: clientLabel(context, '个人设置'),
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     side: BorderSide.none,
@@ -96,7 +97,7 @@ class _HomePageState extends State<HomePage> {
                     context,
                     MaterialPageRoute<void>(
                       builder: (_) => Scaffold(
-                        appBar: AppBar(title: const Text('个人设置')),
+                        appBar: AppBar(title: const LText('个人设置')),
                         body: const SafeArea(child: ProfilePage()),
                       ),
                     ),
@@ -146,7 +147,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
-                    child: const Text('链上充币'),
+                    child: const LText('链上充币'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -164,7 +165,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     onPressed: () =>
                         ClientNavigation.maybeOf(context)?.openBuyCrypto(),
-                    child: const Text('C2C 买币'),
+                    child: const LText('C2C 买币'),
                   ),
                 ),
               ],
@@ -191,7 +192,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: LText(
                         asString(
                           state.announcementBanners.firstOrNull?['title'],
                           fallback: asString(
@@ -216,7 +217,7 @@ class _HomePageState extends State<HomePage> {
             if (items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 36),
-                child: Center(child: Text('暂无行情')),
+                child: Center(child: LText('暂无行情')),
               ),
             for (final instrument in items.take(20))
               PublicMarketRow(instrument: instrument),
@@ -242,7 +243,7 @@ class MarketProductStrip extends StatelessWidget {
               padding: const EdgeInsets.only(right: 10),
               child: ChoiceChip(
                 key: ValueKey('market-product-${product.name}'),
-                label: Text(product.label),
+                label: LText(product.label),
                 selected: state.mode == product,
                 selectedColor: Theme.of(context).brightness == Brightness.dark
                     ? const Color(0xFF262626)
@@ -282,7 +283,7 @@ class MarketListHeading extends StatelessWidget {
     children: [
       Expanded(
         flex: 4,
-        child: Text(
+        child: LText(
           '币对 / 交易量',
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -293,7 +294,7 @@ class MarketListHeading extends StatelessWidget {
       const SizedBox(width: 8),
       Expanded(
         flex: 3,
-        child: Text(
+        child: LText(
           '最新价格',
           textAlign: TextAlign.end,
           style: TextStyle(
@@ -307,7 +308,7 @@ class MarketListHeading extends StatelessWidget {
         width: 76,
         child: InkWell(
           onTap: onSort,
-          child: Text(
+          child: LText(
             '涨跌幅${sortByChange == true ? ' ↓' : ''}',
             textAlign: TextAlign.end,
             style: TextStyle(
@@ -382,7 +383,7 @@ class _MarketsPageState extends State<MarketsPage> {
                   if (items.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: Text('暂无匹配的交易对')),
+                      child: Center(child: LText('暂无匹配的交易对')),
                     ),
                   for (final instrument in items)
                     PublicMarketRow(instrument: instrument),
@@ -577,7 +578,7 @@ class ExchangeSearchBox extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           Expanded(
-            child: Text(
+            child: LText(
               hint,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -614,7 +615,7 @@ class MarketPrimaryTabs extends StatelessWidget {
           return Column(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Text(
+              LText(
                 tabs[index],
                 style: TextStyle(
                   color: selected
@@ -703,7 +704,7 @@ class MarketSortHeader extends StatelessWidget {
         children: [
           Expanded(
             flex: 7,
-            child: Text(
+            child: LText(
               '名称↕ / 成交额↕',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -713,7 +714,7 @@ class MarketSortHeader extends StatelessWidget {
           ),
           Expanded(
             flex: 4,
-            child: Text(
+            child: LText(
               '最新价格↕',
               textAlign: TextAlign.right,
               style: TextStyle(
@@ -725,7 +726,7 @@ class MarketSortHeader extends StatelessWidget {
           SizedBox(width: 7),
           SizedBox(
             width: 78,
-            child: Text(
+            child: LText(
               '24 小时涨跌↕',
               textAlign: TextAlign.right,
               style: TextStyle(
@@ -812,7 +813,7 @@ class MarketTickerRow extends StatelessWidget {
                                   ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: Text(
+                                child: LText(
                                   instrument.contractLabel,
                                   style: TextStyle(
                                     color: Theme.of(
@@ -967,7 +968,7 @@ class InstrumentRow extends StatelessWidget {
               ),
             ),
             MetricPill(
-              label: '最新',
+              label: clientLabel(context, '最新'),
               value: latestPrice == null
                   ? '--'
                   : money(latestPrice, digits: instrument.pricePrecision),

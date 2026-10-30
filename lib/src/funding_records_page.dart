@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'account_records.dart';
@@ -323,12 +324,12 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
               '$currency $amount',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
-            Text(
+            LText(
               '${row['referenceType'] == 'DELIVERY_SETTLEMENT' ? '交割结算' : row['status'] ?? row['referenceType'] ?? row['side'] ?? '—'} · $created',
             ),
             if (category == 'delivery-ledger' &&
                 row['balanceAfterUnits'] != null)
-              Text(
+              LText(
                 '变动后余额：${formatAccountUnits(row['balanceAfterUnits'], scales[currency.toUpperCase()])} $currency',
               ),
             if (row['sourceAccountType'] != null)
@@ -336,9 +337,9 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                 '${productAccountLabel(asString(row['sourceAccountType']))} → ${productAccountLabel(asString(row['targetAccountType']))}',
               ),
             if (row['instrumentId'] != null)
-              Text(contract?.symbol ?? '合约 ${row['instrumentId']}'),
+              LText(contract?.symbol ?? '合约 ${row['instrumentId']}'),
             if (row['quantitySteps'] != null)
-              Text(
+              LText(
                 contract == null || quantitySteps == null
                     ? '数量：—'
                     : contract.isSpot
@@ -346,7 +347,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     : '数量：$quantitySteps 张',
               ),
             if (row['priceTicks'] != null)
-              Text(
+              LText(
                 '价格：${contract == null || priceTicks == null ? '—' : formatAccountUnits(BigInt.from(priceTicks) * BigInt.from(contract.priceTickUnits), scales[contract.quoteAsset])}',
               ),
             for (final pair in {
@@ -403,29 +404,29 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            LText(
               contract?.symbol ?? '合约 ${row['instrumentId']}',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            Text(
+            LText(
               '${row['side'] == 'BUY' ? '买入' : '卖出'} · ${row['orderType'] == 'MARKET' ? '市价' : '限价'} · $label',
             ),
-            Text(
+            LText(
               '委托价格：${row['orderType'] == 'MARKET' ? '市价' : price(row['priceTicks'])}',
             ),
-            Text(
+            LText(
               '成交均价：${asString(row['executedQuantitySteps']) == '0' ? '—' : price(row['averagePriceTicks'])}',
             ),
-            Text('委托数量：${quantity('quantitySteps')}'),
-            Text('已成交：${quantity('executedQuantitySteps')}'),
-            Text('剩余：${quantity('remainingQuantitySteps')}'),
-            Text(
+            LText('委托数量：${quantity('quantitySteps')}'),
+            LText('已成交：${quantity('executedQuantitySteps')}'),
+            LText('剩余：${quantity('remainingQuantitySteps')}'),
+            LText(
               '累计手续费：${formatAccountUnits(row['cumulativeFeeUnits'], scales[feeAsset])}${feeAsset == null ? '' : ' $feeAsset'}',
             ),
-            Text('有效方式：${row['timeInForce']}'),
-            Text('创建时间：${row['createdAt']}'),
-            Text('更新时间：${row['updatedAt']}'),
-            SelectableText('订单号：${row['orderId']}'),
+            LText('有效方式：${row['timeInForce']}'),
+            LText('创建时间：${row['createdAt']}'),
+            LText('更新时间：${row['updatedAt']}'),
+            SelectableText(clientLabel(context, '订单号：${row['orderId']}')),
           ],
         ),
       ),
@@ -456,19 +457,19 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            LText(
               contract?.symbol ?? '合约 ${row['instrumentId']}',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            Text('${row['side'] == 'BUY' ? '买入' : '卖出'} · $role'),
-            Text(
+            LText('${row['side'] == 'BUY' ? '买入' : '卖出'} · $role'),
+            LText(
               '成交价：$price${contract == null ? '' : ' ${contract.quoteAsset}'}',
             ),
-            Text('成交数量：$quantity'),
-            Text('成交费率：${formatAccountUnits(row['feeRatePpm'], '10000')}%'),
+            LText('成交数量：$quantity'),
+            LText('成交费率：${formatAccountUnits(row['feeRatePpm'], '10000')}%'),
             Text(asString(row['eventTime'], fallback: '—')),
-            SelectableText('订单号：${row['orderId']}'),
-            SelectableText('成交号：${row['tradeId']}'),
+            SelectableText(clientLabel(context, '订单号：${row['orderId']}')),
+            SelectableText(clientLabel(context, '成交号：${row['tradeId']}')),
           ],
         ),
       ),
@@ -488,9 +489,9 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('资金与交易记录')),
+    appBar: AppBar(title: const LText('资金与交易记录')),
     body: !widget.state.isLoggedIn
-        ? const Center(child: Text('请先登录查看记录'))
+        ? const Center(child: LText('请先登录查看记录'))
         : RefreshIndicator(
             onRefresh: _load,
             child: ListView(
@@ -498,12 +499,14 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: category,
-                  decoration: const InputDecoration(labelText: '记录类型'),
+                  decoration: InputDecoration(
+                    labelText: clientLabel(context, '记录类型'),
+                  ),
                   items: categories.entries
                       .map(
                         (e) => DropdownMenuItem(
                           value: e.key,
-                          child: Text(e.value),
+                          child: LText(e.value),
                         ),
                       )
                       .toList(),
@@ -541,7 +544,9 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                   DropdownButtonFormField<ProductMode>(
                     key: ValueKey('$category:$product'),
                     initialValue: product,
-                    decoration: const InputDecoration(labelText: '产品线'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '产品线'),
+                    ),
                     items: ProductMode.values
                         .where(
                           (p) => category == 'option-exercise'
@@ -553,7 +558,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                         )
                         .map(
                           (p) =>
-                              DropdownMenuItem(value: p, child: Text(p.label)),
+                              DropdownMenuItem(value: p, child: LText(p.label)),
                         )
                         .toList(),
                     onChanged: (p) {
@@ -569,28 +574,36 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                 if (category != 'trade' && category != 'order')
                   TextField(
                     controller: asset,
-                    decoration: const InputDecoration(labelText: '币种（可留空）'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '币种（可留空）'),
+                    ),
                   ),
                 if (category.endsWith('ledger'))
                   TextField(
                     controller: reference,
-                    decoration: const InputDecoration(labelText: '流水类型（可留空）'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '流水类型（可留空）'),
+                    ),
                   ),
                 if (['funding-payment', 'trade', 'order'].contains(category))
                   TextField(
                     controller: instrument,
-                    decoration: const InputDecoration(labelText: '合约 ID（可留空）'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '合约 ID（可留空）'),
+                    ),
                   ),
                 if (category == 'order')
                   DropdownButtonFormField<String>(
                     key: ValueKey('history-status-${status.text}'),
                     initialValue: status.text,
-                    decoration: const InputDecoration(labelText: '委托状态'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '委托状态'),
+                    ),
                     items: const [
-                      DropdownMenuItem(value: '', child: Text('全部状态')),
-                      DropdownMenuItem(value: 'FILLED', child: Text('全部成交')),
-                      DropdownMenuItem(value: 'CANCELED', child: Text('已撤销')),
-                      DropdownMenuItem(value: 'REJECTED', child: Text('已拒绝')),
+                      DropdownMenuItem(value: '', child: LText('全部状态')),
+                      DropdownMenuItem(value: 'FILLED', child: LText('全部成交')),
+                      DropdownMenuItem(value: 'CANCELED', child: LText('已撤销')),
+                      DropdownMenuItem(value: 'REJECTED', child: LText('已拒绝')),
                     ],
                     onChanged: (value) {
                       if (value != null) setState(() => status.text = value);
@@ -599,14 +612,16 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                 if (category != 'trade' && category != 'order')
                   TextField(
                     controller: status,
-                    decoration: const InputDecoration(labelText: '状态（可留空）'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '状态（可留空）'),
+                    ),
                   ),
                 Wrap(
                   spacing: 8,
                   children: [
                     TextButton(
                       onPressed: () => _date(true),
-                      child: Text(
+                      child: LText(
                         from == null
                             ? '开始日期'
                             : '${from!.year}-${from!.month}-${from!.day}',
@@ -614,7 +629,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                     ),
                     TextButton(
                       onPressed: () => _date(false),
-                      child: Text(
+                      child: LText(
                         to == null
                             ? '结束日期'
                             : '${to!.year}-${to!.month}-${to!.day}',
@@ -627,7 +642,7 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                           to = null;
                         });
                       },
-                      child: const Text('清除日期'),
+                      child: const LText('清除日期'),
                     ),
                   ],
                 ),
@@ -637,24 +652,24 @@ class _FundingRecordsPageState extends State<FundingRecordsPage> {
                       : () {
                           _load();
                         },
-                  child: const Text('筛选 / 刷新'),
+                  child: const LText('筛选 / 刷新'),
                 ),
                 if (loading) const LinearProgressIndicator(),
                 if (error != null)
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text(error!),
+                    child: LText(error!),
                   ),
                 if (!loading && error == null && rows.where(_visible).isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(20),
-                    child: Text('暂无相关记录'),
+                    child: LText('暂无相关记录'),
                   ),
                 ...rows.where(_visible).map(_record),
                 if (cursor != null)
                   OutlinedButton(
                     onPressed: loading ? null : () => _load(more: true),
-                    child: const Text('加载更多'),
+                    child: const LText('加载更多'),
                   ),
               ],
             ),

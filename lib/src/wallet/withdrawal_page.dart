@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
@@ -45,17 +46,17 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
   Widget _unavailable(AppState state, String message) => Scaffold(
     backgroundColor: exchangeBackground(context),
-    appBar: AppBar(title: const Text('提币')),
+    appBar: AppBar(title: const LText('提币')),
     body: Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, textAlign: TextAlign.center),
+            LText(message, textAlign: TextAlign.center),
             TextButton(
               onPressed: () => unawaited(state.refreshWallet()),
-              child: const Text('刷新资产'),
+              child: const LText('刷新资产'),
             ),
           ],
         ),
@@ -89,7 +90,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
-              const RechargeHeader(title: '提币'),
+              RechargeHeader(title: clientLabel(context, '提币')),
               const SizedBox(height: 40),
               const EmptyState(text: '提币规则暂不可用，请刷新后重试'),
               const SizedBox(height: 16),
@@ -115,7 +116,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
-              const RechargeHeader(title: '提币'),
+              RechargeHeader(title: clientLabel(context, '提币')),
               const SizedBox(height: 40),
               const EmptyState(text: '暂无可提币资产，请先刷新资金账户'),
               const SizedBox(height: 16),
@@ -165,9 +166,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
           children: [
             RechargeHeader(
-              title: '提币',
+              title: clientLabel(context, '提币'),
               trailing: IconButton(
-                tooltip: '刷新提币规则',
+                tooltip: clientLabel(context, '刷新提币规则'),
                 onPressed: state.withdrawalRulesLoading
                     ? null
                     : () => unawaited(state.refreshWithdrawalRules()),
@@ -206,7 +207,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       ),
                     )
                   else ...[
-                    const SectionTitle(title: '资产与网络'),
+                    SectionTitle(title: clientLabel(context, '资产与网络')),
                     Row(
                       children: [
                         Expanded(
@@ -228,7 +229,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: chainValues.isEmpty
-                              ? Text(
+                              ? LText(
                                   '无可用网络',
                                   style: TextStyle(
                                     color: Theme.of(
@@ -261,7 +262,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                   ],
                   const SizedBox(height: 12),
                   InfoLine(
-                    label: '可用余额',
+                    label: clientLabel(context, '可用余额'),
                     value: chain.isEmpty
                         ? '--'
                         : '${asset.availableAmount ?? '—'} $symbol',
@@ -274,7 +275,10 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       value: '$minimum $symbol',
                     ),
                   if (rule?.decimals != null)
-                    InfoLine(label: '数量精度', value: '${rule!.decimals} 位小数'),
+                    InfoLine(
+                      label: clientLabel(context, '数量精度'),
+                      value: '${rule!.decimals} 位小数',
+                    ),
                 ],
               ),
             ),
@@ -283,7 +287,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionTitle(title: '接收信息'),
+                  SectionTitle(title: clientLabel(context, '接收信息')),
                   TextField(
                     controller: addressController,
                     enabled: !locked,
@@ -296,8 +300,8 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       fontWeight: FontWeight.w600,
                     ),
                     decoration: InputDecoration(
-                      labelText: '提币地址',
-                      hintText: '请粘贴并逐字核对接收地址',
+                      labelText: clientLabel(context, '提币地址'),
+                      hintText: clientLabel(context, '请粘贴并逐字核对接收地址'),
                       isDense: true,
                       filled: true,
                       fillColor: Theme.of(
@@ -326,7 +330,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       Expanded(
                         child: AppTextField(
                           controller: amountController,
-                          label: '提币数量',
+                          label: clientLabel(context, '提币数量'),
                           enabled: !locked,
                           onChanged: (_) => setState(() => localError = null),
                         ),
@@ -341,20 +345,23 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                                     '';
                                 localError = null;
                               }),
-                        child: const Text('全部'),
+                        child: const LText('全部'),
                       ),
                     ],
                   ),
                   if (rule?.feeAmount != null)
                     InfoLine(
-                      label: '平台提现手续费',
+                      label: clientLabel(context, '平台提现手续费'),
                       value: '${rule!.feeAmount} $symbol',
                     ),
                   if (previewReceived != null &&
                       !previewReceived.startsWith('-'))
-                    InfoLine(label: '预计到账', value: '$previewReceived $symbol'),
+                    InfoLine(
+                      label: clientLabel(context, '预计到账'),
+                      value: '$previewReceived $symbol',
+                    ),
                   const SizedBox(height: 8),
-                  Text(
+                  LText(
                     '平台手续费从总扣款内扣，链上 Gas 单独结算。请确认网络与收款地址一致，转出后无法撤回。',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -371,17 +378,17 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SectionTitle(title: '安全验证'),
+                    SectionTitle(title: clientLabel(context, '安全验证')),
                     AppTextField(
                       controller: emailCodeController,
-                      label: '邮箱验证码',
+                      label: clientLabel(context, '邮箱验证码'),
                       enabled: !locked,
                     ),
                     if (state.withdrawalTotpRequired) ...[
                       const SizedBox(height: 8),
                       AppTextField(
                         controller: totpCodeController,
-                        label: '验证器动态码',
+                        label: clientLabel(context, '验证器动态码'),
                         enabled: !locked,
                       ),
                     ],
@@ -392,7 +399,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                             ? null
                             : () =>
                                   unawaited(state.requestWithdrawalChallenge()),
-                        child: const Text('重新发送邮箱验证码'),
+                        child: const LText('重新发送邮箱验证码'),
                       ),
                     ),
                   ],
@@ -401,7 +408,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             ],
             if (localError != null) ...[
               const SizedBox(height: 10),
-              Text(
+              LText(
                 localError!,
                 key: const ValueKey('withdrawal-local-error'),
                 style: TextStyle(
@@ -435,7 +442,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             ),
             if (state.withdrawalOutcomeUnknown) ...[
               const SizedBox(height: 10),
-              Text(
+              LText(
                 '本次请求可能已到达钱包服务。为避免重复扣款，当前提币意图已锁定，请先核对提币记录。',
                 style: TextStyle(
                   color: ClientColors.warningFor(context),
@@ -449,7 +456,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => unawaited(_startAnotherWithdrawal(state)),
-                  child: const Text('发起另一笔提币'),
+                  child: const LText('发起另一笔提币'),
                 ),
               ),
             ],
@@ -464,7 +471,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     final working = state.withdrawalSubmitting;
     return Scaffold(
       backgroundColor: exchangeBackground(context),
-      appBar: AppBar(title: const Text('原提币请求')),
+      appBar: AppBar(title: const LText('原提币请求')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -473,30 +480,33 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionTitle(title: '原请求与金额快照'),
-                  InfoLine(label: '网络', value: pending.chain),
+                  SectionTitle(title: clientLabel(context, '原请求与金额快照')),
                   InfoLine(
-                    label: '总扣款',
+                    label: clientLabel(context, '网络'),
+                    value: pending.chain,
+                  ),
+                  InfoLine(
+                    label: clientLabel(context, '总扣款'),
                     value: '${pending.amount} ${pending.symbol}',
                   ),
                   InfoLine(
-                    label: '平台提现手续费',
+                    label: clientLabel(context, '平台提现手续费'),
                     value: '${pending.quote.fee} ${pending.symbol}',
                   ),
                   InfoLine(
-                    label: '净到账',
+                    label: clientLabel(context, '净到账'),
                     value: '${pending.quote.receivedAmount} ${pending.symbol}',
                   ),
                   const SizedBox(height: 8),
-                  const Text('接收地址'),
+                  const LText('接收地址'),
                   SelectableText(pending.toAddress),
                   const SizedBox(height: 8),
-                  const Text('原请求编号'),
+                  const LText('原请求编号'),
                   SelectableText(pending.key),
                   const SizedBox(height: 8),
-                  Text('状态：${pending.confirmation?.status ?? pending.status}'),
+                  LText('状态：${pending.confirmation?.status ?? pending.status}'),
                   const SizedBox(height: 8),
-                  const Text('平台手续费包含在总扣款中；链上 Gas 单独记账。未知结果请查询或重试原请求，不要更换编号。'),
+                  const LText('平台手续费包含在总扣款中；链上 Gas 单独记账。未知结果请查询或重试原请求，不要更换编号。'),
                 ],
               ),
             ),
@@ -507,20 +517,20 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                   children: [
                     AppTextField(
                       controller: emailCodeController,
-                      label: '邮箱验证码',
+                      label: clientLabel(context, '邮箱验证码'),
                       enabled: !working,
                     ),
                     const SizedBox(height: 8),
                     AppTextField(
                       controller: totpCodeController,
-                      label: '验证器动态码',
+                      label: clientLabel(context, '验证器动态码'),
                       enabled: !working,
                     ),
                     TextButton(
                       onPressed: working
                           ? null
                           : () => unawaited(state.requestWithdrawalChallenge()),
-                      child: const Text('发送邮箱验证码'),
+                      child: const LText('发送邮箱验证码'),
                     ),
                   ],
                 ),
@@ -529,7 +539,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             if (state.wallet.error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
+                child: LText(
                   state.wallet.error!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
@@ -537,7 +547,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             if (state.wallet.notice != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(state.wallet.notice!),
+                child: LText(state.wallet.notice!),
               ),
             const SizedBox(height: 12),
             PrimaryAction(
@@ -558,7 +568,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                           totpCode: totpCodeController.text,
                         ),
                       ),
-                child: const Text('重试原请求'),
+                child: const LText('重试原请求'),
               ),
             if (pending.status == 'ACCEPTED')
               TextButton(
@@ -566,7 +576,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                 onPressed: working
                     ? null
                     : () => unawaited(_startAnotherWithdrawal(state)),
-                child: const Text('发起另一笔提币'),
+                child: const LText('发起另一笔提币'),
               ),
           ],
         ),
@@ -617,24 +627,33 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('确认提币信息'),
+          title: const LText('确认提币信息'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 InfoLine(
-                  label: '网络',
+                  label: clientLabel(context, '网络'),
                   value: rule?.network.isNotEmpty == true
                       ? '$chain · ${rule!.network}'
                       : chain,
                 ),
-                InfoLine(label: '地址', value: address),
-                InfoLine(label: '总扣款', value: '$amount $symbol'),
-                InfoLine(label: '平台提现手续费', value: '$fee $symbol'),
-                InfoLine(label: '净到账', value: '$received $symbol'),
+                InfoLine(label: clientLabel(context, '地址'), value: address),
+                InfoLine(
+                  label: clientLabel(context, '总扣款'),
+                  value: '$amount $symbol',
+                ),
+                InfoLine(
+                  label: clientLabel(context, '平台提现手续费'),
+                  value: '$fee $symbol',
+                ),
+                InfoLine(
+                  label: clientLabel(context, '净到账'),
+                  value: '$received $symbol',
+                ),
                 const SizedBox(height: 10),
-                const Text(
+                const LText(
                   '请确认网络与接收地址完全一致。提交后不可撤销。',
                   style: TextStyle(color: ClientColors.muted, fontSize: 11),
                 ),
@@ -644,11 +663,11 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('返回修改'),
+              child: const LText('返回修改'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('确认提交'),
+              child: const LText('确认提交'),
             ),
           ],
         ),
@@ -694,31 +713,40 @@ class WithdrawalConfirmationPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionTitle(title: '提币确认摘要'),
+          SectionTitle(title: clientLabel(context, '提币确认摘要')),
           InfoLine(
-            label: '网络',
+            label: clientLabel(context, '网络'),
             value: confirmation.network.isEmpty
                 ? confirmation.chain
                 : '${confirmation.chain} · ${confirmation.network}',
           ),
-          InfoLine(label: '地址', value: confirmation.toAddress),
           InfoLine(
-            label: '总扣款',
+            label: clientLabel(context, '地址'),
+            value: confirmation.toAddress,
+          ),
+          InfoLine(
+            label: clientLabel(context, '总扣款'),
             value: '${confirmation.amount} ${confirmation.symbol}',
           ),
           if (confirmation.fee != null)
             InfoLine(
-              label: '平台提现手续费',
+              label: clientLabel(context, '平台提现手续费'),
               value: '${confirmation.fee} ${confirmation.symbol}',
             ),
           if (confirmation.receivedAmount != null)
             InfoLine(
-              label: '到账数量',
+              label: clientLabel(context, '到账数量'),
               value: '${confirmation.receivedAmount} ${confirmation.symbol}',
             ),
-          InfoLine(label: '状态', value: confirmation.status),
+          InfoLine(
+            label: clientLabel(context, '状态'),
+            value: confirmation.status,
+          ),
           if (confirmation.reference.isNotEmpty)
-            InfoLine(label: '提币编号', value: confirmation.reference),
+            InfoLine(
+              label: clientLabel(context, '提币编号'),
+              value: confirmation.reference,
+            ),
         ],
       ),
     );

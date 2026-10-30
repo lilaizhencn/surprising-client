@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -190,7 +191,7 @@ class OrderTicket extends StatelessWidget {
                 children: [
                   Expanded(
                     child: ToggleLine(
-                      label: 'BBO 最优价',
+                      label: clientLabel(context, 'BBO 最优价'),
                       value: bboEnabled,
                       onChanged: onBboEnabled,
                     ),
@@ -222,7 +223,7 @@ class OrderTicket extends StatelessWidget {
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
+                  child: LText(
                     '提交时按所选盘口档位确定限价，不随行情自动改价。',
                     style: TextStyle(fontSize: 10),
                   ),
@@ -233,7 +234,7 @@ class OrderTicket extends StatelessWidget {
             if (!bboEnabled || orderType == 'MARKET')
               TradeNumericField(
                 controller: priceController,
-                label: '价格 (${instrument.quoteAsset})',
+                label: clientLabel(context, '价格 (${instrument.quoteAsset})'),
                 enabled: orderType != 'MARKET',
                 onMinus: () => stepPrice(-1),
                 onPlus: () => stepPrice(1),
@@ -241,7 +242,7 @@ class OrderTicket extends StatelessWidget {
             const SizedBox(height: 5),
             TradeNumericField(
               controller: quantityController,
-              label: '数量',
+              label: clientLabel(context, '数量'),
               suffixLabel: instrument.isSpot ? instrument.baseAsset : '张',
               onMinus: () => stepQuantity(-1),
               onPlus: () => stepQuantity(1),
@@ -298,12 +299,12 @@ class OrderTicket extends StatelessWidget {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      LText(
                         '${side == 'BUY' ? '买入权利金及手续费' : '卖出权利金扣费后'} ${terms?.cash ?? '--'} ${instrument.settleAsset}',
                         style: const TextStyle(fontSize: 11),
                       ),
                       if (side == 'SELL')
-                        const Text(
+                        const LText(
                           '卖方保证金按提交时的期权风险核定',
                           style: TextStyle(fontSize: 10),
                         ),
@@ -312,7 +313,7 @@ class OrderTicket extends StatelessWidget {
                 },
               ),
             const SizedBox(height: 6),
-            Text(
+            LText(
               '最小价格变动 ${scaledAmount(BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits)} ${instrument.quoteAsset}',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -330,7 +331,7 @@ class OrderTicket extends StatelessWidget {
                 );
                 if (!instrument.isDerivative) return postOnlyField;
                 final reduceOnlyField = ToggleLine(
-                  label: '只减仓',
+                  label: clientLabel(context, '只减仓'),
                   value: effectiveReduceOnly,
                   enabled: !(effectiveReduceOnly && !reduceOnly),
                   onChanged: onReduceOnly,
@@ -351,7 +352,7 @@ class OrderTicket extends StatelessWidget {
               },
             ),
             if (instrument.status != 'TRADING')
-              Text(
+              LText(
                 instrument.isDelivery && instrument.status == 'SETTLING'
                     ? '合约结算中，仅允许减仓；撤单与持仓仍可查看'
                     : instrument.status == 'CLOSED'
@@ -373,11 +374,11 @@ class OrderTicket extends StatelessWidget {
                     ),
                   ),
                 ),
-                child: Text(instrument.isOption ? '期权行权现金流水' : '交割现金流水'),
+                child: LText(instrument.isOption ? '期权行权现金流水' : '交割现金流水'),
               ),
             const SizedBox(height: 6),
             if (AppScope.of(context).tradingCommandPending) ...[
-              Text(
+              LText(
                 tradingPendingMessage(
                   AppScope.of(context).pendingTradingCommand,
                 ),
@@ -389,7 +390,7 @@ class OrderTicket extends StatelessWidget {
                     : () => unawaited(
                         AppScope.of(context).checkPendingTradingCommand(),
                       ),
-                child: Text(
+                child: LText(
                   tradingRecoveryLabel(
                     AppScope.of(context).pendingTradingCommand,
                   ),
@@ -425,7 +426,7 @@ class OrderTicket extends StatelessWidget {
                   ? null
                   : onSubmit,
               icon: Icon(loggedIn ? Icons.flash_on : Icons.login, size: 16),
-              label: Text(
+              label: LText(
                 loggedIn
                     ? instrument.isExpiring && effectiveReduceOnly
                           ? (buy ? '买入平空' : '卖出平多')
@@ -440,7 +441,7 @@ class OrderTicket extends StatelessWidget {
               ),
             ),
             if (!priceMetadataReady)
-              const Text('价格精度未同步，请刷新合约资料', style: TextStyle(fontSize: 11)),
+              const LText('价格精度未同步，请刷新合约资料', style: TextStyle(fontSize: 11)),
           ],
         ),
       ),
@@ -498,7 +499,7 @@ class SpotOrderSizing extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 4),
-          Text(
+          LText(
             '可用 ${scaledAmount(balance == null ? null : BigInt.from(balance.availableUnits), side == 'BUY' ? instrument.quoteScaleUnits : instrument.baseScaleUnits)} $asset',
             style: const TextStyle(fontSize: 10),
           ),
@@ -531,7 +532,7 @@ class SpotOrderSizing extends StatelessWidget {
                 await state.refreshInstruments(silent: true);
                 await state.refreshOrderTerms();
               }()),
-              child: const Text('刷新下单资料'),
+              child: const LText('刷新下单资料'),
             ),
         ],
       );
@@ -574,7 +575,7 @@ class ModeSelector extends StatelessWidget {
         ),
       ),
       segments: ProductMode.values
-          .map((mode) => ButtonSegment(value: mode, label: Text(mode.label)))
+          .map((mode) => ButtonSegment(value: mode, label: LText(mode.label)))
           .toList(),
       selected: {value},
       showSelectedIcon: false,
@@ -622,8 +623,8 @@ class PositionModeSelector extends StatelessWidget {
         ),
       ),
       segments: const [
-        ButtonSegment(value: 'ONE_WAY', label: Text('净仓')),
-        ButtonSegment(value: 'HEDGE', label: Text('双向持仓')),
+        ButtonSegment(value: 'ONE_WAY', label: LText('净仓')),
+        ButtonSegment(value: 'HEDGE', label: LText('双向持仓')),
       ],
       selected: {value == 'HEDGE' ? 'HEDGE' : 'ONE_WAY'},
       onSelectionChanged: (selection) => onChanged(selection.first),
@@ -720,7 +721,7 @@ class BuySellSwitch extends StatelessWidget {
               ),
             ),
             onPressed: () => onChanged('BUY'),
-            child: const Text('买入'),
+            child: const LText('买入'),
           ),
         ),
         Expanded(
@@ -746,7 +747,7 @@ class BuySellSwitch extends StatelessWidget {
               ),
             ),
             onPressed: () => onChanged('SELL'),
-            child: const Text('卖出'),
+            child: const LText('卖出'),
           ),
         ),
       ],
@@ -825,7 +826,7 @@ class TradeNumericField extends StatelessWidget {
                   vertical: 6,
                 ),
                 prefixIcon: IconButton(
-                  tooltip: '减少',
+                  tooltip: clientLabel(context, '减少'),
                   onPressed: enabled ? onMinus : null,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints.tightFor(
@@ -841,7 +842,7 @@ class TradeNumericField extends StatelessWidget {
                   icon: const Icon(Icons.remove, size: 16),
                 ),
                 suffixIcon: IconButton(
-                  tooltip: '增加',
+                  tooltip: clientLabel(context, '增加'),
                   onPressed: enabled ? onPlus : null,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints.tightFor(
@@ -926,7 +927,7 @@ class BestPriceButton extends StatelessWidget {
             color: Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
-        child: Text(
+        child: LText(
           enabled ? '最优价' : '市价',
           style: TextStyle(
             color: enabled
@@ -953,7 +954,7 @@ class OrderMetaRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: Row(
         children: [
-          Text(
+          LText(
             label,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,

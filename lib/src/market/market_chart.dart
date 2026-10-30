@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
@@ -81,7 +82,7 @@ class KlinePanel extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         if (candles.isEmpty)
-          const SizedBox(height: 330, child: Center(child: Text('暂无 K 线数据')))
+          const SizedBox(height: 330, child: Center(child: LText('暂无 K 线数据')))
         else
           NativePriceChart(
             candles: candles,

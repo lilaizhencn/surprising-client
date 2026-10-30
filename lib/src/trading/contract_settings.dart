@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
@@ -59,7 +60,7 @@ class TradeSymbolHeader extends StatelessWidget {
                         ),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(
+                      child: LText(
                         instrument.contractLabel,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurface,
@@ -93,7 +94,7 @@ class TradeSymbolHeader extends StatelessWidget {
           ),
         ),
         IconButton(
-          tooltip: 'K线',
+          tooltip: clientLabel(context, 'K线'),
           onPressed: onChart,
           style: IconButton.styleFrom(
             backgroundColor: Colors.transparent,
@@ -105,7 +106,7 @@ class TradeSymbolHeader extends StatelessWidget {
           icon: const Icon(Icons.candlestick_chart_outlined, size: 20),
         ),
         IconButton(
-          tooltip: '更多',
+          tooltip: clientLabel(context, '更多'),
           onPressed: onRefresh,
           style: IconButton.styleFrom(
             backgroundColor: Colors.transparent,
@@ -159,7 +160,7 @@ class ProductLifecyclePanel extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(
+                child: LText(
                   isOption ? '期权合约' : '交割合约生命周期',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -184,10 +185,13 @@ class ProductLifecyclePanel extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              LifecycleChip(label: '状态', value: instrument.status),
+              LifecycleChip(
+                label: clientLabel(context, '状态'),
+                value: instrument.status,
+              ),
               if (instrument.mode == ProductMode.inverseDelivery)
                 LifecycleChip(
-                  label: '每张面值',
+                  label: clientLabel(context, '每张面值'),
                   value:
                       (instrument.notionalMultiplierUnits ?? 0) > 0 &&
                           (instrument.quoteScaleUnits ?? 0) > 0
@@ -195,7 +199,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                       : '--',
                 ),
               LifecycleChip(
-                label: '到期',
+                label: clientLabel(context, '到期'),
                 value: shortDateTime(instrument.expiryTime),
               ),
               LifecycleChip(
@@ -207,13 +211,16 @@ class ProductLifecyclePanel extends StatelessWidget {
                 value: timeLeft(instrument.expiryTime),
               ),
               LifecycleChip(
-                label: '结算',
+                label: clientLabel(context, '结算'),
                 value: instrument.settlementMethod ?? '--',
               ),
-              LifecycleChip(label: '账户', value: instrument.mode.accountType),
+              LifecycleChip(
+                label: clientLabel(context, '账户'),
+                value: instrument.mode.accountType,
+              ),
               if (isOption)
                 LifecycleChip(
-                  label: '期权类型',
+                  label: clientLabel(context, '期权类型'),
                   value: switch (instrument.optionType) {
                     'CALL' => '看涨 CALL',
                     'PUT' => '看跌 PUT',
@@ -222,7 +229,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                 ),
               if (isOption)
                 LifecycleChip(
-                  label: '标的',
+                  label: clientLabel(context, '标的'),
                   value:
                       '${instrument.baseAsset} · ${instrument.underlyingInstrumentId ?? '--'}',
                 ),
@@ -235,7 +242,7 @@ class ProductLifecyclePanel extends StatelessWidget {
               runSpacing: 6,
               children: [
                 MetricPill(
-                  label: '标的指数',
+                  label: clientLabel(context, '标的指数'),
                   value: underlyingPrice == null
                       ? '--'
                       : money(
@@ -245,12 +252,12 @@ class ProductLifecyclePanel extends StatelessWidget {
                   color: Theme.of(context).colorScheme.secondary,
                 ),
                 MetricPill(
-                  label: '行权价',
+                  label: clientLabel(context, '行权价'),
                   value: '$strike ${instrument.quoteAsset}',
                   color: ClientColors.warningFor(context),
                 ),
                 MetricPill(
-                  label: '权利金',
+                  label: clientLabel(context, '权利金'),
                   value: reference == null
                       ? '--'
                       : money(
@@ -260,7 +267,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                   color: Theme.of(context).colorScheme.tertiary,
                 ),
                 MetricPill(
-                  label: '内在价值',
+                  label: clientLabel(context, '内在价值'),
                   value: intrinsic == null
                       ? '--'
                       : money(intrinsic, digits: instrument.pricePrecision),
@@ -269,7 +276,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 MetricPill(
-                  label: '同到期远期价',
+                  label: clientLabel(context, '同到期远期价'),
                   value: reference == null
                       ? '--'
                       : money(
@@ -297,11 +304,11 @@ class ProductLifecyclePanel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text(
+            LText(
               'Black-76 参考值 · 零贴现 · 每1 ${instrument.baseAsset}',
               style: const TextStyle(fontSize: 11),
             ),
-            Text(
+            LText(
               reference == null
                   ? '参考报价暂不可用或已过期'
                   : reference.greeks == null
@@ -311,11 +318,14 @@ class ProductLifecyclePanel extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (chain.isEmpty)
-              const Text('暂无同到期期权链')
+              const LText('暂无同到期期权链')
             else
               Column(
                 children: [
-                  const InfoLine(label: '同到期期权链', value: 'CALL / 行权价 / PUT'),
+                  InfoLine(
+                    label: clientLabel(context, '同到期期权链'),
+                    value: 'CALL / 行权价 / PUT',
+                  ),
                   for (final row in chain)
                     Row(
                       children: [
@@ -364,7 +374,7 @@ class ProductLifecyclePanel extends StatelessWidget {
               children: [
                 Expanded(
                   child: MetricPill(
-                    label: '方向',
+                    label: clientLabel(context, '方向'),
                     value: instrument.mode == ProductMode.inverseDelivery
                         ? '币本位反向'
                         : 'U本位正向',
@@ -374,7 +384,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: MetricPill(
-                    label: '结算资产',
+                    label: clientLabel(context, '结算资产'),
                     value: instrument.settleAsset,
                     color: ClientColors.warningFor(context),
                   ),
@@ -382,7 +392,7 @@ class ProductLifecyclePanel extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: MetricPill(
-                    label: '最大杠杆',
+                    label: clientLabel(context, '最大杠杆'),
                     value: '${(instrument.maxLeveragePpm / 1000000).round()}x',
                     color: Theme.of(context).colorScheme.tertiary,
                   ),
@@ -415,7 +425,7 @@ class LifecycleChip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          LText(
             label,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -468,7 +478,7 @@ class ContractQuickSettings extends StatelessWidget {
         if (showLeverage)
           Expanded(
             child: TradeSettingButton(
-              label: '杠杆',
+              label: clientLabel(context, '杠杆'),
               onTap: () {
                 final state = AppScope.of(context);
                 if (!state.isLoggedIn) {
@@ -498,7 +508,7 @@ class ContractQuickSettings extends StatelessWidget {
         const SizedBox(width: 5),
         Expanded(
           flex: 4,
-          child: Text(
+          child: LText(
             _fundingLabel(AppScope.of(context)),
             textAlign: TextAlign.right,
             style: TextStyle(
@@ -535,7 +545,7 @@ class TradeSettingButton extends StatelessWidget {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(
+        child: LText(
           label,
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
         ),
@@ -675,30 +685,32 @@ class _TradingLeverageSheetState extends State<TradingLeverageSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          LText(
             '${widget.instrument.symbol} · ${widget.marginMode == 'ISOLATED' ? '逐仓' : '全仓'}杠杆',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
           if (loading) const LinearProgressIndicator(),
           if (setting != null) ...[
-            Text('允许范围 1–${asInt(setting!['maxLeveragePpm']) / 1000000}×'),
+            LText('允许范围 1–${asInt(setting!['maxLeveragePpm']) / 1000000}×'),
             TextField(
               controller: controller,
               enabled: !saving,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: '杠杆倍数'),
+              decoration: InputDecoration(
+                labelText: clientLabel(context, '杠杆倍数'),
+              ),
             ),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: saving ? null : save,
-              child: Text(saving ? '保存中…' : '保存杠杆'),
+              child: LText(saving ? '保存中…' : '保存杠杆'),
             ),
           ],
           if (error != null)
-            Text(
+            LText(
               error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),

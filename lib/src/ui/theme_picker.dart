@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../models.dart';
@@ -18,19 +19,19 @@ void showClientThemePicker(BuildContext context) {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: LText(
                     '你的交易空间，你的色彩',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
                 IconButton(
-                  tooltip: '关闭',
+                  tooltip: clientLabel(context, '关闭'),
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
                 ),
               ],
             ),
-            const Text('选择配色，自动保存在本机。涨跌仍使用红绿语义色。'),
+            const LText('选择配色，自动保存在本机。涨跌仍使用红绿语义色。'),
             const SizedBox(height: 16),
             LayoutBuilder(
               builder: (context, constraints) => Wrap(
@@ -143,7 +144,7 @@ class _ThemeOption extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: LText(
                         theme.label,
                         style: TextStyle(
                           color: colors.onSurface,

@@ -13,4 +13,7 @@ class AppScope extends InheritedNotifier<AppState> {
     assert(scope != null, 'AppScope not found');
     return scope!.notifier!;
   }
+
+  static AppState? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppScope>()?.notifier;
 }

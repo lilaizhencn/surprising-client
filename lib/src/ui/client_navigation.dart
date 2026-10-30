@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import 'client_components.dart';
@@ -195,7 +196,7 @@ class _ExchangeNavButton extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
+                LText(
                   item.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
@@ -60,12 +61,15 @@ class _TradePageState extends State<TradePage> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   const SizedBox(height: 40),
-                  Text(
+                  LText(
                     '${state.mode.label}暂无可交易合约',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
-                  const Text('可切换其他产品，或下拉刷新合约列表。', textAlign: TextAlign.center),
+                  const LText(
+                    '可切换其他产品，或下拉刷新合约列表。',
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             ),
@@ -122,10 +126,10 @@ class _TradePageState extends State<TradePage> {
                       spacing: 16,
                       runSpacing: 6,
                       children: [
-                        Text(
+                        LText(
                           '最新价 ${latestPrice == null ? '--' : money(latestPrice, digits: instrument.pricePrecision)}',
                         ),
-                        Text(
+                        LText(
                           '标记价 ${state.markPrices['${state.mode.productLine}:${instrument.symbol}'] == null ? '--' : money(instrument.priceFromTicks(state.markPrices['${state.mode.productLine}:${instrument.symbol}']!), digits: instrument.pricePrecision)}',
                         ),
                       ],
@@ -213,7 +217,7 @@ class _TradePageState extends State<TradePage> {
                                         null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('价格必须符合最小价格变动'),
+                                      content: LText('价格必须符合最小价格变动'),
                                     ),
                                   );
                                   return;
@@ -321,7 +325,7 @@ class _TradePageState extends State<TradePage> {
                         context,
                       ).colorScheme.onSurfaceVariant,
                       iconColor: Theme.of(context).colorScheme.onSurface,
-                      title: const Text(
+                      title: const LText(
                         '高级委托',
                         style: TextStyle(
                           fontSize: 14,
@@ -353,7 +357,7 @@ class _TradePageState extends State<TradePage> {
                       context,
                     ).colorScheme.onSurfaceVariant,
                     iconColor: Theme.of(context).colorScheme.onSurface,
-                    title: Text(
+                    title: LText(
                       '${instrument.displayName.replaceAll('-', '')} ${instrument.contractLabel} K线图表',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -431,7 +435,7 @@ class _ProductLineTabsState extends State<ProductLineTabs> {
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
                   key: ValueKey('product-tab-${mode.name}'),
-                  label: Text(mode.label),
+                  label: LText(mode.label),
                   selected: widget.value == mode,
                   onSelected: (_) {
                     if (mode != widget.value) widget.onChanged(mode);

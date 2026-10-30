@@ -33,7 +33,7 @@ void main() {
       await tester.pumpAndSettle();
       final bounds = tester.getRect(find.byType(Scaffold).last);
       expect(bounds.overlaps(hinge), false);
-      await tester.pageBack();
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.text('交易所'), findsOneWidget);
       expect(tester.takeException(), isNull);

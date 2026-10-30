@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -25,7 +26,7 @@ class C2cMessagingPage extends StatelessWidget {
           children: [
             const Icon(Icons.forum_outlined, size: 44),
             const SizedBox(height: 16),
-            const Text('登录后查看 C2C 会话与订单'),
+            const LText('登录后查看 C2C 会话与订单'),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => showModalBottomSheet<void>(
@@ -33,7 +34,7 @@ class C2cMessagingPage extends StatelessWidget {
                 isScrollControlled: true,
                 builder: (_) => const AuthSheet(),
               ),
-              child: const Text('登录'),
+              child: const LText('登录'),
             ),
           ],
         ),
@@ -192,7 +193,7 @@ class _InboxState extends State<_Inbox> {
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: const Text('咨询商家'),
+          title: const LText('咨询商家'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -200,11 +201,13 @@ class _InboxState extends State<_Inbox> {
                 controller: input,
                 keyboardType: TextInputType.number,
                 maxLength: 19,
-                decoration: const InputDecoration(labelText: '商家 UID'),
+                decoration: InputDecoration(
+                  labelText: clientLabel(context, '商家 UID'),
+                ),
               ),
-              const Text('咨询遵循对方的隐私设置。订单会话请从订单进入。'),
+              const LText('咨询遵循对方的隐私设置。订单会话请从订单进入。'),
               if (problem != null)
-                Text(
+                LText(
                   problem!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
@@ -213,7 +216,7 @@ class _InboxState extends State<_Inbox> {
           actions: [
             TextButton(
               onPressed: busy ? null : () => Navigator.pop(dialog),
-              child: const Text('取消'),
+              child: const LText('取消'),
             ),
             FilledButton(
               onPressed: busy
@@ -242,7 +245,7 @@ class _InboxState extends State<_Inbox> {
                         if (dialog.mounted) update(() => busy = false);
                       }
                     },
-              child: Text(busy ? '打开中…' : '打开会话'),
+              child: LText(busy ? '打开中…' : '打开会话'),
             ),
           ],
         ),
@@ -271,7 +274,7 @@ class _InboxState extends State<_Inbox> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
+                child: LText(
                   clientText(language, 'C2C 消息与订单', 'C2C messages & orders'),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
@@ -279,12 +282,12 @@ class _InboxState extends State<_Inbox> {
               IconButton(
                 onPressed: enabled ? consult : null,
                 icon: const Icon(Icons.add_comment_outlined),
-                tooltip: '咨询商家',
+                tooltip: clientLabel(context, '咨询商家'),
               ),
               IconButton(
                 onPressed: loading ? null : () => load(),
                 icon: const Icon(Icons.refresh),
-                tooltip: '刷新',
+                tooltip: clientLabel(context, '刷新'),
               ),
             ],
           ),
@@ -295,11 +298,11 @@ class _InboxState extends State<_Inbox> {
             segments: [
               ButtonSegment(
                 value: 0,
-                label: Text(clientText(language, '会话', 'Messages')),
+                label: LText(clientText(language, '会话', 'Messages')),
               ),
               ButtonSegment(
                 value: 1,
-                label: Text(clientText(language, '订单', 'Orders')),
+                label: LText(clientText(language, '订单', 'Orders')),
               ),
             ],
             selected: {tab},
@@ -314,9 +317,9 @@ class _InboxState extends State<_Inbox> {
             padding: const EdgeInsets.all(16),
             child: TextField(
               controller: search,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 prefixIcon: Icon(Icons.search),
-                hintText: '搜索会话',
+                hintText: clientLabel(context, '搜索会话'),
               ),
               onChanged: (_) {
                 debounce?.cancel();
@@ -329,16 +332,22 @@ class _InboxState extends State<_Inbox> {
           ),
         if (error != null)
           MaterialBanner(
-            content: Text(error!, maxLines: 2, overflow: TextOverflow.ellipsis),
+            content: LText(
+              error!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
             actions: [
-              TextButton(onPressed: () => load(), child: const Text('重试')),
+              TextButton(onPressed: () => load(), child: const LText('重试')),
             ],
           ),
         Expanded(
           child: loading && conversations.isEmpty && orders.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : !enabled
-              ? Center(child: Text(error == null ? 'C2C 聊天暂未开启' : '暂时无法加载 C2C'))
+              ? Center(
+                  child: LText(error == null ? 'C2C 聊天暂未开启' : '暂时无法加载 C2C'),
+                )
               : RefreshIndicator(
                   onRefresh: load,
                   child: ListView(
@@ -347,7 +356,7 @@ class _InboxState extends State<_Inbox> {
                       if (tab == 0 && conversations.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(32),
-                          child: Text(
+                          child: LText(
                             '暂无会话，可从订单联系对方或咨询商家。',
                             textAlign: TextAlign.center,
                           ),
@@ -368,7 +377,7 @@ class _InboxState extends State<_Inbox> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: Text(
+                            subtitle: LText(
                               '${conversation.lastText.isEmpty ? (conversation.hasAttachment ? '附件' : '暂无消息') : conversation.lastText}\n${conversation.orderId == null ? '咨询' : '订单 · ${conversation.orderId!.substring(28)}'}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -389,12 +398,15 @@ class _InboxState extends State<_Inbox> {
                       if (tab == 1 && orders.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(32),
-                          child: Text('暂无 C2C 订单', textAlign: TextAlign.center),
+                          child: LText(
+                            '暂无 C2C 订单',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       if (tab == 1)
                         for (final order in orders)
                           ListTile(
-                            title: Text(
+                            title: LText(
                               '${asString(order['buyerUserId']) == '${widget.owner}' ? '买入' : '卖出'} ${asString(asMap(order['market'])['asset'])}',
                             ),
                             subtitle: Text(
@@ -409,7 +421,7 @@ class _InboxState extends State<_Inbox> {
                       if (more)
                         TextButton(
                           onPressed: loading ? null : () => load(append: true),
-                          child: Text(loading ? '加载中…' : '加载更多'),
+                          child: LText(loading ? '加载中…' : '加载更多'),
                         ),
                     ],
                   ),
@@ -786,9 +798,9 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
         context: context,
         builder: (dialog) =>
             AppScope.of(dialog).session?.user.userId != widget.owner
-            ? const AlertDialog(content: Text('登录账户已变化，请关闭订单详情'))
+            ? const AlertDialog(content: LText('登录账户已变化，请关闭订单详情'))
             : AlertDialog(
-                title: const Text('订单详情'),
+                title: const LText('订单详情'),
                 content: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -796,14 +808,14 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                     children: [
                       Text(orderId),
                       const SizedBox(height: 16),
-                      Text(c2cOrderStatus(asString(value['status']))),
-                      Text(
+                      LText(c2cOrderStatus(asString(value['status']))),
+                      LText(
                         '金额：${asString(value['fiatAmount'])} ${asString(market['fiat'])}',
                       ),
-                      Text(
+                      LText(
                         '数量：${asString(value['quantity'])} ${asString(market['asset'])}',
                       ),
-                      Text(
+                      LText(
                         '价格：${asString(value['price'])} ${asString(market['fiat'])}',
                       ),
                       if (asString(value['terms']).isNotEmpty)
@@ -817,7 +829,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('关闭'),
+                    child: const LText('关闭'),
                   ),
                 ],
               ),
@@ -840,7 +852,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (AppScope.of(context).session?.user.userId != widget.owner) {
-      return const Scaffold(body: Center(child: Text('登录账户已变化，请返回会话列表')));
+      return const Scaffold(body: Center(child: LText('登录账户已变化，请返回会话列表')));
     }
     final timeline = c2cTimeline(messages, orderEvents);
     return Scaffold(
@@ -861,7 +873,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
         ),
         actions: [
           if (widget.conversation.orderId != null)
-            TextButton(onPressed: order, child: const Text('查看订单')),
+            TextButton(onPressed: order, child: const LText('查看订单')),
         ],
       ),
       body: SafeArea(
@@ -871,14 +883,14 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
             if (widget.conversation.orderId != null)
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
+                child: LText(
                   '订单 ${widget.conversation.orderId}',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
               ),
             if (error != null)
               MaterialBanner(
-                content: Text(
+                content: LText(
                   error!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -886,7 +898,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                 actions: [
                   TextButton(
                     onPressed: pendingLoaded ? load : initialize,
-                    child: const Text('重试'),
+                    child: const LText('重试'),
                   ),
                 ],
               ),
@@ -903,7 +915,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                           return Center(
                             child: TextButton(
                               onPressed: older ? null : earlier,
-                              child: Text(older ? '加载中…' : '更早的消息'),
+                              child: LText(older ? '加载中…' : '更早的消息'),
                             ),
                           );
                         }
@@ -913,7 +925,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                           final type = asString(item.event!['type']);
                           return Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Text(
+                            child: LText(
                               type == 'BUYER_MARKED_PAID'
                                   ? '买方已标记付款，请另行核实实际到账。'
                                   : type == 'ORDER_CREATED'
@@ -950,7 +962,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                                   : CrossAxisAlignment.start,
                               children: [
                                 if (message.authorKind != 'USER')
-                                  Text(
+                                  LText(
                                     message.authorKind == 'SUPPORT'
                                         ? '平台客服'
                                         : '系统',
@@ -987,7 +999,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                                 ),
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
+                                  child: LText(
                                     '${message.createdAt.toLocal().hour.toString().padLeft(2, '0')}:${message.createdAt.toLocal().minute.toString().padLeft(2, '0')}${own ? (read ? ' · 已读' : ' · 已发送') : ''}',
                                     style: Theme.of(
                                       context,
@@ -1004,7 +1016,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
             if (pending != null)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                child: Text('发送结果待确认，重试会先查询原消息。'),
+                child: LText('发送结果待确认，重试会先查询原消息。'),
               ),
             if (attachment != null || uploadFile != null)
               Padding(
@@ -1022,7 +1034,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                     if (uploadId != null)
                       TextButton(
                         onPressed: uploading ? null : () => attach(retry: true),
-                        child: Text(uploading ? '上传中…' : '重试上传'),
+                        child: LText(uploading ? '上传中…' : '重试上传'),
                       ),
                     IconButton(
                       onPressed: uploading || pending != null
@@ -1047,11 +1059,11 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                         ? null
                         : attach,
                     icon: const Icon(Icons.attach_file),
-                    tooltip: '添加附件',
+                    tooltip: clientLabel(context, '添加附件'),
                   ),
                   if (replies.isNotEmpty)
                     PopupMenuButton<String>(
-                      tooltip: '快捷回复',
+                      tooltip: clientLabel(context, '快捷回复'),
                       enabled: pending == null,
                       onSelected: (value) => text.text = value,
                       itemBuilder: (_) => [
@@ -1070,8 +1082,8 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                       minLines: 1,
                       maxLines: 4,
                       enabled: pendingLoaded && pending == null && !sending,
-                      decoration: const InputDecoration(
-                        hintText: '输入消息…',
+                      decoration: InputDecoration(
+                        hintText: clientLabel(context, '输入消息…'),
                         counterText: '',
                       ),
                     ),
@@ -1085,7 +1097,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                             !pendingLoaded
                         ? null
                         : send,
-                    child: Text(
+                    child: LText(
                       sending
                           ? '发送中…'
                           : pending != null
@@ -1098,7 +1110,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(12, 0, 12, 6),
-              child: Text('聊天消息不代表已付款或已到账。', style: TextStyle(fontSize: 11)),
+              child: LText('聊天消息不代表已付款或已到账。', style: TextStyle(fontSize: 11)),
             ),
           ],
         ),
@@ -1174,7 +1186,7 @@ class _AttachmentState extends State<_Attachment> {
                         onTap: () => Navigator.of(context).push<void>(
                           MaterialPageRoute(
                             builder: (context) => Scaffold(
-                              appBar: AppBar(title: const Text('图片')),
+                              appBar: AppBar(title: const LText('图片')),
                               body: Builder(
                                 builder: (context) =>
                                     AppScope.of(context).session?.user.userId !=
@@ -1194,7 +1206,7 @@ class _AttachmentState extends State<_Attachment> {
                           width: 240,
                           height: 160,
                           fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Text('图片无法显示'),
+                          errorBuilder: (_, _, _) => const LText('图片无法显示'),
                         ),
                       )
                     : snapshot.hasError
@@ -1206,7 +1218,7 @@ class _AttachmentState extends State<_Attachment> {
                               widget.attachment.id,
                             ),
                           ),
-                          child: const Text('重新加载附件'),
+                          child: const LText('重新加载附件'),
                         ),
                       )
                     : const Center(child: CircularProgressIndicator()),
@@ -1217,11 +1229,11 @@ class _AttachmentState extends State<_Attachment> {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          if (error != null) Text(error!),
+          if (error != null) LText(error!),
           TextButton.icon(
             onPressed: saving ? null : save,
             icon: const Icon(Icons.download, size: 16),
-            label: Text(saving ? '保存中…' : '保存附件'),
+            label: LText(saving ? '保存中…' : '保存附件'),
           ),
         ],
       ),

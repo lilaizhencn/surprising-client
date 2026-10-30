@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -107,7 +108,7 @@ class _KycSumsubWebViewState extends State<KycSumsubWebView> {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: LText(
                   clientText(
                     widget.language,
                     'Sumsub 身份与人脸核验',
@@ -127,7 +128,7 @@ class _KycSumsubWebViewState extends State<KycSumsubWebView> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Text(
+                  LText(
                     error!,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
@@ -139,7 +140,7 @@ class _KycSumsubWebViewState extends State<KycSumsubWebView> {
                       await _refreshToken();
                       if (mounted && error == null) await controller.reload();
                     },
-                    child: const Text('重试'),
+                    child: const LText('重试'),
                   ),
                 ],
               ),

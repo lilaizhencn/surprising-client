@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'models.dart';
@@ -62,9 +63,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('通知')),
+    appBar: AppBar(title: const LText('通知')),
     body: owner == null
-        ? const Center(child: Text('请先登录'))
+        ? const Center(child: LText('请先登录'))
         : RefreshIndicator(
             onRefresh: _load,
             child: ListView(
@@ -73,16 +74,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 if (loading) const LinearProgressIndicator(),
                 if (error != null)
                   ListTile(
-                    title: Text(error!),
+                    title: LText(error!),
                     trailing: TextButton(
                       onPressed: _load,
-                      child: const Text('重试'),
+                      child: const LText('重试'),
                     ),
                   ),
                 if (!loading && error == null && rows.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(32),
-                    child: Center(child: Text('暂无通知')),
+                    child: Center(child: LText('暂无通知')),
                   ),
                 for (final row in rows)
                   ListTile(

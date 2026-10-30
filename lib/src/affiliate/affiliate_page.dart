@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -315,7 +316,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
   void showFeedback(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: LText(message)));
   }
 
   Widget section(String title, List<Widget> children) => Padding(
@@ -361,10 +362,10 @@ class _AffiliatePageState extends State<AffiliatePage> {
     final own = !kolEnabled || subject.isEmpty || subject == '$owner';
     return Scaffold(
       appBar: AppBar(
-        title: Text(kolEnabled ? '邀请与合作' : '邀请返佣'),
+        title: LText(kolEnabled ? '邀请与合作' : '邀请返佣'),
         actions: [
           IconButton(
-            tooltip: '刷新',
+            tooltip: clientLabel(context, '刷新'),
             onPressed: loading ? null : load,
             icon: const Icon(Icons.refresh),
           ),
@@ -381,7 +382,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
+                  child: LText(
                     error!,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
@@ -391,17 +392,17 @@ class _AffiliatePageState extends State<AffiliatePage> {
               if (notice != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(notice!),
+                  child: LText(notice!),
                 ),
               section('接受邀请', [
                 field('邀请码或邀请链接', code),
                 OutlinedButton(
                   onPressed: busy ? null : checkInvitation,
-                  child: const Text('查看邀请'),
+                  child: const LText('查看邀请'),
                 ),
                 if (preview != null) ...[
-                  Text('邀请人 UID ${preview!['inviterId']}'),
-                  Text(
+                  LText('邀请人 UID ${preview!['inviterId']}'),
+                  LText(
                     preview!['cooperation'] == true && !kolEnabled
                         ? '该邀请暂不可用，请联系邀请人。'
                         : preview!['cooperation'] == true
@@ -423,15 +424,15 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                   code.clear();
                                   preview = null;
                                 }, '邀请已接受'),
-                    child: Text(owner == null ? '登录或注册后接受' : '确认接受邀请'),
+                    child: LText(owner == null ? '登录或注册后接受' : '确认接受邀请'),
                   ),
                 ],
               ]),
               if (owner == null) ...[
-                const Text('每位注册用户都可邀请好友。登录后查看邀请码、贡献及收益。'),
+                const LText('每位注册用户都可邀请好友。登录后查看邀请码、贡献及收益。'),
                 FilledButton(
                   onPressed: () => showAuthSheet(context),
-                  child: const Text('登录 / 注册'),
+                  child: const LText('登录 / 注册'),
                 ),
               ] else if (loading && data == null)
                 const Center(
@@ -442,24 +443,26 @@ class _AffiliatePageState extends State<AffiliatePage> {
                 )
               else if (data != null) ...[
                 section(own ? '我的推广' : '成员 UID ${profile['userId']}', [
-                  Text(
+                  LText(
                     '直接邀请 ${counts['directInviteCount']} 人${kolEnabled ? ' · 团队邀请 ${counts['teamInviteCount']} 人' : ''}',
                   ),
                   if (own) ...[
-                    SelectableText('邀请码：${profile['inviteCode']}'),
+                    SelectableText(
+                      clientLabel(context, '邀请码：${profile['inviteCode']}'),
+                    ),
                     OutlinedButton(
                       onPressed: () => copy(
                         '${state.api.config.publicWebBaseUrl}/affiliate?invite=${profile['inviteCode']}',
                       ),
-                      child: const Text('复制邀请链接'),
+                      child: const LText('复制邀请链接'),
                     ),
                     if (!kolEnabled && data!['teamActive'] == false)
-                      const Text('当前邀请返佣已暂停，历史记录保留。'),
+                      const LText('当前邀请返佣已暂停，历史记录保留。'),
                     if (!kolEnabled)
-                      Text(
+                      LText(
                         '邀请返佣比例 ${requireInt64(data!['rootRatePpm'], 'rootRatePpm') / 10000}%',
                       ),
-                    Text(
+                    LText(
                       profile['autoSettlement'] == true ? '自动结算已开启' : '自动结算已关闭',
                     ),
                   ] else
@@ -472,24 +475,24 @@ class _AffiliatePageState extends State<AffiliatePage> {
                         });
                         unawaited(load());
                       },
-                      child: const Text('返回我的团队'),
+                      child: const LText('返回我的团队'),
                     ),
                 ]),
                 if (kolEnabled)
                   section('当前合作分配', [
-                    Text(
+                    LText(
                       '平台顶层比例 ${requireInt64(data!['rootRatePpm'], 'rootRatePpm') / 10000}%。下级从所属分支的上级佣金中获得约定份额。',
                     ),
                     if (data!['teamActive'] == false)
-                      const Text('顶层团队已暂停，新团队佣金暂不分配，历史记录保留。'),
+                      const LText('顶层团队已暂停，新团队佣金暂不分配，历史记录保留。'),
                     if (asList(data!['teamPath']).isNotEmpty)
                       ExpansionTile(
-                        title: Text(
+                        title: LText(
                           '查看合作路径（${asList(data!['teamPath']).length} 层）',
                         ),
                         children: [
                           for (final value in asList(data!['teamPath']))
-                            Text(
+                            LText(
                               'UID ${asMap(value)['parentId']} → UID ${asMap(value)['childId']}：上级额度的 ${requireInt64(asMap(value)['sharePpm'], 'sharePpm') / 10000}%',
                             ),
                         ],
@@ -498,11 +501,13 @@ class _AffiliatePageState extends State<AffiliatePage> {
                 section(kolEnabled ? '贡献与佣金' : '我的返佣', [
                   DropdownButtonFormField<String>(
                     initialValue: line,
-                    decoration: const InputDecoration(labelText: '产品线'),
+                    decoration: InputDecoration(
+                      labelText: clientLabel(context, '产品线'),
+                    ),
                     items: [
                       const DropdownMenuItem(
                         value: '',
-                        child: Text('全部产品，分别展示'),
+                        child: LText('全部产品，分别展示'),
                       ),
                       ...affiliateProducts.map(
                         (value) =>
@@ -517,13 +522,13 @@ class _AffiliatePageState extends State<AffiliatePage> {
                       unawaited(load());
                     },
                   ),
-                  Text(
+                  LText(
                     kolEnabled
                         ? '收益按产品与币种分别展示。获得额度包含下级份额，可结算的是本人留存。'
                         : '返佣按产品与币种分别展示，包含历史记录；待结算和到账确认中的金额尚未到账。',
                   ),
                   if (asList(data!['balances']).isEmpty)
-                    const Text('暂无已确认佣金，产生合格手续费后自动更新。'),
+                    const LText('暂无已确认佣金，产生合格手续费后自动更新。'),
                   for (final value in asList(data!['balances'])) ...[
                     const Divider(),
                     Text(
@@ -550,29 +555,29 @@ class _AffiliatePageState extends State<AffiliatePage> {
                 ]),
                 section(kolEnabled ? '邀请用户与团队成员' : '我邀请的好友', [
                   if (members.isEmpty)
-                    Text(kolEnabled ? '该分支还没有邀请用户。' : '你还没有邀请好友。'),
+                    LText(kolEnabled ? '该分支还没有邀请用户。' : '你还没有邀请好友。'),
                   for (final member in members)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          LText(
                             kolEnabled
                                 ? 'UID ${member['userId']} · 直接邀请 ${member['directInviteCount']} 人'
                                 : 'UID ${member['userId']}',
                           ),
-                          Text('邀请时间：${member['acceptedAt']}'),
+                          LText('邀请时间：${member['acceptedAt']}'),
                           if (kolEnabled)
-                            Text(
+                            LText(
                               member['teamParentId'] == null
                                   ? '普通邀请用户'
                                   : '团队下级 · 分配 ${requireInt64(member['sharePpm'], 'sharePpm') / 10000}%',
                             ),
                           if (asList(member['contributions']).isEmpty)
-                            Text(kolEnabled ? '暂无交易贡献' : '暂无已确认返佣'),
+                            LText(kolEnabled ? '暂无交易贡献' : '暂无已确认返佣'),
                           for (final value in asList(member['contributions']))
-                            Text(
+                            LText(
                               kolEnabled
                                   ? '${asMap(value)['productLine']} / ${asMap(value)['asset']}：手续费 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'feeUnits')), scales[asString(asMap(value)['asset'])])} · 获得 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'receivedUnits')), scales[asString(asMap(value)['asset'])])} · 留存 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'retainedUnits')), scales[asString(asMap(value)['asset'])])}'
                                   : '${asMap(value)['productLine']} / ${asMap(value)['asset']} · 为我产生的返佣 ${scaledAmount(BigInt.parse(_amount(asMap(value), 'retainedUnits')), scales[asString(asMap(value)['asset'])])}',
@@ -590,7 +595,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                     });
                                     unawaited(load());
                                   },
-                                  child: const Text('查看贡献'),
+                                  child: const LText('查看贡献'),
                                 ),
                               if (own && kolEnabled)
                                 OutlinedButton(
@@ -601,7 +606,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                         ? '50'
                                         : '${requireInt64(member['sharePpm'], 'sharePpm') / 10000}';
                                   }),
-                                  child: Text(
+                                  child: LText(
                                     member['teamParentId'] == null
                                         ? '邀请成为下级'
                                         : '调整比例',
@@ -622,7 +627,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                 setState(() => memberCursor = '0');
                                 unawaited(load());
                               },
-                        child: const Text('首页'),
+                        child: const LText('首页'),
                       ),
                       OutlinedButton(
                         onPressed: memberNext == null
@@ -631,7 +636,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                 setState(() => memberCursor = memberNext!);
                                 unawaited(load());
                               },
-                        child: const Text('下一页'),
+                        child: const LText('下一页'),
                       ),
                     ],
                   ),
@@ -663,7 +668,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                     });
                               }
                             }, '合作设置已保存，首次入队须对方接受'),
-                      child: Text(
+                      child: LText(
                         selected?['teamParentId'] != null
                             ? '保存未来分配比例'
                             : '生成合作邀请',
@@ -674,7 +679,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                         onPressed: () => copy(
                           '${state.api.config.publicWebBaseUrl}/affiliate?invite=${created!['code']}',
                         ),
-                        child: const Text('复制合作邀请链接'),
+                        child: const LText('复制合作邀请链接'),
                       ),
                   ]),
                 if (own &&
@@ -684,10 +689,10 @@ class _AffiliatePageState extends State<AffiliatePage> {
                     for (final value in asList(data!['invitations']))
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: Text(
+                        title: LText(
                           '邀请人 ${asMap(value)['inviterId']} · ${requireInt64(asMap(value)['sharePpm'], 'sharePpm') / 10000}%',
                         ),
-                        subtitle: Text('有效至 ${asMap(value)['expiresAt']}'),
+                        subtitle: LText('有效至 ${asMap(value)['expiresAt']}'),
                         trailing: TextButton(
                           onPressed: () {
                             if (asMap(value)['inviterId'] == owner.toString()) {
@@ -701,7 +706,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                               unawaited(checkInvitation());
                             }
                           },
-                          child: Text(
+                          child: LText(
                             asMap(value)['inviterId'] == owner.toString()
                                 ? '复制链接'
                                 : '查看',
@@ -711,14 +716,14 @@ class _AffiliatePageState extends State<AffiliatePage> {
                   ]),
                 if (own)
                   section('佣金明细', [
-                    if (entries.isEmpty) const Text('暂无佣金明细。'),
+                    if (entries.isEmpty) const LText('暂无佣金明细。'),
                     for (final row in entries)
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(
                           '${row['productLine']} / ${row['asset']} · ${scaledAmount(BigInt.tryParse(asString(row['retainedUnits'])), scales[asString(row['asset'])])} ${row['asset']}',
                         ),
-                        subtitle: Text(
+                        subtitle: LText(
                           '来源 UID ${row['sourceUserId']} · ${row['occurredAt']}\n${_status(row['status'])}',
                         ),
                       ),
@@ -732,7 +737,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                   setState(() => entryCursor = '0');
                                   unawaited(load());
                                 },
-                          child: const Text('明细首页'),
+                          child: const LText('明细首页'),
                         ),
                         OutlinedButton(
                           onPressed: entryNext == null
@@ -741,7 +746,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                                   setState(() => entryCursor = entryNext!);
                                   unawaited(load());
                                 },
-                          child: const Text('更多明细'),
+                          child: const LText('更多明细'),
                         ),
                       ],
                     ),
@@ -749,7 +754,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
                 if (own)
                   section('结算记录', [
                     if (payouts.isEmpty)
-                      const Text('暂无结算记录。确认成熟的佣金由平台资金账户划转，资金不足时保留待处理。'),
+                      const LText('暂无结算记录。确认成熟的佣金由平台资金账户划转，资金不足时保留待处理。'),
                     for (final row in payouts)
                       ListTile(
                         contentPadding: EdgeInsets.zero,

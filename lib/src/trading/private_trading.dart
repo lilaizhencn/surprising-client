@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'trading_details.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -21,16 +22,16 @@ Future<void> confirmSpotCancellation(
   final accepted = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
-      title: Text(onlyCurrent ? '撤销 $symbol 当前委托？' : '撤销全部现货委托？'),
-      content: const Text('只处理本次读取到的委托。部分成交或已结束的订单可能无法撤销，请查看逐项结果。'),
+      title: LText(onlyCurrent ? '撤销 $symbol 当前委托？' : '撤销全部现货委托？'),
+      content: const LText('只处理本次读取到的委托。部分成交或已结束的订单可能无法撤销，请查看逐项结果。'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialog, false),
-          child: const Text('返回'),
+          child: const LText('返回'),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialog, true),
-          child: const Text('确认撤单'),
+          child: const LText('确认撤单'),
         ),
       ],
     ),
@@ -109,17 +110,17 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
         if (state.pendingTradingCommand?.cancelOrderId != null ||
             state.pendingTradingCommand?.amendRequestId != null ||
             state.pendingTradingCommand?.cancelPlan != null) ...[
-          Text(tradingPendingMessage(state.pendingTradingCommand)),
+          LText(tradingPendingMessage(state.pendingTradingCommand)),
           TextButton(
             onPressed: state.submittingOrder
                 ? null
                 : state.checkPendingTradingCommand,
-            child: Text(tradingRecoveryLabel(state.pendingTradingCommand)),
+            child: LText(tradingRecoveryLabel(state.pendingTradingCommand)),
           ),
         ],
         if (state.isLoggedIn &&
             !(state.privateViews[state.mode]?.ready ?? false))
-          const Text('账户同步中 / Syncing account'),
+          const LText('账户同步中 / Syncing account'),
         if (!state.mode.isSpot && state.isLoggedIn && risk != null)
           Panel(
             padding: const EdgeInsets.all(10),
@@ -127,21 +128,21 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
               children: [
                 Expanded(
                   child: MetricPill(
-                    label: '权益',
+                    label: clientLabel(context, '权益'),
                     value: riskAmount(risk.equityUnits),
                     color: Theme.of(context).colorScheme.secondary,
                   ),
                 ),
                 Expanded(
                   child: MetricPill(
-                    label: '维持保证金',
+                    label: clientLabel(context, '维持保证金'),
                     value: riskAmount(risk.maintenanceMarginUnits),
                     color: ClientColors.warning,
                   ),
                 ),
                 Expanded(
                   child: MetricPill(
-                    label: '保证金率',
+                    label: clientLabel(context, '保证金率'),
                     value: percentageFromPpm(risk.marginRatioPpm),
                     color: Theme.of(context).colorScheme.error,
                   ),
@@ -154,7 +155,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 8,
             children: [
-              Text(
+              LText(
                 state.privateViews[state.mode]?.ready != true
                     ? '账户风险等待账户同步'
                     : state.loadingAccountRisk
@@ -167,7 +168,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                         state.privateViews[state.mode]?.ready != true
                     ? null
                     : state.refreshRiskDetails,
-                child: const Text('刷新风险'),
+                child: const LText('刷新风险'),
               ),
             ],
           ),
@@ -201,12 +202,12 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
         CheckboxListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          title: const Text('仅当前交易对'),
+          title: const LText('仅当前交易对'),
           value: state.onlyCurrentTradingPair,
           onChanged: (value) => state.setTradingPairFilter(value ?? true),
         ),
         if (tab == 3) ...[
-          const Text('本次连接收到的最近 100 条订单更新'),
+          const LText('本次连接收到的最近 100 条订单更新'),
           if (state.recentOrderUpdates.isEmpty)
             const TradingEmptyState(text: '暂无订单更新'),
           for (final order in state.recentOrderUpdates)
@@ -249,7 +250,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
         if (!state.isLoggedIn)
           TextButton(
             onPressed: () => showAuthSheet(context),
-            child: Text(state.mode.isSpot ? '登录查看账户与委托' : '登录查看持仓与委托'),
+            child: LText(state.mode.isSpot ? '登录查看账户与委托' : '登录查看持仓与委托'),
           ),
         if (tab == 0) ...[
           if (state.positions.isEmpty)
@@ -264,12 +265,12 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
             onPressed: state.submittingOrder || state.tradingCommandPending
                 ? null
                 : () => confirmSpotCancellation(context, state),
-            child: Text(
+            child: LText(
               state.onlyCurrentTradingPair ? '撤销当前交易对委托' : '撤销全部现货委托',
             ),
           ),
           if (state.lastCancellationResult?.userId == state.userId) ...[
-            Text(
+            LText(
               '已处理 ${state.lastCancellationResult!.requested} 笔，成功 ${state.lastCancellationResult!.completed} 笔，失败 ${state.lastCancellationResult!.failed} 笔',
             ),
             if (state.lastCancellationResult!.failed > 0)
@@ -281,7 +282,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                     builder: (context, _) {
                       final result = state.lastCancellationResult;
                       if (result == null || result.userId != state.userId) {
-                        return const SafeArea(child: Text('账户已变化，请关闭此窗口'));
+                        return const SafeArea(child: LText('账户已变化，请关闭此窗口'));
                       }
                       return SafeArea(
                         child: ListView.builder(
@@ -289,8 +290,8 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                           itemBuilder: (context, i) {
                             final failure = result.failures[i];
                             return ListTile(
-                              title: Text('订单 #${failure.orderId}'),
-                              subtitle: Text(
+                              title: LText('订单 #${failure.orderId}'),
+                              subtitle: LText(
                                 failure.code == 'ORDER_NOT_FOUND'
                                     ? '订单不存在或已结束'
                                     : failure.code == 'ORDER_OWNER_MISMATCH'
@@ -304,14 +305,14 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                     },
                   ),
                 ),
-                child: const Text('查看失败订单'),
+                child: const LText('查看失败订单'),
               ),
           ],
         ],
         if (tab == 1 && state.openOrders.isEmpty)
           const TradingEmptyState(text: '暂无委托'),
         if (tab == 1 && state.openOrders.isNotEmpty) ...[
-          const SectionTitle(title: '当前委托'),
+          SectionTitle(title: clientLabel(context, '当前委托')),
           ...state.openOrders.map(
             (order) => OrderRow(
               order: order,
@@ -357,7 +358,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                     ? null
                     : state.loadMoreOpenOrders,
                 icon: const Icon(Icons.expand_more),
-                label: Text(state.loadingMoreOpenOrders ? '加载中...' : '加载更多委托'),
+                label: LText(state.loadingMoreOpenOrders ? '加载中...' : '加载更多委托'),
               ),
             ),
         ],
@@ -365,7 +366,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
           Row(
             children: [
               const Expanded(
-                child: Text(
+                child: LText(
                   '算法委托',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -377,7 +378,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                       ? null
                       : () => showSpotAlgoOrderSheet(context, state),
                   icon: const Icon(Icons.add),
-                  label: const Text('创建策略'),
+                  label: const LText('创建策略'),
                 ),
               TextButton.icon(
                 key: const ValueKey('refresh-algo-orders'),
@@ -385,7 +386,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
                     ? null
                     : state.refreshAlgoOrders,
                 icon: const Icon(Icons.refresh),
-                label: Text(state.loadingAlgoOrders ? '加载中' : '刷新策略'),
+                label: LText(state.loadingAlgoOrders ? '加载中' : '刷新策略'),
               ),
             ],
           ),
@@ -396,7 +397,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           if (algoOrders.length == 1000)
-            const Text('已显示最近 1000 笔未完成策略，请按交易对筛选'),
+            const LText('已显示最近 1000 笔未完成策略，请按交易对筛选'),
         ],
         if (tab == 2 &&
             botCount == 0 &&
@@ -418,7 +419,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
           ),
         ],
         if (tab == 2 && state.openTriggerOrders.isNotEmpty) ...[
-          const SectionTitle(title: '止盈止损'),
+          SectionTitle(title: clientLabel(context, '止盈止损')),
           ...state.openTriggerOrders.map(
             (order) => TriggerOrderRow(
               order: order,
@@ -428,7 +429,7 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
           ),
         ],
         if (tab == 0 && state.liquidationOrders.isNotEmpty) ...[
-          const SectionTitle(title: '爆仓记录'),
+          SectionTitle(title: clientLabel(context, '爆仓记录')),
           ...state.liquidationOrders.map((order) {
             final instrument = state.instruments
                 .where(
@@ -488,7 +489,7 @@ class TradingPanelTabs extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  LText(
                     tabs[index],
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -515,7 +516,7 @@ class TradingPanelTabs extends StatelessWidget {
             if (index != tabs.length - 1) const SizedBox(width: 10),
           ],
           IconButton(
-            tooltip: '订单筛选',
+            tooltip: clientLabel(context, '订单筛选'),
             onPressed: () {},
             style: IconButton.styleFrom(
               backgroundColor: Colors.transparent,
@@ -553,7 +554,7 @@ class TradingEmptyState extends StatelessWidget {
             ).colorScheme.onSurfaceVariant.withValues(alpha: .62),
           ),
           const SizedBox(height: 8),
-          Text(
+          LText(
             text,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -602,7 +603,7 @@ class OrderRow extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: LText(
                   '${order.side == 'BUY' ? '买入' : '卖出'} ${order.symbol}',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
@@ -616,12 +617,12 @@ class OrderRow extends StatelessWidget {
                   order.orderType == 'LIMIT' &&
                   order.status != 'PENDING_RESERVE' &&
                   onAmend != null)
-                TextButton(onPressed: onAmend, child: const Text('改单')),
+                TextButton(onPressed: onAmend, child: const LText('改单')),
               if (canCancel && onCancel != null)
-                TextButton(onPressed: onCancel, child: const Text('撤单')),
+                TextButton(onPressed: onCancel, child: const LText('撤单')),
             ],
           ),
-          Text(
+          LText(
             instrument.isSpot
                 ? '${order.orderType == 'MARKET' ? '市价' : '限价'} · ${tradingStatus(order)}'
                 : '${order.orderType} · ${order.marginMode == 'ISOLATED' ? '逐仓' : '全仓'} · ${positionSideLabel(order.positionSide)} · ${tradingStatus(order)}',
@@ -721,7 +722,7 @@ class AlgoOrderRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          LText(
             '${algoTypeLabel(order.algoType)} · ${order.side == 'BUY' ? '买入' : '卖出'} · ${instrument?.symbol ?? '#${order.instrumentId}'}',
             style: TextStyle(
               fontWeight: FontWeight.w700,
@@ -734,27 +735,27 @@ class AlgoOrderRow extends StatelessWidget {
             '#${order.algoOrderId} · $status',
             style: const TextStyle(fontSize: 12),
           ),
-          if (instrument == null) const Text('合约资料未就绪，暂不显示价格和数量'),
-          Text(
+          if (instrument == null) const LText('合约资料未就绪，暂不显示价格和数量'),
+          LText(
             '${order.product.isSpot ? '现货' : '${order.marginMode} ${positionSideLabel(order.positionSide)}'} · ${order.timeInForce}',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
-          Text(
+          LText(
             '价格：$priceText${instrument == null || order.priceTicks == 0 ? '' : ' ${instrument.quoteAsset}'}',
             style: const TextStyle(fontSize: 12),
           ),
-          Text(
+          LText(
             '已成交：${quantity(order.executedQuantitySteps)} / 总量：${quantity(order.quantitySteps)}',
             style: const TextStyle(fontSize: 12),
           ),
-          Text(
+          LText(
             '挂单中：${quantity(order.activeQuantitySteps)} · 每片：${quantity(order.childQuantitySteps)}',
             style: const TextStyle(fontSize: 12),
           ),
-          Text(
+          LText(
             '${order.algoType == 'TWAP' ? '间隔 ${order.intervalSeconds} 秒 · ' : ''}'
             '时长 ${order.durationSeconds} 秒 · 已提交 ${order.childOrderCount} 片',
             style: const TextStyle(fontSize: 12),
@@ -772,7 +773,9 @@ class AlgoOrderRow extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onCancel,
               icon: const Icon(Icons.close),
-              label: Text(order.status == 'CANCEL_REQUESTED' ? '继续撤销' : '撤销策略'),
+              label: LText(
+                order.status == 'CANCEL_REQUESTED' ? '继续撤销' : '撤销策略',
+              ),
             ),
           ),
         ],
@@ -829,11 +832,11 @@ class TriggerOrderRow extends StatelessWidget {
                     fontSize: 12,
                   ),
                 ),
-                Text(
+                LText(
                   '$triggerText · 量 ${order.quantitySteps}',
                   style: const TextStyle(fontSize: 12),
                 ),
-                Text(
+                LText(
                   order.orderType == 'LIMIT'
                       ? '触发后限价 ${scaledAmount(BigInt.from(order.priceTicks) * BigInt.from(instrument.priceTickUnits), instrument.quoteScaleUnits)} ${instrument.quoteAsset} · ${order.timeInForce}'
                       : '触发后市价 · ${order.timeInForce}',
@@ -928,7 +931,7 @@ class PositionRow extends StatelessWidget {
             runSpacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(
+              LText(
                 '${position.symbol} ${position.isLong ? '多' : '空'}',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
@@ -938,7 +941,7 @@ class PositionRow extends StatelessWidget {
                 ),
               ),
               Chip(
-                label: Text(
+                label: LText(
                   '${position.marginMode == 'ISOLATED' ? '逐仓' : '全仓'} · ${positionSideLabel(position.positionSide)}',
                 ),
                 visualDensity: VisualDensity.compact,
@@ -946,7 +949,7 @@ class PositionRow extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => unawaited(state.closePosition(position)),
                 icon: const Icon(Icons.logout, size: 16),
-                label: const Text('平仓'),
+                label: const LText('平仓'),
               ),
             ],
           ),

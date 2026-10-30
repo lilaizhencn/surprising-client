@@ -257,6 +257,11 @@ class AuthState extends ChangeNotifier {
       }
     } on ApiException catch (error) {
       if (!isCurrentRevision(operation)) return false;
+      if (error.statusCode == 428) {
+        _feedback(notice: '请阅读并确认更新后的协议以继续登录');
+        _changed();
+        return false;
+      }
       if (error.statusCode == 401 || error.statusCode == 403) {
         await _writeStorage(() async {
           if (isCurrentRevision(operation)) await sessionStore.clear();

@@ -1,7 +1,9 @@
+import '../i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../models.dart';
 import '../ui/client_components.dart';
+import 'article_reader.dart';
 
 String _announcementCategory(Object? value, ClientLanguage language) {
   return switch ('$value') {
@@ -53,7 +55,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                 icon: const Icon(Icons.arrow_back),
               ),
               Expanded(
-                child: Text(
+                child: LText(
                   clientText(language, '公告中心', 'Announcements'),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
@@ -71,7 +73,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
         if (state.announcementError != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Text(
+            child: LText(
               state.announcementError!,
               style: const TextStyle(color: Colors.redAccent),
             ),
@@ -91,7 +93,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                       ),
                       const SizedBox(height: 14),
                       Center(
-                        child: Text(
+                        child: LText(
                           clientText(language, '暂无公告', 'No announcements yet'),
                         ),
                       ),
@@ -103,7 +105,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
+                            child: LText(
                               clientText(
                                 language,
                                 '未读 ${state.unreadAnnouncementCount} 条',
@@ -118,7 +120,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                                     await state.markAllAnnouncementsRead();
                                     if (mounted) setState(() {});
                                   },
-                            child: Text(
+                            child: LText(
                               clientText(language, '全部已读', 'Mark all read'),
                             ),
                           ),
@@ -151,7 +153,39 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                                   Text('${selected['summary']}'),
                                 ],
                                 const SizedBox(height: 14),
-                                SelectableText('${selected['body'] ?? ''}'),
+                                if (selected['bodyHtml'] is String &&
+                                    (selected['bodyHtml'] as String).isNotEmpty)
+                                  FilledButton.tonalIcon(
+                                    icon: const Icon(Icons.article_outlined),
+                                    label: LText(
+                                      clientText(
+                                        language,
+                                        '阅读完整公告',
+                                        'Read full announcement',
+                                      ),
+                                    ),
+                                    onPressed: () =>
+                                        Navigator.of(context).push<void>(
+                                          MaterialPageRoute(
+                                            builder: (_) => ArticleReaderPage(
+                                              title:
+                                                  '${selected['title'] ?? ''}',
+                                              html:
+                                                  selected['bodyHtml']
+                                                      as String,
+                                              gatewayBaseUrl: state
+                                                  .api
+                                                  .config
+                                                  .gatewayBaseUrl,
+                                              language: language,
+                                              locale:
+                                                  '${selected['locale'] ?? (language == ClientLanguage.en ? 'en-US' : 'zh-CN')}',
+                                            ),
+                                          ),
+                                        ),
+                                  )
+                                else
+                                  SelectableText('${selected['body'] ?? ''}'),
                                 const SizedBox(height: 12),
                                 Text(
                                   '${selected['startsAt'] ?? ''}',
@@ -216,7 +250,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                             onPressed: state.announcementsLoading
                                 ? null
                                 : state.loadMoreAnnouncements,
-                            child: Text(
+                            child: LText(
                               clientText(language, '加载更多', 'Load more'),
                             ),
                           ),

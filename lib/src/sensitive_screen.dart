@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -49,7 +50,7 @@ class _SensitiveScreenState extends State<SensitiveScreen> {
   Widget build(BuildContext context) => protected
       ? widget.child
       : Scaffold(
-          appBar: AppBar(title: const Text('提币')),
+          appBar: AppBar(title: const LText('提币')),
           body: Center(
             child: failed
                 ? Column(
@@ -57,8 +58,8 @@ class _SensitiveScreenState extends State<SensitiveScreen> {
                     children: [
                       const Icon(Icons.shield_outlined, size: 40),
                       const SizedBox(height: 16),
-                      const Text('安全保护未启用'),
-                      TextButton(onPressed: _protect, child: const Text('重试')),
+                      const LText('安全保护未启用'),
+                      TextButton(onPressed: _protect, child: const LText('重试')),
                     ],
                   )
                 : const CircularProgressIndicator(),

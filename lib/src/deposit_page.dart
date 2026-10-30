@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:ui' as ui;
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
@@ -254,7 +255,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              LText(
                 contract ? '代币合约' : '充值帮助',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
@@ -287,7 +288,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
       final box = context.findRenderObject() as RenderBox?;
       await SharePlus.instance.share(
         ShareParams(
-          title: '充值 ${currentAddress.symbol}',
+          title: clientLabel(context, '充值 ${currentAddress.symbol}'),
           text:
               '${currentAddress.symbol} · ${currentAddress.chain}\n${currentAddress.address}'
               '${currentAddress.memo.isEmpty ? "" : "\nMemo / Tag：${currentAddress.memo}"}',
@@ -362,7 +363,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
       padding: const EdgeInsets.symmetric(vertical: 17),
       child: Row(
         children: [
-          Text(
+          LText(
             title,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
@@ -405,10 +406,10 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
           leading: IconButton(
             onPressed: _back,
             style: exchangeIconStyle(context),
-            tooltip: '返回',
+            tooltip: clientLabel(context, '返回'),
             icon: const Icon(Icons.arrow_back_ios_new, size: 22),
           ),
-          title: Text(
+          title: LText(
             stage == 0
                 ? '选择资产'
                 : stage == 1
@@ -420,26 +421,26 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
               IconButton(
                 onPressed: () => _details(),
                 style: exchangeIconStyle(context),
-                tooltip: '充值帮助',
+                tooltip: clientLabel(context, '充值帮助'),
                 icon: const Icon(Icons.help_outline),
               ),
             IconButton(
               onPressed: stage == 2 ? _menu : _records,
               style: exchangeIconStyle(context),
-              tooltip: stage == 2 ? '更多' : '充币记录',
+              tooltip: clientLabel(context, stage == 2 ? '更多' : '充币记录'),
               icon: Icon(stage == 2 ? Icons.more_horiz : Icons.history),
             ),
           ],
         ),
         body: token == null
-            ? const Center(child: Text('请先登录'))
+            ? const Center(child: LText('请先登录'))
             : ListView(
                 padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
                 children: [
                   if (error != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
+                      child: LText(
                         error!,
                         style: TextStyle(color: colors.error),
                       ),
@@ -447,18 +448,18 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                   if (notice != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(notice!),
+                      child: LText(notice!),
                     ),
                   if (loading || addressLoading)
                     const LinearProgressIndicator(),
                   if (stage == 0) ...[
                     ExchangeSearchField(
                       onChanged: (value) => setState(() => query = value),
-                      hintText: '搜索数字货币',
+                      hintText: clientLabel(context, '搜索数字货币'),
                     ),
                     if (recent.isNotEmpty && query.isEmpty) ...[
                       const SizedBox(height: 24),
-                      const Text(
+                      const LText(
                         '近期充币记录',
                         style: TextStyle(
                           fontSize: 16,
@@ -479,7 +480,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                       ),
                     ],
                     const SizedBox(height: 28),
-                    const Text(
+                    const LText(
                       '数字货币',
                       style: TextStyle(
                         fontSize: 16,
@@ -511,7 +512,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 30),
                         child: Center(
-                          child: Text(
+                          child: LText(
                             error == null
                                 ? query.isEmpty
                                       ? '暂无可充值币种'
@@ -523,7 +524,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                     if (error != null)
                       TextButton(
                         onPressed: loading ? null : _load,
-                        child: const Text('重试'),
+                        child: const LText('重试'),
                       ),
                   ],
                   if (stage == 1) ...[
@@ -536,7 +537,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          const LText(
                             'ⓘ  不清楚如何选择网络？',
                             style: TextStyle(
                               fontSize: 16,
@@ -544,10 +545,10 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          const Text('请确保您选择的网络，与汇出平台或钱包的网络保持一致。'),
+                          const LText('请确保您选择的网络，与汇出平台或钱包的网络保持一致。'),
                           TextButton(
                             onPressed: () => _details(),
-                            child: const Text('了解更多 →'),
+                            child: const LText('了解更多 →'),
                           ),
                         ],
                       ),
@@ -556,11 +557,11 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
+                        LText(
                           '网络',
                           style: TextStyle(color: colors.onSurfaceVariant),
                         ),
-                        Text(
+                        LText(
                           '所需确认数/最小充币额',
                           style: TextStyle(color: colors.onSurfaceVariant),
                         ),
@@ -590,7 +591,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('${row['confirmations']} 个确认'),
+                            LText('${row['confirmations']} 个确认'),
                             Text(
                               '${row['minDeposit']} $symbol',
                               style: TextStyle(color: colors.onSurfaceVariant),
@@ -603,7 +604,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                   ],
                   if (stage == 2) ...[
                     Center(
-                      child: Text(
+                      child: LText(
                         '充值 $symbol',
                         style: const TextStyle(
                           fontSize: 28,
@@ -632,7 +633,10 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                                     size: 210,
                                     backgroundColor: Colors.white,
                                     errorCorrectionLevel: QrErrorCorrectLevel.H,
-                                    semanticsLabel: '充值地址二维码',
+                                    semanticsLabel: clientLabel(
+                                      context,
+                                      '充值地址二维码',
+                                    ),
                                   ),
                                   Container(
                                     padding: const EdgeInsets.all(3),
@@ -649,7 +653,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      Text(
+                      LText(
                         '地址',
                         style: TextStyle(color: colors.onSurfaceVariant),
                       ),
@@ -673,7 +677,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                               shape: const CircleBorder(),
                               side: BorderSide.none,
                             ),
-                            tooltip: '复制地址',
+                            tooltip: clientLabel(context, '复制地址'),
                             icon: const Icon(Icons.copy),
                           ),
                         ],
@@ -683,9 +687,9 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                         SelectableText('Memo / Tag：${currentAddress.memo}'),
                         TextButton(
                           onPressed: () => _copy(currentAddress.memo),
-                          child: const Text('复制 Memo / Tag'),
+                          child: const LText('复制 Memo / Tag'),
                         ),
-                        Text(
+                        LText(
                           '转账时必须同时填写地址和 Memo / Tag。',
                           style: TextStyle(color: colors.error),
                         ),
@@ -703,18 +707,18 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                       ),
                       onTap: _back,
                     ),
-                    _info('充币账户', const Text('资金账户')),
+                    _info('充币账户', const LText('资金账户')),
                     _info('最小充币额', Text('${route?['minDeposit']} $symbol')),
                     _info('所需确认数', Text('${route?['confirmations']}')),
                     _info(
                       '合约地址',
-                      const Text('查看详情'),
+                      const LText('查看详情'),
                       onTap: () => _details(contract: true),
                     ),
                     if (!addressLoading && address == null)
                       TextButton(
                         onPressed: _address,
-                        child: const Text('重新加载地址'),
+                        child: const LText('重新加载地址'),
                       ),
                   ],
                 ],

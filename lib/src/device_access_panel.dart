@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'models.dart';
@@ -93,7 +94,7 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
         context: context,
         builder: (dialog) => StatefulBuilder(
           builder: (dialog, update) => AlertDialog(
-            title: Text(
+            title: LText(
               action == 'revoke'
                   ? '下线设备？'
                   : action == 'block'
@@ -109,13 +110,17 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
                     TextField(
                       controller: email,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '邮箱验证码'),
+                      decoration: InputDecoration(
+                        labelText: clientLabel(context, '邮箱验证码'),
+                      ),
                     ),
                     if (mfaEnabled)
                       TextField(
                         controller: totp,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: '2FA 验证码'),
+                        decoration: InputDecoration(
+                          labelText: clientLabel(context, '2FA 验证码'),
+                        ),
                       ),
                     TextButton(
                       onPressed: confirming
@@ -139,17 +144,17 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
                                 }
                               }
                             },
-                      child: const Text('发送验证码'),
+                      child: const LText('发送验证码'),
                     ),
                   ],
-                  if (dialogError != null) Text(dialogError!),
+                  if (dialogError != null) LText(dialogError!),
                 ],
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialog, false),
-                child: const Text('取消'),
+                child: const LText('取消'),
               ),
               FilledButton(
                 onPressed: confirming
@@ -163,7 +168,7 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
                         }
                         Navigator.pop(dialog, true);
                       },
-                child: const Text('确认'),
+                child: const LText('确认'),
               ),
             ],
           ),
@@ -223,20 +228,20 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
 
   @override
   Widget build(BuildContext context) => ExpansionTile(
-    title: const Text('设备与登录 IP'),
+    title: const LText('设备与登录 IP'),
     children: [
       if (loading) const LinearProgressIndicator(),
-      if (error != null) Text(error!),
+      if (error != null) LText(error!),
       TextButton(
         onPressed: busy || loading ? null : _load,
-        child: const Text('刷新设备'),
+        child: const LText('刷新设备'),
       ),
       if (!loading && error == null && devices.isEmpty && ips.isEmpty)
-        const Text('暂无设备记录'),
+        const LText('暂无设备记录'),
       for (final row in devices)
         ListTile(
-          title: Text(asString(row['userAgent'], fallback: '未知设备')),
-          subtitle: Text(
+          title: LText(asString(row['userAgent'], fallback: '未知设备')),
+          subtitle: LText(
             '${row['ipAddress'] ?? '—'} · ${row['lastSeen'] ?? '—'}${row['current'] == true ? ' · 当前设备' : ''}',
           ),
           trailing: row['current'] == true
@@ -248,11 +253,11 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
                     if (asString(
                       row['deviceId'] ?? row['sessionId'],
                     ).isNotEmpty)
-                      const PopupMenuItem(value: 'revoke', child: Text('下线')),
+                      const PopupMenuItem(value: 'revoke', child: LText('下线')),
                     if (asString(row['deviceId']).isNotEmpty)
                       PopupMenuItem(
                         value: row['blocked'] == true ? 'unblock' : 'block',
-                        child: Text(row['blocked'] == true ? '恢复登录' : '禁止登录'),
+                        child: LText(row['blocked'] == true ? '恢复登录' : '禁止登录'),
                       ),
                   ],
                 ),
@@ -260,7 +265,7 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
       for (final row in ips)
         ListTile(
           title: Text(asString(row['ipAddress'])),
-          subtitle: Text(
+          subtitle: LText(
             '${row['blocked'] == true ? '已禁止' : '允许登录'} · 登录 ${row['loginCount'] ?? 0} 次',
           ),
           trailing: TextButton(
@@ -271,7 +276,7 @@ class _DeviceAccessPanelState extends State<DeviceAccessPanel> {
                     row['blocked'] == true ? 'unblock' : 'block',
                     ip: true,
                   ),
-            child: Text(row['blocked'] == true ? '恢复' : '禁止'),
+            child: LText(row['blocked'] == true ? '恢复' : '禁止'),
           ),
         ),
     ],

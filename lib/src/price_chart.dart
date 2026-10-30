@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -282,10 +283,10 @@ class _NativePriceChartState extends State<NativePriceChart> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('图表暂不可用'),
+                const LText('图表暂不可用'),
                 TextButton(
                   onPressed: () => unawaited(_initialize()),
-                  child: const Text('重试'),
+                  child: const LText('重试'),
                 ),
               ],
             ),

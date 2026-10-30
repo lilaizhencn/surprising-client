@@ -9,6 +9,7 @@ import 'option_market.dart';
 import 'account_records.dart';
 import 'c2c_models.dart';
 import 'account/kyc_status.dart';
+import 'legal/legal_models.dart';
 
 part 'c2c_api.dart';
 
@@ -66,20 +67,27 @@ class ApiClient {
     _httpClient.close(force: true);
     onSessionRefreshed = null;
     onSessionExpired = null;
+    onLegalReviewRequired = null;
+    onLegalReviewCompleted = null;
+    clearLegalAcceptance();
   }
 
   Future<T> _withRequest<T>(
     Future<T> Function(_HttpRequestScope scope) operation, {
     Duration? timeout,
+    ApiRequestCancellation? cancellation,
   }) async {
     if (_disposed) throw const ApiRequestCancelled();
     final scope = _HttpRequestScope(timeout ?? requestTimeout);
     _pendingRequests.add(scope);
+    void cancel() => scope.cancel(const ApiRequestCancelled());
+    cancellation?._listen(cancel);
     try {
       final value = await scope.run(() => operation(scope));
       scope.checkActive();
       return value;
     } finally {
+      cancellation?._listeners.remove(cancel);
       scope.close();
       _pendingRequests.remove(scope);
     }
@@ -123,6 +131,49 @@ class ApiClient {
 
   Future<void> Function(AuthSession session)? onSessionRefreshed;
   Future<void> Function()? onSessionExpired;
+  void Function()? onLegalReviewRequired;
+  void Function()? onLegalReviewCompleted;
+  String _legalAcceptance = '';
+  void clearLegalAcceptance() {
+    _legalAcceptance = '';
+  }
+
+  void setLegalAcceptance(List<LegalDocument> documents) {
+    if (documents.length > 10 ||
+        documents.map((item) => item.revisionId).toSet().length !=
+            documents.length) {
+      throw const FormatException('协议版本无效');
+    }
+    _legalAcceptance = documents
+        .map((item) => '${item.revisionId}:${item.locale}')
+        .join(',');
+  }
+
+  Future<List<LegalDocument>> legalDocuments(
+    String locale, {
+    ApiRequestCancellation? cancellation,
+  }) async {
+    final value = await _withRequest(
+      (scope) => _sendAuthenticated(
+        'GET',
+        '/api/v1/legal/current',
+        query: {'locale': locale},
+        scope: scope,
+      ),
+      cancellation: cancellation,
+    );
+    if (value is! List || value.length > 10) {
+      throw const FormatException('协议响应不完整');
+    }
+    final documents = value
+        .map((item) => LegalDocument.fromJson(asMap(item)))
+        .toList();
+    if (documents.map((item) => item.type).toSet().length != documents.length ||
+        documents.any((item) => item.locale != locale)) {
+      throw const FormatException('协议语言或编号不匹配');
+    }
+    return documents;
+  }
 
   void setSession(AuthSession? session) {
     _sessionUserId = session?.user.userId;
@@ -147,6 +198,7 @@ class ApiClient {
       ),
     );
     final session = AuthSession.fromJson(asMap(response));
+    onLegalReviewCompleted?.call();
     return session;
   }
 
@@ -2474,6 +2526,9 @@ class ApiClient {
       request.headers.set('Authorization', 'Bearer $_accessToken');
     }
     headers?.forEach(request.headers.set);
+    if (credentialRequest && _legalAcceptance.isNotEmpty) {
+      request.headers.set('X-Legal-Acceptance', _legalAcceptance);
+    }
     if (userId != null) request.headers.set('X-User-Id', '$userId');
     if (productLine != null && productLine.isNotEmpty) {
       request.headers.set('X-Product-Line', productLine);
@@ -2487,6 +2542,12 @@ class ApiClient {
     );
     scope.checkActive();
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 428 && path == '/api/v1/auth/refresh') {
+        final problem = jsonDecode(payload);
+        if (problem is Map && problem['code'] == 'LEGAL_CONSENT_REQUIRED') {
+          onLegalReviewRequired?.call();
+        }
+      }
       throw ApiException.response(
         response,
         payload.isEmpty ? response.reasonPhrase : payload,
@@ -2538,6 +2599,28 @@ class ApiClient {
 
 /// A cancelled write may already have reached the server; its existing intent
 /// and idempotency key must still be used to resolve the outcome.
+class ApiRequestCancellation {
+  final _listeners = <void Function()>{};
+  bool _cancelled = false;
+  bool get isCancelled => _cancelled;
+  void _listen(void Function() listener) {
+    if (_cancelled) {
+      listener();
+    } else {
+      _listeners.add(listener);
+    }
+  }
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    for (final listener in _listeners.toList()) {
+      listener();
+    }
+    _listeners.clear();
+  }
+}
+
 class ApiRequestCancelled implements Exception {
   const ApiRequestCancelled();
   @override

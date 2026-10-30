@@ -32,8 +32,9 @@ void main() {
         expect(find.byType(ProfilePage), findsOneWidget);
         expect(find.byType(WalletPage), findsNothing);
         expect(find.text('安全中心'), findsOneWidget);
+        await tester.scrollUntilVisible(find.text('身份认证'), 120);
         expect(find.text('身份认证'), findsOneWidget);
-        await tester.pageBack();
+        await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         final product = state.mode;
         await tester.tap(find.text('交易').last);
@@ -47,7 +48,7 @@ void main() {
         await tester.tap(find.widgetWithText(ChoiceChip, '5m').last);
         await tester.pumpAndSettle();
         expect(state.period, '5m');
-        await tester.pageBack();
+        await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         await tester.tap(find.text('C2C').last);
         await tester.pumpAndSettle();

@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
@@ -150,7 +151,7 @@ class _UserScannerPageState extends State<UserScannerPage>
           builder: (context, _) => Padding(
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
             child: identity != owner
-                ? const Text('请重新登录')
+                ? const LText('请重新登录')
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -176,7 +177,7 @@ class _UserScannerPageState extends State<UserScannerPage>
                       const SizedBox(height: 24),
                       FilledButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('完成'),
+                        child: const LText('完成'),
                       ),
                     ],
                   ),
@@ -264,7 +265,7 @@ class _UserScannerPageState extends State<UserScannerPage>
     return Scaffold(
       backgroundColor: exchangeBackground(context),
       appBar: AppBar(
-        title: const Text('扫一扫'),
+        title: const LText('扫一扫'),
         backgroundColor: exchangeBackground(context),
         bottom: TabBar(
           controller: tabs,
@@ -275,7 +276,7 @@ class _UserScannerPageState extends State<UserScannerPage>
         ),
       ),
       body: !state.isLoggedIn
-          ? const Center(child: Text('请先登录'))
+          ? const Center(child: LText('请先登录'))
           : TabBarView(
               controller: tabs,
               children: [
@@ -309,10 +310,10 @@ class _UserScannerPageState extends State<UserScannerPage>
                                         size: 44,
                                       ),
                                       const SizedBox(height: 16),
-                                      const Text('请允许相机访问'),
+                                      const LText('请允许相机访问'),
                                       TextButton(
                                         onPressed: _syncCamera,
-                                        child: const Text('重试'),
+                                        child: const LText('重试'),
                                       ),
                                     ],
                                   ),
@@ -345,7 +346,7 @@ class _UserScannerPageState extends State<UserScannerPage>
                           horizontal: 24,
                           vertical: 8,
                         ),
-                        child: Text(
+                        child: LText(
                           error!,
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.error,
@@ -365,13 +366,13 @@ class _UserScannerPageState extends State<UserScannerPage>
                                       (Object _) {},
                                     ),
                                   ),
-                            tooltip: '手电筒',
+                            tooltip: clientLabel(context, '手电筒'),
                             icon: const Icon(Icons.flashlight_on_outlined),
                           ),
                           TextButton.icon(
                             onPressed: busy ? null : _photo,
                             icon: const Icon(Icons.photo_library_outlined),
-                            label: const Text('相册'),
+                            label: const LText('相册'),
                           ),
                         ],
                       ),

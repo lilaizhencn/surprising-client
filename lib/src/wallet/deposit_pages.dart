@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -37,12 +38,12 @@ class _RechargeCoinPageState extends State<RechargeCoinPage> {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
           children: [
             RechargeHeader(
-              title: '选择资产',
+              title: clientLabel(context, '选择资产'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: '帮助',
+                    tooltip: clientLabel(context, '帮助'),
                     onPressed: () {},
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.transparent,
@@ -51,7 +52,7 @@ class _RechargeCoinPageState extends State<RechargeCoinPage> {
                     icon: const Icon(Icons.help_outline, size: 30),
                   ),
                   IconButton(
-                    tooltip: '记录',
+                    tooltip: clientLabel(context, '记录'),
                     onPressed: () => unawaited(state.refreshWallet()),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.transparent,
@@ -69,7 +70,7 @@ class _RechargeCoinPageState extends State<RechargeCoinPage> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 26),
-            const Text(
+            const LText(
               '数字货币',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
@@ -107,7 +108,7 @@ class RechargeNetworkPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
           children: [
-            const RechargeHeader(title: '选择网络'),
+            RechargeHeader(title: clientLabel(context, '选择网络')),
             const SizedBox(height: 28),
             Container(
               padding: const EdgeInsets.all(18),
@@ -129,7 +130,7 @@ class RechargeNetworkPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        LText(
                           '不清楚如何选择网络？',
                           style: TextStyle(
                             fontSize: 21,
@@ -137,7 +138,7 @@ class RechargeNetworkPage extends StatelessWidget {
                           ),
                         ),
                         SizedBox(height: 12),
-                        Text(
+                        LText(
                           '请确保您选择的网络，与汇出平台或钱包的网络保持一致。',
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
@@ -146,7 +147,7 @@ class RechargeNetworkPage extends StatelessWidget {
                           ),
                         ),
                         SizedBox(height: 18),
-                        Text(
+                        LText(
                           '了解更多  →',
                           style: TextStyle(
                             fontSize: 17,
@@ -162,7 +163,7 @@ class RechargeNetworkPage extends StatelessWidget {
             const SizedBox(height: 34),
             Row(
               children: [
-                Text(
+                LText(
                   '网络',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -170,7 +171,7 @@ class RechargeNetworkPage extends StatelessWidget {
                   ),
                 ),
                 Spacer(),
-                Text(
+                LText(
                   '到账时间/最小充币金额',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -180,7 +181,7 @@ class RechargeNetworkPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 30),
-            const Text(
+            const LText(
               '可用',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
             ),
@@ -256,7 +257,7 @@ class _RechargeAddressPageState extends State<RechargeAddressPage> {
             RechargeHeader(
               title: '',
               trailing: IconButton(
-                tooltip: '更多',
+                tooltip: clientLabel(context, '更多'),
                 onPressed: () {},
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.transparent,
@@ -267,7 +268,7 @@ class _RechargeAddressPageState extends State<RechargeAddressPage> {
             ),
             const SizedBox(height: 24),
             Center(
-              child: Text(
+              child: LText(
                 '充值 ${widget.symbol}',
                 style: const TextStyle(
                   fontSize: 30,
@@ -305,7 +306,7 @@ class _RechargeAddressPageState extends State<RechargeAddressPage> {
               ),
             ),
             const SizedBox(height: 34),
-            Text(
+            LText(
               '地址 〉',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -348,40 +349,46 @@ class _RechargeAddressPageState extends State<RechargeAddressPage> {
               ],
             ),
             const SizedBox(height: 18),
-            const Text(
+            const LText(
               '切换至 0x 地址  ⇄',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 28),
             const Divider(color: Color(0xFF262626)),
             RechargeInfoLine(
-              label: '网络',
+              label: clientLabel(context, '网络'),
               value: networkDisplayName(widget.chain, widget.symbol),
               leading: CryptoAvatar(
                 symbol: chainSymbol(widget.chain),
                 size: 18,
               ),
             ),
-            const RechargeInfoLine(label: '充值账户', value: '资金账户'),
             RechargeInfoLine(
-              label: '最小充币金额',
+              label: clientLabel(context, '充值账户'),
+              value: '资金账户',
+            ),
+            RechargeInfoLine(
+              label: clientLabel(context, '最小充币金额'),
               value: '0.01 ${widget.symbol}',
               showChevron: false,
               showInfo: true,
             ),
             RechargeInfoLine(
-              label: '到账时间',
+              label: clientLabel(context, '到账时间'),
               value: networkEta(widget.chain),
               showChevron: false,
               showInfo: true,
             ),
             RechargeInfoLine(
-              label: '可提币时间',
+              label: clientLabel(context, '可提币时间'),
               value: networkEta(widget.chain),
               showChevron: false,
               showInfo: true,
             ),
-            const RechargeInfoLine(label: '合约地址', value: '查看详情'),
+            RechargeInfoLine(
+              label: clientLabel(context, '合约地址'),
+              value: '查看详情',
+            ),
             if (!matches) ...[
               const SizedBox(height: 18),
               PrimaryAction(

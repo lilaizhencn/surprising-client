@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../telegram_login.dart';
 import '../google_login.dart';
+import '../legal/legal_pages.dart';
 
 class AuthSheet extends StatefulWidget {
   const AuthSheet({super.key});
@@ -33,6 +35,7 @@ class _AuthSheetState extends State<AuthSheet> {
   bool telegramBusy = false;
   int telegramAttempt = 0;
   bool checkedMethods = false;
+  bool legalReady = false;
 
   @override
   void didChangeDependencies() {
@@ -68,7 +71,7 @@ class _AuthSheetState extends State<AuthSheet> {
   }
 
   Future<void> telegramLogin(AppState state) async {
-    if (busy) return;
+    if (busy || !legalReady) return;
     final attempt = ++telegramAttempt;
     final initialSession = state.session;
     setState(() {
@@ -100,7 +103,7 @@ class _AuthSheetState extends State<AuthSheet> {
 
   Future<void> googleLogin(AppState state) async {
     final config = googleConfig;
-    if (busy || config == null || !config.enabled) return;
+    if (busy || !legalReady || config == null || !config.enabled) return;
     final attempt = ++googleAttempt;
     final initialSession = state.session;
     setState(() {
@@ -142,6 +145,10 @@ class _AuthSheetState extends State<AuthSheet> {
 
   Future<void> submit(AppState state) async {
     if (busy) return;
+    if (['login', 'register'].contains(mode) && !legalReady) {
+      setState(() => message = '请先阅读并确认用户协议及隐私政策');
+      return;
+    }
     final challenge = state.pendingLoginChallenge;
     final needsPassword =
         ['login', 'register', 'reset'].contains(mode) && challenge == null;
@@ -259,16 +266,16 @@ class _AuthSheetState extends State<AuthSheet> {
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  tooltip: '关闭',
+                  tooltip: clientLabel(context, '关闭'),
                   icon: const Icon(Icons.close),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.headlineSmall),
+            LText(title, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 20),
             if (challenge != null) ...[
-              const Text('输入所有要求的验证码以完成登录'),
+              const LText('输入所有要求的验证码以完成登录'),
               for (final method in challenge.methods)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -283,11 +290,11 @@ class _AuthSheetState extends State<AuthSheet> {
                     onChanged: (v) => codes[asString(method['type'])] = v,
                     decoration: InputDecoration(
                       border: const OutlineInputBorder(),
-                      labelText: switch (method['type']) {
+                      labelText: clientLabel(context, switch (method['type']) {
                         'EMAIL' => '邮箱验证码',
                         'PHONE' => '短信验证码',
                         _ => '身份验证器验证码',
-                      },
+                      }),
                       helperText: nullableString(method['destination']),
                     ),
                   ),
@@ -296,8 +303,8 @@ class _AuthSheetState extends State<AuthSheet> {
               if (mode == 'register') ...[
                 SegmentedButton<bool>(
                   segments: const [
-                    ButtonSegment(value: false, label: Text('邮箱')),
-                    ButtonSegment(value: true, label: Text('手机号')),
+                    ButtonSegment(value: false, label: LText('邮箱')),
+                    ButtonSegment(value: true, label: LText('手机号')),
                   ],
                   selected: {phone},
                   onSelectionChanged: busy
@@ -316,11 +323,14 @@ class _AuthSheetState extends State<AuthSheet> {
                   autofillHints: const [AutofillHints.username],
                   decoration: InputDecoration(
                     border: const OutlineInputBorder(),
-                    labelText: mode == 'login'
-                        ? '邮箱或手机号'
-                        : phone && mode == 'register'
-                        ? '国际手机号'
-                        : '邮箱',
+                    labelText: clientLabel(
+                      context,
+                      mode == 'login'
+                          ? '邮箱或手机号'
+                          : phone && mode == 'register'
+                          ? '国际手机号'
+                          : '邮箱',
+                    ),
                   ),
                 ),
               if (['login', 'register', 'reset'].contains(mode)) ...[
@@ -336,9 +346,15 @@ class _AuthSheetState extends State<AuthSheet> {
                   ],
                   decoration: InputDecoration(
                     border: const OutlineInputBorder(),
-                    labelText: mode == 'reset' ? '新密码' : '密码',
+                    labelText: clientLabel(
+                      context,
+                      mode == 'reset' ? '新密码' : '密码',
+                    ),
                     suffixIcon: IconButton(
-                      tooltip: showPassword ? '隐藏密码' : '显示密码',
+                      tooltip: clientLabel(
+                        context,
+                        showPassword ? '隐藏密码' : '显示密码',
+                      ),
                       onPressed: () =>
                           setState(() => showPassword = !showPassword),
                       icon: Icon(
@@ -355,10 +371,13 @@ class _AuthSheetState extends State<AuthSheet> {
                   controller: invitation,
                   enabled: !busy,
                   maxLength: 64,
-                  decoration: const InputDecoration(
-                    labelText: '邀请码（选填）',
+                  decoration: InputDecoration(
+                    labelText: clientLabel(context, '邀请码（选填）'),
                     border: OutlineInputBorder(),
-                    helperText: '普通邀请码用于建立邀请归属，符合条件的手续费将自动参与返佣核算。',
+                    helperText: clientLabel(
+                      context,
+                      '普通邀请码用于建立邀请归属，符合条件的手续费将自动参与返佣核算。',
+                    ),
                     helperMaxLines: 3,
                   ),
                 ),
@@ -370,9 +389,9 @@ class _AuthSheetState extends State<AuthSheet> {
                   enabled: !busy,
                   keyboardType: TextInputType.number,
                   autofillHints: const [AutofillHints.oneTimeCode],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: OutlineInputBorder(),
-                    labelText: '邮箱验证码',
+                    labelText: clientLabel(context, '邮箱验证码'),
                   ),
                 ),
               ],
@@ -380,14 +399,24 @@ class _AuthSheetState extends State<AuthSheet> {
             if (message != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(message!, key: const ValueKey('auth-message')),
+                child: LText(message!, key: const ValueKey('auth-message')),
               ),
             const SizedBox(height: 20),
+            if (['login', 'register'].contains(mode))
+              LegalReview(
+                disabled: busy,
+                onReady: (value) {
+                  if (mounted) setState(() => legalReady = value);
+                },
+              ),
             FilledButton(
-              onPressed: busy ? null : () => submit(state),
+              onPressed:
+                  busy || ['login', 'register'].contains(mode) && !legalReady
+                  ? null
+                  : () => submit(state),
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
+                child: LText(
                   busy
                       ? '处理中…'
                       : challenge != null
@@ -418,7 +447,7 @@ class _AuthSheetState extends State<AuthSheet> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                onPressed: !busy && googleConfig?.enabled == true
+                onPressed: !busy && legalReady && googleConfig?.enabled == true
                     ? () => googleLogin(state)
                     : null,
                 icon: googleBusy
@@ -432,12 +461,12 @@ class _AuthSheetState extends State<AuthSheet> {
                         height: 18,
                         excludeFromSemantics: true,
                       ),
-                label: Text(googleBusy ? '正在通过 Google 登录…' : '通过 Google 继续'),
+                label: LText(googleBusy ? '正在通过 Google 登录…' : '通过 Google 继续'),
               ),
               if (googleConfigFailed)
                 TextButton(
                   onPressed: busy ? null : loadGoogleConfig,
-                  child: const Text('重试 Google 登录选项'),
+                  child: const LText('重试 Google 登录选项'),
                 ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -447,11 +476,13 @@ class _AuthSheetState extends State<AuthSheet> {
                         telegramBusy = false;
                         busy = false;
                       })
-                    : !busy && telegramEnabled
+                    : !busy && legalReady && telegramEnabled
                     ? () => telegramLogin(state)
                     : null,
                 icon: const Icon(Icons.send_outlined),
-                label: Text(telegramBusy ? '取消 Telegram 登录' : '通过 Telegram 继续'),
+                label: LText(
+                  telegramBusy ? '取消 Telegram 登录' : '通过 Telegram 继续',
+                ),
               ),
             ],
             if (mode == 'verify')
@@ -468,7 +499,7 @@ class _AuthSheetState extends State<AuthSheet> {
                           });
                         }
                       },
-                child: const Text('重新发送验证码'),
+                child: const LText('重新发送验证码'),
               ),
             if (mode == 'login' && challenge == null) ...[
               TextButton(
@@ -479,7 +510,7 @@ class _AuthSheetState extends State<AuthSheet> {
                         message = null;
                         password.clear();
                       }),
-                child: const Text('忘记密码？'),
+                child: const LText('忘记密码？'),
               ),
               TextButton(
                 onPressed: busy
@@ -488,7 +519,7 @@ class _AuthSheetState extends State<AuthSheet> {
                         mode = 'register';
                         message = null;
                       }),
-                child: const Text('没有账户，去注册'),
+                child: const LText('没有账户，去注册'),
               ),
               if (state.pendingBiometricSession != null)
                 TextButton.icon(
@@ -506,7 +537,7 @@ class _AuthSheetState extends State<AuthSheet> {
                           if (ok) Navigator.pop(context);
                         },
                   icon: const Icon(Icons.fingerprint),
-                  label: const Text('使用生物识别登录'),
+                  label: const LText('使用生物识别登录'),
                 ),
             ] else
               TextButton(
@@ -520,7 +551,7 @@ class _AuthSheetState extends State<AuthSheet> {
                         password.clear();
                         message = null;
                       }),
-                child: const Text('返回登录'),
+                child: const LText('返回登录'),
               ),
           ],
         ),

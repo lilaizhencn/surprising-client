@@ -1,14 +1,16 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../affiliate/affiliate_page.dart';
 import '../app_state.dart';
 import '../auth/auth_sheet.dart';
-import '../models.dart';
 import '../ui/client_colors.dart';
 import '../ui/client_components.dart';
 import '../ui/theme_picker.dart';
+import '../ui/language_picker.dart';
 import 'security_sheet.dart';
+import '../legal/legal_pages.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -20,8 +22,10 @@ class ProfilePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         PageHeader(
-          title: '账户',
-          subtitle: state.isLoggedIn ? state.session!.user.name : '未登录',
+          title: clientLabel(context, '账户'),
+          subtitle: state.isLoggedIn
+              ? state.session!.user.name
+              : clientLabel(context, '未登录'),
         ),
         Panel(
           child: Row(
@@ -33,13 +37,15 @@ class ProfilePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      state.isLoggedIn ? state.session!.user.name : '游客',
+                      state.isLoggedIn
+                          ? state.session!.user.name
+                          : clientLabel(context, '游客'),
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 18,
                       ),
                     ),
-                    Text(
+                    LText(
                       state.isLoggedIn
                           ? 'UID ${state.userId} · ${state.session!.user.status}'
                           : '登录后同步订单、持仓和资产',
@@ -62,9 +68,12 @@ class ProfilePage extends StatelessWidget {
                   icon: const Icon(Icons.logout),
                 )
               else
-                FilledButton(
-                  onPressed: () => showAuthSheet(context),
-                  child: const Text('登录'),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: FilledButton(
+                    onPressed: () => showAuthSheet(context),
+                    child: const LText('登录'),
+                  ),
                 ),
             ],
           ),
@@ -77,33 +86,63 @@ class ProfilePage extends StatelessWidget {
                 color: Colors.transparent,
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('主题'),
-                  subtitle: Text(state.clientTheme.label),
+                  title: const LText('主题'),
+                  subtitle: LText(state.clientTheme.label),
                   trailing: const Icon(Icons.palette_outlined),
                   onTap: () => showClientThemePicker(context),
                 ),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('语言 / Language'),
-                subtitle: const Text('应用界面语言'),
-                trailing: DropdownButton<ClientLanguage>(
-                  value: state.language,
-                  underline: const SizedBox.shrink(),
-                  items: ClientLanguage.values
-                      .map(
-                        (language) => DropdownMenuItem(
-                          value: language,
-                          child: Text(language.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (next) {
-                    if (next != null) state.selectLanguage(next);
-                  },
+                title: const LText('语言 / Language'),
+                subtitle: const LText('应用界面语言'),
+                trailing: Semantics(
+                  identifier: 'client.language.select',
+                  child: SizedBox(
+                    width: 120,
+                    child: TextButton(
+                      onPressed: () => showClientLanguagePicker(context),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              state.language.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.expand_more),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
+          ),
+        ),
+        Panel(
+          child: Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.policy_outlined),
+              title: LText(
+                clientText(state.language, '协议与隐私', 'Legal and privacy'),
+              ),
+              subtitle: LText(
+                clientText(
+                  state.language,
+                  '用户协议、隐私政策及风险披露',
+                  'Agreements, privacy and risk disclosures',
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LegalCenterPage(),
+                ),
+              ),
+            ),
           ),
         ),
         if (state.isLoggedIn) ...[
@@ -114,8 +153,8 @@ class ProfilePage extends StatelessWidget {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.group_add_outlined),
-                title: const Text('邀请返佣'),
-                subtitle: const Text('邀请好友、团队贡献与返佣结算'),
+                title: const LText('邀请返佣'),
+                subtitle: const LText('邀请好友、团队贡献与返佣结算'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -135,8 +174,8 @@ class ProfilePage extends StatelessWidget {
                   Icons.security,
                   color: Theme.of(context).colorScheme.tertiary,
                 ),
-                title: const Text('安全中心'),
-                subtitle: const Text('邮箱与手机绑定、密码、2FA、设备和 API 密钥'),
+                title: const LText('安全中心'),
+                subtitle: const LText('邮箱与手机绑定、密码、2FA、设备和 API 密钥'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showSecuritySheet(context),
               ),
@@ -149,10 +188,10 @@ class ProfilePage extends StatelessWidget {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.badge_outlined),
-                title: Text(
+                title: LText(
                   clientText(state.language, '身份认证', 'Identity verification'),
                 ),
-                subtitle: Text(
+                subtitle: LText(
                   clientText(
                     state.language,
                     '提交认证资料与查看审核结果',
@@ -172,10 +211,10 @@ class ProfilePage extends StatelessWidget {
                 Icons.fingerprint,
                 color: ClientColors.warningFor(context),
               ),
-              title: Text(
+              title: LText(
                 state.biometricLoginEnabled ? '生物识别登录已启用' : '启用生物识别登录',
               ),
-              subtitle: Text(
+              subtitle: LText(
                 state.biometricLoginEnabled
                     ? '下次打开 App 使用面容或指纹解锁'
                     : state.biometricLoginAvailable
@@ -189,7 +228,9 @@ class ProfilePage extends StatelessWidget {
                           : () => unawaited(
                               _confirmDisableBiometric(context, state),
                             ),
-                      child: Text(state.biometricLoginUpdating ? '处理中…' : '关闭'),
+                      child: LText(
+                        state.biometricLoginUpdating ? '处理中…' : '关闭',
+                      ),
                     )
                   : FilledButton.tonal(
                       onPressed:
@@ -197,7 +238,9 @@ class ProfilePage extends StatelessWidget {
                               !state.biometricLoginUpdating
                           ? () => unawaited(state.enableBiometricLogin())
                           : null,
-                      child: Text(state.biometricLoginUpdating ? '处理中…' : '启用'),
+                      child: LText(
+                        state.biometricLoginUpdating ? '处理中…' : '启用',
+                      ),
                     ),
             ),
           ),
@@ -214,16 +257,16 @@ class ProfilePage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('关闭生物识别登录？'),
-        content: const Text('关闭后，下次打开 App 将直接使用已保存的登录会话，不再要求面容或指纹解锁。'),
+        title: const LText('关闭生物识别登录？'),
+        content: const LText('关闭后，下次打开 App 将直接使用已保存的登录会话，不再要求面容或指纹解锁。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
+            child: const LText('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认关闭'),
+            child: const LText('确认关闭'),
           ),
         ],
       ),

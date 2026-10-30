@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
@@ -75,16 +76,16 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialog) => AlertDialog(
-          title: const Text('删除未提交材料？'),
-          content: const Text('如需使用该材料认证，需要重新上传。'),
+          title: const LText('删除未提交材料？'),
+          content: const LText('如需使用该材料认证，需要重新上传。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialog, false),
-              child: const Text('取消'),
+              child: const LText('取消'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialog, true),
-              child: const Text('删除'),
+              child: const LText('删除'),
             ),
           ],
         ),
@@ -130,17 +131,18 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('认证材料')),
+    appBar: AppBar(title: const LText('认证材料')),
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
         if (loading) const LinearProgressIndicator(),
-        if (error != null) Text(error!),
+        if (error != null) LText(error!),
         TextButton(
           onPressed: current && !loading && !busy ? _load : null,
-          child: const Text('刷新材料'),
+          child: const LText('刷新材料'),
         ),
-        if (!loading && error == null && records.isEmpty) const Text('暂无已上传材料'),
+        if (!loading && error == null && records.isEmpty)
+          const LText('暂无已上传材料'),
         for (final row in records)
           Card(
             child: Padding(
@@ -148,9 +150,9 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(asString(row['originalFilename'], fallback: '认证材料')),
-                  if (_documentId(row) == null) const Text('材料暂不可用，请刷新后重试'),
-                  Text(
+                  LText(asString(row['originalFilename'], fallback: '认证材料')),
+                  if (_documentId(row) == null) const LText('材料暂不可用，请刷新后重试'),
+                  LText(
                     '${row['documentType'] ?? ''} · ${row['status'] == 'SUBMITTED' ? '已提交' : '未提交'} · ${row['createdAt'] ?? ''}',
                   ),
                   Wrap(
@@ -159,7 +161,7 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
                         onPressed: current && !busy && _documentId(row) != null
                             ? () => _change(row, false)
                             : null,
-                        child: const Text('保存原件'),
+                        child: const LText('保存原件'),
                       ),
                       if (row['status'] == 'UPLOADED')
                         TextButton(
@@ -167,7 +169,7 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
                               current && !busy && _documentId(row) != null
                               ? () => _change(row, true)
                               : null,
-                          child: const Text('删除未提交材料'),
+                          child: const LText('删除未提交材料'),
                         ),
                     ],
                   ),

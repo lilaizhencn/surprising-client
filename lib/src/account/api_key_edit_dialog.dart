@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../models.dart';
@@ -134,7 +135,7 @@ class _ApiKeyEditDialogState extends State<ApiKeyEditDialog> {
   Widget build(BuildContext context) => PopScope(
     canPop: !busy,
     child: AlertDialog(
-      title: const Text('编辑 API 密钥'),
+      title: const LText('编辑 API 密钥'),
       content: SizedBox(
         width: 400,
         child: SingleChildScrollView(
@@ -147,12 +148,14 @@ class _ApiKeyEditDialogState extends State<ApiKeyEditDialog> {
                 controller: name,
                 enabled: !busy,
                 maxLength: 80,
-                decoration: const InputDecoration(labelText: '名称'),
+                decoration: InputDecoration(
+                  labelText: clientLabel(context, '名称'),
+                ),
               ),
-              const Text('读取权限始终开启。交易和提币权限必须绑定 IP。'),
+              const LText('读取权限始终开启。交易和提币权限必须绑定 IP。'),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('允许交易'),
+                title: const LText('允许交易'),
                 value: trade,
                 onChanged: busy
                     ? null
@@ -160,7 +163,7 @@ class _ApiKeyEditDialogState extends State<ApiKeyEditDialog> {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('允许提币'),
+                title: const LText('允许提币'),
                 value: withdraw,
                 onChanged: busy
                     ? null
@@ -171,31 +174,35 @@ class _ApiKeyEditDialogState extends State<ApiKeyEditDialog> {
                 enabled: !busy,
                 minLines: 2,
                 maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'IP 白名单',
-                  helperText: 'IP 地址或 CIDR，以逗号分隔',
+                decoration: InputDecoration(
+                  labelText: clientLabel(context, 'IP 白名单'),
+                  helperText: clientLabel(context, 'IP 地址或 CIDR，以逗号分隔'),
                 ),
               ),
               TextField(
                 controller: email,
                 enabled: !busy,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '邮箱验证码'),
+                decoration: InputDecoration(
+                  labelText: clientLabel(context, '邮箱验证码'),
+                ),
               ),
               if (widget.mfaRequired)
                 TextField(
                   controller: totp,
                   enabled: !busy,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '2FA 验证码'),
+                  decoration: InputDecoration(
+                    labelText: clientLabel(context, '2FA 验证码'),
+                  ),
                 ),
               TextButton(
                 onPressed: busy || uncertain ? null : sendCode,
-                child: const Text('发送验证码'),
+                child: const LText('发送验证码'),
               ),
-              if (notice != null) Text(notice!, semanticsLabel: notice),
+              if (notice != null) LText(notice!, semanticsLabel: notice),
               if (error != null)
-                Text(
+                LText(
                   error!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
@@ -206,11 +213,11 @@ class _ApiKeyEditDialogState extends State<ApiKeyEditDialog> {
       actions: [
         TextButton(
           onPressed: busy ? null : () => Navigator.pop(context, false),
-          child: const Text('关闭'),
+          child: const LText('关闭'),
         ),
         FilledButton(
           onPressed: busy || uncertain ? null : save,
-          child: Text(busy ? '处理中…' : '保存'),
+          child: LText(busy ? '处理中…' : '保存'),
         ),
       ],
     ),

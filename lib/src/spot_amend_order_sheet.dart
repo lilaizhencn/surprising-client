@@ -1,3 +1,4 @@
+import 'i18n/client_messages.dart';
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'models.dart';
@@ -72,12 +73,12 @@ class _SpotAmendOrderSheetState extends State<SpotAmendOrderSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              LText(
                 '现货改单 · ${widget.instrument.symbol}',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              const Text('改单成功后撤销原单并创建新委托。新委托数量独立于原单已成交数量；未确认时请勿重复操作。'),
+              const LText('改单成功后撤销原单并创建新委托。新委托数量独立于原单已成交数量；未确认时请勿重复操作。'),
               const SizedBox(height: 16),
               TextField(
                 controller: price,
@@ -86,7 +87,7 @@ class _SpotAmendOrderSheetState extends State<SpotAmendOrderSheet> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: '新委托价格',
+                  labelText: clientLabel(context, '新委托价格'),
                   suffixText: widget.instrument.quoteAsset,
                 ),
               ),
@@ -98,14 +99,14 @@ class _SpotAmendOrderSheetState extends State<SpotAmendOrderSheet> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: '新委托数量',
+                  labelText: clientLabel(context, '新委托数量'),
                   suffixText: widget.instrument.baseAsset,
                 ),
               ),
               const SizedBox(height: 12),
-              if (!current) const Text('账户或产品已变化，请关闭后重新选择订单'),
+              if (!current) const LText('账户或产品已变化，请关闭后重新选择订单'),
               if (current && state.lastError != null)
-                Text(
+                LText(
                   state.lastError!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
@@ -129,13 +130,13 @@ class _SpotAmendOrderSheetState extends State<SpotAmendOrderSheet> {
                           Navigator.of(context).pop();
                         }
                       },
-                child: const Text('确认改单'),
+                child: const LText('确认改单'),
               ),
               TextButton(
                 onPressed: state.submittingOrder
                     ? null
                     : () => Navigator.of(context).pop(),
-                child: const Text('取消'),
+                child: const LText('取消'),
               ),
             ],
           ),

@@ -1,3 +1,4 @@
+import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_state.dart';
@@ -114,7 +115,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('算法单', style: TextStyle(fontWeight: FontWeight.w700)),
+          const LText('算法单', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -156,21 +157,21 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
               Expanded(
                 child: AppTextField(
                   controller: priceTicksController,
-                  label: '价格 ticks',
+                  label: clientLabel(context, '价格 ticks'),
                 ),
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: AppTextField(
                   controller: quantityController,
-                  label: '总量 steps',
+                  label: clientLabel(context, '总量 steps'),
                 ),
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: AppTextField(
                   controller: childQuantityController,
-                  label: '切片 steps',
+                  label: clientLabel(context, '切片 steps'),
                 ),
               ),
             ],
@@ -182,7 +183,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
                 Expanded(
                   child: AppTextField(
                     controller: intervalController,
-                    label: '间隔秒',
+                    label: clientLabel(context, '间隔秒'),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -190,13 +191,13 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
               Expanded(
                 child: AppTextField(
                   controller: durationController,
-                  label: '时长秒',
+                  label: clientLabel(context, '时长秒'),
                 ),
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: ToggleLine(
-                  label: '只减仓',
+                  label: clientLabel(context, '只减仓'),
                   value: reduceOnly,
                   onChanged: (value) => setState(() => reduceOnly = value),
                 ),
@@ -223,7 +224,7 @@ class _AlgoOrderPanelState extends State<AlgoOrderPanel> {
             ),
             onPressed: _valid && !submitting ? submit : null,
             icon: Icon(submitting ? Icons.hourglass_top : Icons.schedule),
-            label: Text(submitting ? '提交中' : '提交 ${algoTypeLabel(algoType)}'),
+            label: LText(submitting ? '提交中' : '提交 ${algoTypeLabel(algoType)}'),
           ),
         ],
       ),
@@ -410,28 +411,28 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
           Row(
             children: [
               const Expanded(
-                child: Text(
+                child: LText(
                   '条件单',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
               if (!oco)
                 IconButton.filledTonal(
-                  tooltip: '新增止盈',
+                  tooltip: clientLabel(context, '新增止盈'),
                   onPressed: () => addLevel('TAKE_PROFIT'),
                   icon: const Icon(Icons.add_chart, size: 18),
                 ),
               const SizedBox(width: 6),
               if (!oco)
                 IconButton.filledTonal(
-                  tooltip: '新增止损',
+                  tooltip: clientLabel(context, '新增止损'),
                   onPressed: () => addLevel('STOP_LOSS'),
                   icon: const Icon(Icons.add_alert, size: 18),
                 ),
               const SizedBox(width: 6),
               if (!oco)
                 IconButton.filledTonal(
-                  tooltip: '新增追踪止损',
+                  tooltip: clientLabel(context, '新增追踪止损'),
                   onPressed: () => addLevel('TRAILING_STOP'),
                   icon: const Icon(Icons.timeline, size: 18),
                 ),
@@ -458,12 +459,12 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
             if (oco)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
-                child: Text('双腿一起接受；一腿触发提交减仓委托，另一腿撤销。触发不保证成交。'),
+                child: LText('双腿一起接受；一腿触发提交减仓委托，另一腿撤销。触发不保证成交。'),
               ),
             if (!oco)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
-                child: Text('逐档提交；结果待确认时停止后续发送。已发档位移出草稿，请查询原请求。'),
+                child: LText('逐档提交；结果待确认时停止后续发送。已发档位移出草稿，请查询原请求。'),
               ),
           ],
           const SizedBox(height: 6),
@@ -477,7 +478,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
           if (levels.isEmpty)
             Padding(
               padding: EdgeInsets.only(top: 6),
-              child: Text(
+              child: LText(
                 '暂无待提交档位',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -509,7 +510,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               icon: Icon(
                 submitting ? Icons.hourglass_top : Icons.notifications,
               ),
-              label: Text(
+              label: LText(
                 submitting
                     ? '提交中'
                     : oco
@@ -584,7 +585,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 ),
                 const SizedBox(width: 6),
                 IconButton.filledTonal(
-                  tooltip: '删除',
+                  tooltip: clientLabel(context, '删除'),
                   onPressed: oco
                       ? null
                       : () => setState(() => levels.remove(level)),
@@ -593,7 +594,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               ],
             ),
             const SizedBox(height: 8),
-            Text(
+            LText(
               level.triggerType == 'TRAILING_STOP'
                   ? '激活后按回调比例触发平仓'
                   : '${triggerPriceSourceLabel(priceSource)} ${(level.triggerType == 'TAKE_PROFIT') == (level.closeTarget == 'LONG') ? '≥' : '≤'} 触发价时提交${level.orderType == 'MARKET' ? '市价' : '限价'}减仓委托',
@@ -605,8 +606,10 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                   child: AppTextField(
                     key: ValueKey('${level.id}-price'),
                     initialValue: level.triggerPriceTicks,
-                    label:
-                        '触发价 (${widget.state.selectedInstrument.quoteAsset})',
+                    label: clientLabel(
+                      context,
+                      '触发价 (${widget.state.selectedInstrument.quoteAsset})',
+                    ),
                     onChanged: (value) =>
                         setState(() => level.triggerPriceTicks = value),
                   ),
@@ -614,11 +617,11 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: oco && level != levels.first
-                      ? Text('平仓数量（张）\n${level.quantitySteps} · 两腿共用')
+                      ? LText('平仓数量（张）\n${level.quantitySteps} · 两腿共用')
                       : AppTextField(
                           key: ValueKey('${level.id}-quantity'),
                           initialValue: level.quantitySteps,
-                          label: '平仓数量（张）',
+                          label: clientLabel(context, '平仓数量（张）'),
                           onChanged: (value) => setState(() {
                             if (oco) {
                               for (final item in levels) {
@@ -646,7 +649,10 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
               AppTextField(
                 key: ValueKey('${level.id}-limit'),
                 initialValue: level.limitPrice,
-                label: '委托限价 (${widget.state.selectedInstrument.quoteAsset})',
+                label: clientLabel(
+                  context,
+                  '委托限价 (${widget.state.selectedInstrument.quoteAsset})',
+                ),
                 onChanged: (v) => setState(() => level.limitPrice = v),
               ),
             ],
@@ -658,7 +664,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                     child: AppTextField(
                       key: ValueKey('${level.id}-activation'),
                       initialValue: level.activationPriceTicks,
-                      label: '激活价格',
+                      label: clientLabel(context, '激活价格'),
                       onChanged: (value) =>
                           setState(() => level.activationPriceTicks = value),
                     ),
@@ -668,7 +674,7 @@ class _TriggerOrderPanelState extends State<TriggerOrderPanel> {
                     child: AppTextField(
                       key: ValueKey('${level.id}-callback'),
                       initialValue: level.callbackRatePpm,
-                      label: '回调比例 (%)',
+                      label: clientLabel(context, '回调比例 (%)'),
                       onChanged: (value) =>
                           setState(() => level.callbackRatePpm = value),
                     ),

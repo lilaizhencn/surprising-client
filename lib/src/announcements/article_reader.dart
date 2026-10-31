@@ -36,6 +36,7 @@ class _ArticleReaderPageState extends State<ArticleReaderPage>
   bool loading = true;
   bool suspended = false;
   bool loadingDocument = false;
+  int documentVersion = 0;
 
   @override
   void initState() {
@@ -47,27 +48,26 @@ class _ArticleReaderPageState extends State<ArticleReaderPage>
     controller = WebViewController.fromPlatformCreationParams(params)
       // Native WKWebView media controls require JavaScript. Article scripts remain blocked by CSP.
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'SurprisingArticleMedia',
+        onMessageReceived: (message) {
+          if (message.message == '$documentVersion:failed') {
+            _setMediaFailure(true);
+          } else if (message.message == '$documentVersion:ready') {
+            _setMediaFailure(false);
+          }
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
             loadingDocument = false;
             if (mounted) setState(() => loading = false);
+            if (!suspended) unawaited(_observeMedia());
           },
           onWebResourceError: (failure) {
-            if (mounted &&
-                failure.isForMainFrame != true &&
-                (failure.url?.startsWith(
-                      'https://cdn.surprising.top/public/exchange/content/',
-                    ) ??
-                    false)) {
-              setState(
-                () => mediaError = clientText(
-                  widget.language,
-                  '部分媒体加载失败，可刷新后重试。',
-                  'Some media could not load. Refresh to try again.',
-                ),
-              );
-            }
+            // Subresource callbacks also report successful media preloads as ERR_FAILED.
+            // Report media failures from the HTML elements instead.
             if (mounted && failure.isForMainFrame == true) {
               setState(() {
                 loading = false;
@@ -119,7 +119,7 @@ class _ArticleReaderPageState extends State<ArticleReaderPage>
     final next =
         '''<!doctype html><html lang="${escape.convert(widget.locale)}" dir="$direction"><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; frame-src 'none'; connect-src 'none'; img-src https://cdn.surprising.top/public/exchange/content/; media-src https://cdn.surprising.top/public/exchange/content/; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; frame-src 'none'; connect-src 'none'; img-src https://ex-cdn.tokdou.com/public/exchange/content/; media-src https://ex-cdn.tokdou.com/public/exchange/content/; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <style>html{color-scheme:${Theme.of(context).brightness == Brightness.dark ? 'dark' : 'light'}}body{margin:0;padding:20px;background:${hex(colors.surface)};color:${hex(colors.onSurface)};font:${16 * scale}px/1.8 -apple-system,BlinkMacSystemFont,Arial,sans-serif;overflow-wrap:anywhere}a{color:${hex(colors.primary)}}img,video{display:block;max-width:100%;max-height:65vh;height:auto;margin:16px auto;border-radius:10px;object-fit:contain}audio{display:block;width:100%;margin:16px 0}p{margin:0 0 1em}h2,h3{line-height:1.4}pre{white-space:pre-wrap;padding:12px;background:${hex(colors.surfaceContainerHighest)};border-radius:8px}blockquote{margin-inline:0;padding-inline:14px;border-inline-start:3px solid ${hex(colors.outlineVariant)}}ul,ol{padding-inline-start:1.6em}</style></head><body>$body</body></html>''';
     if (document != next) {
       document = next;
@@ -129,6 +129,7 @@ class _ArticleReaderPageState extends State<ArticleReaderPage>
 
   Future<void> _load() async {
     if (document == null || suspended) return;
+    documentVersion++;
     setState(() {
       loading = true;
       error = null;
@@ -151,6 +152,45 @@ class _ArticleReaderPageState extends State<ArticleReaderPage>
           );
         });
       }
+    }
+  }
+
+  void _setMediaFailure(bool failed) {
+    if (!mounted || suspended) return;
+    final next = failed
+        ? clientText(
+            widget.language,
+            '部分媒体加载失败，可刷新后重试。',
+            'Some media could not load. Refresh to try again.',
+          )
+        : null;
+    if (next != mediaError) setState(() => mediaError = next);
+  }
+
+  Future<void> _observeMedia() async {
+    final version = documentVersion;
+    try {
+      // Trusted native observer; article scripts remain blocked by CSP.
+      await controller.runJavaScript('''
+(() => {
+  const version = $version;
+  if (window.surprisingArticleMediaVersion === version) return;
+  window.surprisingArticleMediaVersion = version;
+  const media = Array.from(document.querySelectorAll('img,audio,video'));
+  const report = () => {
+    const failed = media.some(item => item.tagName === 'IMG'
+      ? item.complete && item.naturalWidth === 0
+      : item.error !== null && item.error.code !== 1);
+    SurprisingArticleMedia.postMessage(version + (failed ? ':failed' : ':ready'));
+  };
+  for (const event of ['error', 'load', 'loadedmetadata']) {
+    document.addEventListener(event, report, true);
+  }
+  report();
+})();
+''');
+    } catch (_) {
+      if (version == documentVersion) _setMediaFailure(true);
     }
   }
 

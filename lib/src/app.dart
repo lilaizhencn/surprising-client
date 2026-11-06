@@ -12,6 +12,7 @@ import 'biometric_lock.dart';
 import 'c2c_trading_page.dart';
 import 'market/market_pages.dart';
 import 'models.dart';
+import 'notification_router.dart';
 import 'telegram_login.dart';
 import 'trading/trade_page.dart';
 import 'ui/client_components.dart';
@@ -261,9 +262,14 @@ class _ClientShellState extends State<ClientShell> {
           };
     void select(int next) => setTab(next);
     final content = KeyedSubtree(key: contentKey, child: page);
-    return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceDim,
-      child: FoldAwareClientBody(
+    return NotificationListener<ShellTabNotification>(
+      onNotification: (notification) {
+        setTab(notification.tabIndex);
+        return true;
+      },
+      child: ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceDim,
+        child: FoldAwareClientBody(
         secondary: index == 2 && !announcementsOpen
             ? const MarketChartPage()
             : null,
@@ -296,8 +302,9 @@ class _ClientShellState extends State<ClientShell> {
           },
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _maybeShowAnnouncementModal(AppState state) {
     if (!state.isLoggedIn || state.announcementsLoading) return;

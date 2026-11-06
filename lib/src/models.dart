@@ -2846,3 +2846,198 @@ String? plainNonnegativeDecimal(String raw) {
   final fraction = digits.substring(point).replaceFirst(RegExp(r'0+$'), '');
   return fraction.isEmpty ? whole : '$whole.$fraction';
 }
+
+
+class NotificationItem {
+  const NotificationItem({
+    required this.notificationId,
+    required this.category,
+    required this.title,
+    required this.body,
+    required this.createdAt,
+    this.readAt,
+    this.route,
+    this.routeParams,
+  });
+
+  final int notificationId;
+  final String category;
+  final String title;
+  final String body;
+  final DateTime createdAt;
+  final DateTime? readAt;
+  final String? route;
+  final String? routeParams;
+
+  bool get isRead => readAt != null;
+
+  NotificationItem copyWith({
+    int? notificationId,
+    String? category,
+    String? title,
+    String? body,
+    DateTime? createdAt,
+    DateTime? readAt,
+    String? route,
+    String? routeParams,
+  }) {
+    return NotificationItem(
+      notificationId: notificationId ?? this.notificationId,
+      category: category ?? this.category,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      createdAt: createdAt ?? this.createdAt,
+      readAt: readAt ?? this.readAt,
+      route: route ?? this.route,
+      routeParams: routeParams ?? this.routeParams,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'notificationId': notificationId,
+      'category': category,
+      'title': title,
+      'body': body,
+      'createdAt': createdAt.toIso8601String(),
+      'readAt': readAt?.toIso8601String(),
+      'route': route,
+      'routeParams': routeParams,
+    };
+  }
+
+  factory NotificationItem.fromJson(Map<String, dynamic> json) {
+    return NotificationItem(
+      notificationId: (json['notificationId'] as num?)?.toInt() ?? 0,
+      category: json['category'] as String? ?? 'SYSTEM',
+      title: json['title'] as String? ?? '',
+      body: json['body'] as String? ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      readAt: json['readAt'] != null
+          ? DateTime.tryParse(json['readAt'].toString())
+          : null,
+      route: json['route'] as String?,
+      routeParams: json['routeParams'] as String?,
+    );
+  }
+}
+
+class NotificationPreferences {
+  const NotificationPreferences({
+    required this.marketVolatilityPush,
+    required this.marketVolatilityInApp,
+    required this.marketVolatilityThresholdPct,
+    required this.securityLoginPush,
+    required this.securityLoginEmail,
+    required this.tradingFillPush,
+    required this.tradingFillInApp,
+    required this.liquidationRiskPush,
+    required this.liquidationRiskInApp,
+    required this.assetTransferPush,
+    required this.assetTransferInApp,
+    required this.c2cOrderPush,
+    required this.c2cOrderInApp,
+  });
+
+  final bool marketVolatilityPush;
+  final bool marketVolatilityInApp;
+  final double marketVolatilityThresholdPct;
+  final bool securityLoginPush;
+  final bool securityLoginEmail;
+  final bool tradingFillPush;
+  final bool tradingFillInApp;
+  final bool liquidationRiskPush;
+  final bool liquidationRiskInApp;
+  final bool assetTransferPush;
+  final bool assetTransferInApp;
+  final bool c2cOrderPush;
+  final bool c2cOrderInApp;
+
+  factory NotificationPreferences.defaults() {
+    return const NotificationPreferences(
+      marketVolatilityPush: true,
+      marketVolatilityInApp: true,
+      marketVolatilityThresholdPct: 5.0,
+      securityLoginPush: true,
+      securityLoginEmail: true,
+      tradingFillPush: true,
+      tradingFillInApp: true,
+      liquidationRiskPush: true,
+      liquidationRiskInApp: true,
+      assetTransferPush: true,
+      assetTransferInApp: true,
+      c2cOrderPush: true,
+      c2cOrderInApp: true,
+    );
+  }
+
+  factory NotificationPreferences.fromJson(Map<String, dynamic> json) {
+    return NotificationPreferences(
+      marketVolatilityPush: json['marketVolatilityPush'] == true,
+      marketVolatilityInApp: json['marketVolatilityInApp'] != false,
+      marketVolatilityThresholdPct: (json['marketVolatilityThresholdPct'] as num?)?.toDouble() ?? 5.0,
+      securityLoginPush: json['securityLoginPush'] != false,
+      securityLoginEmail: json['securityLoginEmail'] != false,
+      tradingFillPush: json['tradingFillPush'] != false,
+      tradingFillInApp: json['tradingFillInApp'] != false,
+      liquidationRiskPush: json['liquidationRiskPush'] != false,
+      liquidationRiskInApp: json['liquidationRiskInApp'] != false,
+      assetTransferPush: json['assetTransferPush'] != false,
+      assetTransferInApp: json['assetTransferInApp'] != false,
+      c2cOrderPush: json['c2cOrderPush'] != false,
+      c2cOrderInApp: json['c2cOrderInApp'] != false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'marketVolatilityPush': marketVolatilityPush,
+      'marketVolatilityInApp': marketVolatilityInApp,
+      'marketVolatilityThresholdPct': marketVolatilityThresholdPct,
+      'securityLoginPush': securityLoginPush,
+      'securityLoginEmail': securityLoginEmail,
+      'tradingFillPush': tradingFillPush,
+      'tradingFillInApp': tradingFillInApp,
+      'liquidationRiskPush': liquidationRiskPush,
+      'liquidationRiskInApp': liquidationRiskInApp,
+      'assetTransferPush': assetTransferPush,
+      'assetTransferInApp': assetTransferInApp,
+      'c2cOrderPush': c2cOrderPush,
+      'c2cOrderInApp': c2cOrderInApp,
+    };
+  }
+
+  NotificationPreferences copyWith({
+    bool? marketVolatilityPush,
+    bool? marketVolatilityInApp,
+    double? marketVolatilityThresholdPct,
+    bool? securityLoginPush,
+    bool? securityLoginEmail,
+    bool? tradingFillPush,
+    bool? tradingFillInApp,
+    bool? liquidationRiskPush,
+    bool? liquidationRiskInApp,
+    bool? assetTransferPush,
+    bool? assetTransferInApp,
+    bool? c2cOrderPush,
+    bool? c2cOrderInApp,
+  }) {
+    return NotificationPreferences(
+      marketVolatilityPush: marketVolatilityPush ?? this.marketVolatilityPush,
+      marketVolatilityInApp: marketVolatilityInApp ?? this.marketVolatilityInApp,
+      marketVolatilityThresholdPct: marketVolatilityThresholdPct ?? this.marketVolatilityThresholdPct,
+      securityLoginPush: securityLoginPush ?? this.securityLoginPush,
+      securityLoginEmail: securityLoginEmail ?? this.securityLoginEmail,
+      tradingFillPush: tradingFillPush ?? this.tradingFillPush,
+      tradingFillInApp: tradingFillInApp ?? this.tradingFillInApp,
+      liquidationRiskPush: liquidationRiskPush ?? this.liquidationRiskPush,
+      liquidationRiskInApp: liquidationRiskInApp ?? this.liquidationRiskInApp,
+      assetTransferPush: assetTransferPush ?? this.assetTransferPush,
+      assetTransferInApp: assetTransferInApp ?? this.assetTransferInApp,
+      c2cOrderPush: c2cOrderPush ?? this.c2cOrderPush,
+      c2cOrderInApp: c2cOrderInApp ?? this.c2cOrderInApp,
+    );
+  }
+}

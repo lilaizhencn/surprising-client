@@ -1459,6 +1459,7 @@ class AppState extends ChangeNotifier {
         identical(auth.current, next);
     if (!current()) return;
     if (next == null) {
+      unawaited(_unregisterDevicePushToken());
       await realtime.close();
       if (!current()) return;
       await _connectRealtime();
@@ -1467,6 +1468,7 @@ class AppState extends ChangeNotifier {
     } else if (change == AuthSessionChange.tokenRefreshed) {
       await _connectRealtime(forceReconnect: true);
     } else {
+      unawaited(_registerDevicePushToken());
       await refreshProductAvailability();
       if (!current()) return;
       await _connectRealtime(forceReconnect: true);
@@ -1476,6 +1478,29 @@ class AppState extends ChangeNotifier {
       await refreshAnnouncements();
     }
     if (current()) notifyListeners();
+  }
+
+  Future<void> _registerDevicePushToken() async {
+    if (offline || !isLoggedIn) return;
+    try {
+      final deviceId = await _persistentDeviceId();
+      final platform = defaultTargetPlatform.name.toUpperCase();
+      final token = 'push_${deviceId.replaceAll('-', '').substring(0, 24)}';
+      await api.registerDeviceToken(
+        deviceToken: token,
+        platform: platform,
+        deviceName: defaultTargetPlatform.name,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _unregisterDevicePushToken() async {
+    if (offline) return;
+    try {
+      final deviceId = await _persistentDeviceId();
+      final token = 'push_${deviceId.replaceAll('-', '').substring(0, 24)}';
+      await api.unregisterDeviceToken(deviceToken: token);
+    } catch (_) {}
   }
 
   Future<void> selectMode(ProductMode nextMode) {

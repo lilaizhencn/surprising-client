@@ -2290,9 +2290,84 @@ class ApiClient {
     };
   }
 
-  Future<List<Map<String, dynamic>>> notifications() async => asList(
-    await _send('GET', '/api/v1/notifications', query: const {'limit': '100'}),
-  ).map(asMap).toList();
+  Future<List<Map<String, dynamic>>> notifications({
+    String? category,
+    bool unreadOnly = false,
+    int limit = 100,
+  }) async {
+    final query = <String, String>{
+      'limit': limit.toString(),
+      'unreadOnly': unreadOnly.toString(),
+    };
+    if (category != null && category.isNotEmpty && category != 'ALL') {
+      query['category'] = category;
+    }
+    return asList(
+      await _send('GET', '/api/v1/notifications', query: query),
+    ).map(asMap).toList();
+  }
+
+  Future<int> unreadNotificationsCount() async {
+    final map = asMap(await _send('GET', '/api/v1/notifications/unread-count'));
+    final raw = map['unreadCount'];
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw) ?? 0;
+    return 0;
+  }
+
+  Future<void> registerDeviceToken({
+    required String deviceToken,
+    required String platform,
+    String? deviceName,
+    String? locale,
+  }) async {
+    await post('/api/v1/user/devices/register', {
+      'deviceToken': deviceToken,
+      'platform': platform,
+      if (deviceName != null) 'deviceName': deviceName,
+      if (locale != null) 'locale': locale,
+    });
+  }
+
+  Future<bool> unregisterDeviceToken({required String deviceToken}) async {
+    final res = await post('/api/v1/user/devices/unregister', {
+      'deviceToken': deviceToken,
+    });
+    return res['success'] == true;
+  }
+
+  Future<Map<String, dynamic>> getNotificationPreferences() async {
+    return asMap(await _send('GET', '/api/v1/user/notification-preferences'));
+  }
+
+  Future<Map<String, dynamic>> updateNotificationPreferences(
+    Map<String, dynamic> preferences,
+  ) async {
+    return put('/api/v1/user/notification-preferences', preferences);
+  }
+
+  Future<Map<String, dynamic>> put(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+    int? userId,
+    String? productLine,
+    bool unwrapResponseResult = false,
+  }) async {
+    return asMap(
+      await _send(
+        'PUT',
+        path,
+        query: query,
+        body: body,
+        headers: headers,
+        userId: userId,
+        productLine: productLine,
+        unwrapResponseResult: unwrapResponseResult,
+      ),
+    );
+  }
 
   Future<Map<String, dynamic>> get(
     String path, {

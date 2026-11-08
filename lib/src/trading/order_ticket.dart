@@ -397,7 +397,7 @@ class OrderTicket extends StatelessWidget {
                   children: [
                     const Expanded(
                       child: Text(
-                        'TP/SL 与 STP 防自成交',
+                        'TP/SL 止盈止损',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -436,37 +436,16 @@ class OrderTicket extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
               ],
-              Row(
-                children: [
-                  Expanded(
-                    child: SmallDropdown(
-                      value: tpSlPriceSource,
-                      values: const ['MARK', 'LAST', 'INDEX'],
-                      labelBuilder: (v) => switch (v) {
-                        'MARK' => '标记价',
-                        'LAST' => '最新价',
-                        'INDEX' => '指数价',
-                        _ => v,
-                      },
-                      onChanged: (v) => onTpSlPriceSource?.call(v),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: SmallDropdown(
-                      value: stpMode,
-                      values: const ['NONE', 'EXPIRE_MAKER', 'EXPIRE_TAKER', 'EXPIRE_BOTH'],
-                      labelBuilder: (v) => switch (v) {
-                        'NONE' => 'STP: 默认',
-                        'EXPIRE_MAKER' => 'STP: 撤Maker',
-                        'EXPIRE_TAKER' => 'STP: 撤Taker',
-                        'EXPIRE_BOTH' => 'STP: 撤双方',
-                        _ => v,
-                      },
-                      onChanged: (v) => onStpMode?.call(v),
-                    ),
-                  ),
-                ],
+              SmallDropdown(
+                value: tpSlPriceSource,
+                values: const ['MARK', 'LAST', 'INDEX'],
+                labelBuilder: (v) => switch (v) {
+                  'MARK' => '触发价基准: 标记价',
+                  'LAST' => '触发价基准: 最新价',
+                  'INDEX' => '触发价基准: 指数价',
+                  _ => v,
+                },
+                onChanged: (v) => onTpSlPriceSource?.call(v),
               ),
             ],
             if (instrument.status != 'TRADING')

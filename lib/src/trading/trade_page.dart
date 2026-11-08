@@ -25,7 +25,6 @@ class _TradePageState extends State<TradePage> {
   final takeProfitController = TextEditingController();
   final stopLossController = TextEditingController();
   String tpSlPriceSource = 'MARK';
-  String stpMode = 'NONE';
   bool bracketExpanded = false;
   String side = 'BUY';
   String orderType = 'LIMIT';
@@ -248,9 +247,6 @@ class _TradePageState extends State<TradePage> {
                               tpSlPriceSource: tpSlPriceSource,
                               onTpSlPriceSource: (value) =>
                                   setState(() => tpSlPriceSource = value),
-                              stpMode: stpMode,
-                              onStpMode: (value) =>
-                                  setState(() => stpMode = value),
                               bracketExpanded: bracketExpanded,
                               onBracketExpanded: (value) =>
                                   setState(() => bracketExpanded = value),
@@ -353,7 +349,6 @@ class _TradePageState extends State<TradePage> {
                                     tpSlPriceSource: tpTicks != null || slTicks != null
                                         ? tpSlPriceSource
                                         : null,
-                                    stpMode: stpMode,
                                   ),
                                 );
                               },

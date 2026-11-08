@@ -7,6 +7,7 @@ import '../market/market_chart.dart';
 import '../models.dart';
 import 'advanced_orders.dart';
 import 'contract_settings.dart';
+import 'grid_strategy_sheet.dart';
 import 'order_book.dart';
 import 'order_ticket.dart';
 import 'private_trading.dart';
@@ -21,6 +22,11 @@ class TradePage extends StatefulWidget {
 class _TradePageState extends State<TradePage> {
   final priceController = TextEditingController();
   final quantityController = TextEditingController();
+  final takeProfitController = TextEditingController();
+  final stopLossController = TextEditingController();
+  String tpSlPriceSource = 'MARK';
+  String stpMode = 'NONE';
+  bool bracketExpanded = false;
   String side = 'BUY';
   String orderType = 'LIMIT';
   String timeInForce = 'GTC';
@@ -36,6 +42,8 @@ class _TradePageState extends State<TradePage> {
   void dispose() {
     priceController.dispose();
     quantityController.dispose();
+    takeProfitController.dispose();
+    stopLossController.dispose();
     super.dispose();
   }
 
@@ -154,10 +162,65 @@ class _TradePageState extends State<TradePage> {
                   onSelected: (symbol) => unawaited(state.selectSymbol(symbol)),
                 ),
                 const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '交易委托',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => GridStrategySheet(
+                              instrument: instrument,
+                              state: state,
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF00C6FF), Color(0xFF7B4397)],
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.smart_toy_outlined, size: 14, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                '网格策略机器人',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final entry = SizedBox(
-                      height: 376,
+                      height: bracketExpanded ? 460 : 380,
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -180,6 +243,17 @@ class _TradePageState extends State<TradePage> {
                                   setState(() => bboPriceMode = value),
                               priceController: priceController,
                               quantityController: quantityController,
+                              takeProfitController: takeProfitController,
+                              stopLossController: stopLossController,
+                              tpSlPriceSource: tpSlPriceSource,
+                              onTpSlPriceSource: (value) =>
+                                  setState(() => tpSlPriceSource = value),
+                              stpMode: stpMode,
+                              onStpMode: (value) =>
+                                  setState(() => stpMode = value),
+                              bracketExpanded: bracketExpanded,
+                              onBracketExpanded: (value) =>
+                                  setState(() => bracketExpanded = value),
                               instrument: instrument,
                               loggedIn: state.isLoggedIn,
                               onSide: (value) => setState(() => side = value),
@@ -222,6 +296,18 @@ class _TradePageState extends State<TradePage> {
                                   );
                                   return;
                                 }
+                                int? tpTicks;
+                                if (takeProfitController.text.trim().isNotEmpty) {
+                                  tpTicks = instrument.priceTicksFromText(
+                                    takeProfitController.text.trim(),
+                                  );
+                                }
+                                int? slTicks;
+                                if (stopLossController.text.trim().isNotEmpty) {
+                                  slTicks = instrument.priceTicksFromText(
+                                    stopLossController.text.trim(),
+                                  );
+                                }
                                 unawaited(
                                   state.placeOrder(
                                     side: side,
@@ -262,6 +348,12 @@ class _TradePageState extends State<TradePage> {
                                         orderType == 'LIMIT' && bboEnabled
                                         ? bboPriceMode
                                         : null,
+                                    takeProfitPriceTicks: tpTicks,
+                                    stopLossPriceTicks: slTicks,
+                                    tpSlPriceSource: tpTicks != null || slTicks != null
+                                        ? tpSlPriceSource
+                                        : null,
+                                    stpMode: stpMode,
                                   ),
                                 );
                               },

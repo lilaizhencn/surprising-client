@@ -1848,6 +1848,10 @@ class _SpotApi extends TestApiClient {
     String? bboPriceMode,
     String? productLine,
     String? clientOrderId,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     calls++;
     lastClientOrderId = clientOrderId;

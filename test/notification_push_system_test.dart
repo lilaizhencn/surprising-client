@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/notification_router.dart';

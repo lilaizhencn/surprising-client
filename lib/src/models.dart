@@ -3041,3 +3041,290 @@ class NotificationPreferences {
     );
   }
 }
+
+// ----------------- 网格策略机器人模型 -----------------
+class GridStrategyRecord {
+  const GridStrategyRecord({
+    required this.strategyId,
+    required this.userId,
+    required this.instrumentId,
+    required this.productLine,
+    required this.lowerPriceTicks,
+    required this.upperPriceTicks,
+    required this.gridCount,
+    required this.isArithmetic,
+    required this.totalInvestmentUnits,
+    required this.status,
+    required this.totalProfitUnits,
+    required this.matchedTradeCount,
+    required this.createdAt,
+  });
+
+  factory GridStrategyRecord.fromJson(Map<String, dynamic> json) {
+    return GridStrategyRecord(
+      strategyId: json['strategyId'] is num ? (json['strategyId'] as num).toInt() : int.tryParse('${json['strategyId']}') ?? 0,
+      userId: json['userId'] is num ? (json['userId'] as num).toInt() : int.tryParse('${json['userId']}') ?? 0,
+      instrumentId: json['instrumentId']?.toString() ?? '',
+      productLine: json['productLine']?.toString() ?? 'SPOT',
+      lowerPriceTicks: json['lowerPriceTicks'] is num ? (json['lowerPriceTicks'] as num).toInt() : int.tryParse('${json['lowerPriceTicks']}') ?? 0,
+      upperPriceTicks: json['upperPriceTicks'] is num ? (json['upperPriceTicks'] as num).toInt() : int.tryParse('${json['upperPriceTicks']}') ?? 0,
+      gridCount: json['gridCount'] is num ? (json['gridCount'] as num).toInt() : int.tryParse('${json['gridCount']}') ?? 10,
+      isArithmetic: json['isArithmetic'] == true || json['isArithmetic']?.toString() == 'true',
+      totalInvestmentUnits: json['totalInvestmentUnits'] is num ? (json['totalInvestmentUnits'] as num).toInt() : int.tryParse('${json['totalInvestmentUnits']}') ?? 0,
+      status: json['status']?.toString() ?? 'RUNNING',
+      totalProfitUnits: json['totalProfitUnits'] is num ? (json['totalProfitUnits'] as num).toInt() : int.tryParse('${json['totalProfitUnits']}') ?? 0,
+      matchedTradeCount: json['matchedTradeCount'] is num ? (json['matchedTradeCount'] as num).toInt() : int.tryParse('${json['matchedTradeCount']}') ?? 0,
+      createdAt: json['createdAt']?.toString() ?? '',
+    );
+  }
+
+  final int strategyId;
+  final int userId;
+  final String instrumentId;
+  final String productLine;
+  final int lowerPriceTicks;
+  final int upperPriceTicks;
+  final int gridCount;
+  final bool isArithmetic;
+  final int totalInvestmentUnits;
+  final String status;
+  final int totalProfitUnits;
+  final int matchedTradeCount;
+  final String createdAt;
+}
+
+// ----------------- VIP 阶梯费率与成长模型 -----------------
+class VipTierModel {
+  const VipTierModel({
+    required this.tierLevel,
+    required this.tierCode,
+    required this.min30DayVolumeUsd,
+    required this.makerFeeRatePpm,
+    required this.takerFeeRatePpm,
+  });
+
+  factory VipTierModel.fromJson(Map<String, dynamic> json) {
+    return VipTierModel(
+      tierLevel: json['tierLevel'] is num ? (json['tierLevel'] as num).toInt() : int.tryParse('${json['tierLevel']}') ?? 0,
+      tierCode: json['tierCode']?.toString() ?? 'VIP0',
+      min30DayVolumeUsd: json['min30DayVolumeUsd'] is num ? (json['min30DayVolumeUsd'] as num).toDouble() : double.tryParse('${json['min30DayVolumeUsd']}') ?? 0.0,
+      makerFeeRatePpm: json['makerFeeRatePpm'] is num ? (json['makerFeeRatePpm'] as num).toInt() : int.tryParse('${json['makerFeeRatePpm']}') ?? 100,
+      takerFeeRatePpm: json['takerFeeRatePpm'] is num ? (json['takerFeeRatePpm'] as num).toInt() : int.tryParse('${json['takerFeeRatePpm']}') ?? 150,
+    );
+  }
+
+  final int tierLevel;
+  final String tierCode;
+  final double min30DayVolumeUsd;
+  final int makerFeeRatePpm;
+  final int takerFeeRatePpm;
+}
+
+class UserVipStatusModel {
+  const UserVipStatusModel({
+    required this.userId,
+    required this.currentTierLevel,
+    required this.currentTierCode,
+    required this.makerFeeRatePpm,
+    required this.takerFeeRatePpm,
+    required this.rolling30DayVolumeUsd,
+    required this.nextTierMinVolumeUsd,
+    required this.volumeNeededForNextTier,
+  });
+
+  factory UserVipStatusModel.fromJson(Map<String, dynamic> json) {
+    return UserVipStatusModel(
+      userId: json['userId'] is num ? (json['userId'] as num).toInt() : int.tryParse('${json['userId']}') ?? 0,
+      currentTierLevel: json['currentTierLevel'] is num ? (json['currentTierLevel'] as num).toInt() : int.tryParse('${json['currentTierLevel']}') ?? 0,
+      currentTierCode: json['currentTierCode']?.toString() ?? 'VIP0',
+      makerFeeRatePpm: json['makerFeeRatePpm'] is num ? (json['makerFeeRatePpm'] as num).toInt() : int.tryParse('${json['makerFeeRatePpm']}') ?? 100,
+      takerFeeRatePpm: json['takerFeeRatePpm'] is num ? (json['takerFeeRatePpm'] as num).toInt() : int.tryParse('${json['takerFeeRatePpm']}') ?? 150,
+      rolling30DayVolumeUsd: json['rolling30DayVolumeUsd'] is num ? (json['rolling30DayVolumeUsd'] as num).toDouble() : double.tryParse('${json['rolling30DayVolumeUsd']}') ?? 0.0,
+      nextTierMinVolumeUsd: json['nextTierMinVolumeUsd'] is num ? (json['nextTierMinVolumeUsd'] as num).toDouble() : double.tryParse('${json['nextTierMinVolumeUsd']}') ?? 0.0,
+      volumeNeededForNextTier: json['volumeNeededForNextTier'] is num ? (json['volumeNeededForNextTier'] as num).toDouble() : double.tryParse('${json['volumeNeededForNextTier']}') ?? 0.0,
+    );
+  }
+
+  final int userId;
+  final int currentTierLevel;
+  final String currentTierCode;
+  final int makerFeeRatePpm;
+  final int takerFeeRatePpm;
+  final double rolling30DayVolumeUsd;
+  final double nextTierMinVolumeUsd;
+  final double volumeNeededForNextTier;
+}
+
+// ----------------- 主子账户模型 -----------------
+class SubAccountModel {
+  const SubAccountModel({
+    required this.id,
+    required this.parentUserId,
+    required this.subUserId,
+    required this.subAccountName,
+    required this.permissions,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory SubAccountModel.fromJson(Map<String, dynamic> json) {
+    return SubAccountModel(
+      id: json['id'] is num ? (json['id'] as num).toInt() : int.tryParse('${json['id']}') ?? 0,
+      parentUserId: json['parentUserId'] is num ? (json['parentUserId'] as num).toInt() : int.tryParse('${json['parentUserId']}') ?? 0,
+      subUserId: json['subUserId'] is num ? (json['subUserId'] as num).toInt() : int.tryParse('${json['subUserId']}') ?? 0,
+      subAccountName: json['subAccountName']?.toString() ?? '',
+      permissions: json['permissions']?.toString() ?? 'TRADING',
+      status: json['status']?.toString() ?? 'ACTIVE',
+      createdAt: json['createdAt']?.toString() ?? '',
+    );
+  }
+
+  final int id;
+  final int parentUserId;
+  final int subUserId;
+  final String subAccountName;
+  final String permissions;
+  final String status;
+  final String createdAt;
+}
+
+class SubAccountTransferResult {
+  const SubAccountTransferResult({
+    required this.transferId,
+    required this.fromUserId,
+    required this.toUserId,
+    required this.asset,
+    required this.amountUnits,
+    required this.status,
+    required this.timestamp,
+  });
+
+  factory SubAccountTransferResult.fromJson(Map<String, dynamic> json) {
+    return SubAccountTransferResult(
+      transferId: json['transferId']?.toString() ?? '',
+      fromUserId: json['fromUserId'] is num ? (json['fromUserId'] as num).toInt() : int.tryParse('${json['fromUserId']}') ?? 0,
+      toUserId: json['toUserId'] is num ? (json['toUserId'] as num).toInt() : int.tryParse('${json['toUserId']}') ?? 0,
+      asset: json['asset']?.toString() ?? 'USDT',
+      amountUnits: json['amountUnits'] is num ? (json['amountUnits'] as num).toInt() : int.tryParse('${json['amountUnits']}') ?? 0,
+      status: json['status']?.toString() ?? 'SUCCESS',
+      timestamp: json['timestamp']?.toString() ?? '',
+    );
+  }
+
+  final String transferId;
+  final int fromUserId;
+  final int toUserId;
+  final String asset;
+  final int amountUnits;
+  final String status;
+  final String timestamp;
+}
+
+// ----------------- 默克尔树资产储备证明模型 -----------------
+class PorSnapshotModel {
+  const PorSnapshotModel({
+    required this.snapshotId,
+    required this.rootHash,
+    required this.totalLiabilityUsd,
+    required this.totalReserveUsd,
+    required this.reserveRatioPpm,
+    required this.totalUserCount,
+    required this.snapshotTime,
+  });
+
+  factory PorSnapshotModel.fromJson(Map<String, dynamic> json) {
+    return PorSnapshotModel(
+      snapshotId: json['snapshotId']?.toString() ?? '',
+      rootHash: json['rootHash']?.toString() ?? '',
+      totalLiabilityUsd: json['totalLiabilityUsd'] is num ? (json['totalLiabilityUsd'] as num).toDouble() : double.tryParse('${json['totalLiabilityUsd']}') ?? 0.0,
+      totalReserveUsd: json['totalReserveUsd'] is num ? (json['totalReserveUsd'] as num).toDouble() : double.tryParse('${json['totalReserveUsd']}') ?? 0.0,
+      reserveRatioPpm: json['reserveRatioPpm'] is num ? (json['reserveRatioPpm'] as num).toInt() : int.tryParse('${json['reserveRatioPpm']}') ?? 1000000,
+      totalUserCount: json['totalUserCount'] is num ? (json['totalUserCount'] as num).toInt() : int.tryParse('${json['totalUserCount']}') ?? 0,
+      snapshotTime: json['snapshotTime']?.toString() ?? '',
+    );
+  }
+
+  final String snapshotId;
+  final String rootHash;
+  final double totalLiabilityUsd;
+  final double totalReserveUsd;
+  final int reserveRatioPpm;
+  final int totalUserCount;
+  final String snapshotTime;
+}
+
+class MerkleProofStepModel {
+  const MerkleProofStepModel({
+    required this.siblingHash,
+    required this.isRightSibling,
+  });
+
+  factory MerkleProofStepModel.fromJson(Map<String, dynamic> json) {
+    return MerkleProofStepModel(
+      siblingHash: json['siblingHash']?.toString() ?? '',
+      isRightSibling: json['isRightSibling'] == true || json['isRightSibling']?.toString() == 'true',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'siblingHash': siblingHash,
+    'isRightSibling': isRightSibling,
+  };
+
+  final String siblingHash;
+  final bool isRightSibling;
+}
+
+class UserPorProofModel {
+  const UserPorProofModel({
+    required this.userId,
+    required this.snapshotId,
+    required this.rootHash,
+    required this.userLiabilityUsd,
+    required this.userNonce,
+    required this.proofPath,
+    required this.snapshotTime,
+  });
+
+  factory UserPorProofModel.fromJson(Map<String, dynamic> json) {
+    final list = json['proofPath'] is List ? json['proofPath'] as List : const [];
+    return UserPorProofModel(
+      userId: json['userId'] is num ? (json['userId'] as num).toInt() : int.tryParse('${json['userId']}') ?? 0,
+      snapshotId: json['snapshotId']?.toString() ?? '',
+      rootHash: json['rootHash']?.toString() ?? '',
+      userLiabilityUsd: json['userLiabilityUsd'] is num ? (json['userLiabilityUsd'] as num).toDouble() : double.tryParse('${json['userLiabilityUsd']}') ?? 0.0,
+      userNonce: json['userNonce']?.toString() ?? '',
+      proofPath: list.map((item) => MerkleProofStepModel.fromJson(item as Map<String, dynamic>)).toList(),
+      snapshotTime: json['snapshotTime']?.toString() ?? '',
+    );
+  }
+
+  final int userId;
+  final String snapshotId;
+  final String rootHash;
+  final double userLiabilityUsd;
+  final String userNonce;
+  final List<MerkleProofStepModel> proofPath;
+  final String snapshotTime;
+}
+
+class VerifyPorResult {
+  const VerifyPorResult({
+    required this.valid,
+    required this.computedRootHash,
+    required this.expectedRootHash,
+  });
+
+  factory VerifyPorResult.fromJson(Map<String, dynamic> json) {
+    return VerifyPorResult(
+      valid: json['valid'] == true || json['valid']?.toString() == 'true',
+      computedRootHash: json['computedRootHash']?.toString() ?? '',
+      expectedRootHash: json['expectedRootHash']?.toString() ?? '',
+    );
+  }
+
+  final bool valid;
+  final String computedRootHash;
+  final String expectedRootHash;
+}
+

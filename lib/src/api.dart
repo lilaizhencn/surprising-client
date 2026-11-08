@@ -1373,6 +1373,10 @@ class ApiClient {
     String? bboPriceMode,
     String? productLine,
     String? clientOrderId,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     final json = await post(
       '/api/v1/gateway/trading',
@@ -1390,6 +1394,10 @@ class ApiClient {
         postOnly: postOnly,
         bboPriceMode: bboPriceMode,
         clientOrderId: clientOrderId,
+        takeProfitPriceTicks: takeProfitPriceTicks,
+        stopLossPriceTicks: stopLossPriceTicks,
+        tpSlPriceSource: tpSlPriceSource,
+        stpMode: stpMode,
       ),
       userId: userId,
       productLine: productLine,
@@ -1411,6 +1419,10 @@ class ApiClient {
     required bool postOnly,
     String? bboPriceMode,
     String? productLine,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     final json = await post(
       '/api/v1/gateway/trading/test',
@@ -1428,6 +1440,10 @@ class ApiClient {
         postOnly: postOnly,
         bboPriceMode: bboPriceMode,
         clientOrderId: 'app-test-${DateTime.now().microsecondsSinceEpoch}',
+        takeProfitPriceTicks: takeProfitPriceTicks,
+        stopLossPriceTicks: stopLossPriceTicks,
+        tpSlPriceSource: tpSlPriceSource,
+        stpMode: stpMode,
       ),
       userId: userId,
       productLine: productLine,
@@ -2268,6 +2284,10 @@ class ApiClient {
     required bool postOnly,
     String? bboPriceMode,
     String? clientOrderId,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) {
     validateOrderPolicy(orderType, timeInForce, postOnly, bboPriceMode);
     return {
@@ -2287,7 +2307,195 @@ class ApiClient {
       'positionSide': positionSide,
       'reduceOnly': reduceOnly,
       'postOnly': postOnly,
+      'takeProfitPriceTicks': ?takeProfitPriceTicks,
+      'stopLossPriceTicks': ?stopLossPriceTicks,
+      'tpSlPriceSource': ?tpSlPriceSource,
+      'stpMode': ?stpMode,
     };
+  }
+
+  // ----------------- 网格策略机器人 API -----------------
+  Future<GridStrategyRecord> createGridStrategy({
+    required int userId,
+    required String instrumentId,
+    required String productLine,
+    required int lowerPriceTicks,
+    required int upperPriceTicks,
+    required int gridCount,
+    required int totalInvestmentUnits,
+    required bool isArithmetic,
+    int currentPriceTicks = 0,
+  }) async {
+    final queryStr = currentPriceTicks > 0 ? '?currentPriceTicks=$currentPriceTicks' : '';
+    final json = await post(
+      '/api/v1/trading/grid/create$queryStr',
+      {
+        'instrumentId': instrumentId,
+        'productLine': productLine,
+        'lowerPriceTicks': lowerPriceTicks,
+        'upperPriceTicks': upperPriceTicks,
+        'gridCount': gridCount,
+        'totalInvestmentUnits': totalInvestmentUnits,
+        'isArithmetic': isArithmetic,
+      },
+      userId: userId,
+      productLine: productLine,
+    );
+    return GridStrategyRecord.fromJson(json);
+  }
+
+  Future<List<GridStrategyRecord>> loadGridStrategies({
+    int? userId,
+    String? productLine,
+  }) async {
+    final raw = await _send(
+      'GET',
+      '/api/v1/trading/grid/list',
+      userId: userId,
+      productLine: productLine,
+    );
+    final list = asList(raw);
+    return list.map((item) => GridStrategyRecord.fromJson(asMap(item))).toList();
+  }
+
+  Future<GridStrategyRecord> stopGridStrategy(
+    int strategyId, {
+    int? userId,
+    String? productLine,
+  }) async {
+    final json = await post(
+      '/api/v1/trading/grid/$strategyId/stop',
+      {},
+      userId: userId,
+      productLine: productLine,
+    );
+    return GridStrategyRecord.fromJson(json);
+  }
+
+  // ----------------- VIP 阶梯费率 API -----------------
+  Future<List<VipTierModel>> loadVipLevels({int? userId, String? productLine}) async {
+    final raw = await _send(
+      'GET',
+      '/api/v1/trading/fees/vip/levels',
+      userId: userId,
+      productLine: productLine,
+    );
+    final list = asList(raw);
+    return list.map((item) => VipTierModel.fromJson(asMap(item))).toList();
+  }
+
+  Future<UserVipStatusModel> loadMyVipStatus(int userId, {String? productLine}) async {
+    final json = await get(
+      '/api/v1/trading/fees/vip/my-status',
+      userId: userId,
+      productLine: productLine,
+    );
+    return UserVipStatusModel.fromJson(json);
+  }
+
+  Future<UserVipStatusModel> evaluateMyVip(int userId, {String? productLine}) async {
+    final queryStr = productLine != null && productLine.isNotEmpty ? '?productLine=$productLine' : '';
+    final json = await post(
+      '/api/v1/trading/fees/vip/evaluate$queryStr',
+      {},
+      userId: userId,
+      productLine: productLine,
+    );
+    return UserVipStatusModel.fromJson(json);
+  }
+
+  // ----------------- 主子账户体系 API -----------------
+  Future<SubAccountModel> createSubAccount(
+    int parentUserId, {
+    required String subAccountName,
+    String permissions = 'TRADING',
+    String? productLine,
+  }) async {
+    final json = await post(
+      '/api/v1/sub-account/create',
+      {
+        'subAccountName': subAccountName,
+        'permissions': permissions,
+      },
+      userId: parentUserId,
+      productLine: productLine,
+    );
+    return SubAccountModel.fromJson(json);
+  }
+
+  Future<List<SubAccountModel>> loadSubAccounts(int parentUserId, {String? productLine}) async {
+    final raw = await _send(
+      'GET',
+      '/api/v1/sub-account/list',
+      userId: parentUserId,
+      productLine: productLine,
+    );
+    final list = asList(raw);
+    return list.map((item) => SubAccountModel.fromJson(asMap(item))).toList();
+  }
+
+  Future<SubAccountTransferResult> transferSubAccount(
+    int parentUserId, {
+    required int subUserId,
+    required bool fromParentToSub,
+    required String asset,
+    required int amountUnits,
+    String? productLine,
+  }) async {
+    final json = await post(
+      '/api/v1/sub-account/transfer',
+      {
+        'subUserId': subUserId,
+        'fromParentToSub': fromParentToSub,
+        'asset': asset,
+        'amountUnits': amountUnits,
+      },
+      userId: parentUserId,
+      productLine: productLine,
+    );
+    return SubAccountTransferResult.fromJson(json);
+  }
+
+  // ----------------- 默克尔树资产储备证明 (PoR) API -----------------
+  Future<PorSnapshotModel> loadLatestPor({int? userId, String? productLine}) async {
+    final json = await get(
+      '/api/v1/compliance/por/latest',
+      userId: userId,
+      productLine: productLine,
+    );
+    return PorSnapshotModel.fromJson(json);
+  }
+
+  Future<UserPorProofModel> loadMyPorProof(int userId, {String? productLine}) async {
+    final json = await get(
+      '/api/v1/compliance/por/my-proof',
+      userId: userId,
+      productLine: productLine,
+    );
+    return UserPorProofModel.fromJson(json);
+  }
+
+  Future<VerifyPorResult> verifyPorProof(
+    int userId, {
+    required String rootHash,
+    required double userLiabilityUsd,
+    required String userNonce,
+    required List<MerkleProofStepModel> proofPath,
+    String? productLine,
+  }) async {
+    final json = await post(
+      '/api/v1/compliance/por/verify',
+      {
+        'rootHash': rootHash,
+        'userId': userId,
+        'userLiabilityUsd': userLiabilityUsd,
+        'userNonce': userNonce,
+        'proofPath': proofPath.map((step) => step.toJson()).toList(),
+      },
+      userId: userId,
+      productLine: productLine,
+    );
+    return VerifyPorResult.fromJson(json);
   }
 
   Future<List<Map<String, dynamic>>> notifications({

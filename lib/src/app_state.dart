@@ -1600,6 +1600,10 @@ class AppState extends ChangeNotifier {
     String? bboPriceMode,
     Instrument? targetInstrument,
     String? priceText,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) => orders.placeOrder(
     side: side,
     orderType: orderType,
@@ -1613,6 +1617,10 @@ class AppState extends ChangeNotifier {
     bboPriceMode: bboPriceMode,
     targetInstrument: targetInstrument,
     priceText: priceText,
+    takeProfitPriceTicks: takeProfitPriceTicks,
+    stopLossPriceTicks: stopLossPriceTicks,
+    tpSlPriceSource: tpSlPriceSource,
+    stpMode: stpMode,
   );
 
   Future<void> cancelOpenSpotOrders({required bool onlyCurrentPair}) =>

@@ -251,6 +251,10 @@ class CaptureOrderApi extends ApiClient {
     String? bboPriceMode,
     String? productLine,
     String? clientOrderId,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     this.priceTicks = priceTicks;
     this.productLine = productLine;

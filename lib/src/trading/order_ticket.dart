@@ -35,6 +35,14 @@ class OrderTicket extends StatelessWidget {
     required this.onReduceOnly,
     required this.onPostOnly,
     required this.onSubmit,
+    this.takeProfitController,
+    this.stopLossController,
+    this.tpSlPriceSource = 'MARK',
+    this.onTpSlPriceSource,
+    this.stpMode = 'NONE',
+    this.onStpMode,
+    this.bracketExpanded = false,
+    this.onBracketExpanded,
     super.key,
   });
 
@@ -62,6 +70,14 @@ class OrderTicket extends StatelessWidget {
   final ValueChanged<bool> onReduceOnly;
   final ValueChanged<bool> onPostOnly;
   final VoidCallback onSubmit;
+  final TextEditingController? takeProfitController;
+  final TextEditingController? stopLossController;
+  final String tpSlPriceSource;
+  final ValueChanged<String>? onTpSlPriceSource;
+  final String stpMode;
+  final ValueChanged<String>? onStpMode;
+  final bool bracketExpanded;
+  final ValueChanged<bool>? onBracketExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +100,20 @@ class OrderTicket extends StatelessWidget {
       final next = BigInt.from(current ?? 0) + BigInt.from(direction);
       if (next > BigInt.parse('9223372036854775807')) return;
       priceController.text = scaledAmount(
+        (next.isNegative ? BigInt.zero : next) *
+            BigInt.from(instrument.priceTickUnits),
+        scale,
+      );
+    }
+
+    void stepCustomPrice(TextEditingController ctrl, int direction) {
+      final scale = instrument.quoteScaleUnits;
+      if (scale == null || scale <= 0 || instrument.priceTickUnits <= 0) return;
+      final current = instrument.priceTicksFromText(ctrl.text);
+      if (current == null && ctrl.text.trim().isNotEmpty) return;
+      final next = BigInt.from(current ?? 0) + BigInt.from(direction);
+      if (next > BigInt.parse('9223372036854775807')) return;
+      ctrl.text = scaledAmount(
         (next.isNegative ? BigInt.zero : next) *
             BigInt.from(instrument.priceTickUnits),
         scale,
@@ -351,6 +381,94 @@ class OrderTicket extends StatelessWidget {
                 );
               },
             ),
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: () => onBracketExpanded?.call(!bracketExpanded),
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0x1A00C6FF),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0x3300C6FF)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'TP/SL 与 STP 防自成交',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF00C6FF),
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      bracketExpanded ? Icons.expand_less : Icons.expand_more,
+                      size: 14,
+                      color: const Color(0xFF00C6FF),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (bracketExpanded) ...[
+              const SizedBox(height: 6),
+              if (takeProfitController != null) ...[
+                TradeNumericField(
+                  controller: takeProfitController!,
+                  label: '止盈价 (${instrument.quoteAsset})',
+                  onMinus: () => stepCustomPrice(takeProfitController!, -1),
+                  onPlus: () => stepCustomPrice(takeProfitController!, 1),
+                ),
+                const SizedBox(height: 4),
+              ],
+              if (stopLossController != null) ...[
+                TradeNumericField(
+                  controller: stopLossController!,
+                  label: '止损价 (${instrument.quoteAsset})',
+                  onMinus: () => stepCustomPrice(stopLossController!, -1),
+                  onPlus: () => stepCustomPrice(stopLossController!, 1),
+                ),
+                const SizedBox(height: 4),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: SmallDropdown(
+                      value: tpSlPriceSource,
+                      values: const ['MARK', 'LAST', 'INDEX'],
+                      labelBuilder: (v) => switch (v) {
+                        'MARK' => '标记价',
+                        'LAST' => '最新价',
+                        'INDEX' => '指数价',
+                        _ => v,
+                      },
+                      onChanged: (v) => onTpSlPriceSource?.call(v),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: SmallDropdown(
+                      value: stpMode,
+                      values: const ['NONE', 'EXPIRE_MAKER', 'EXPIRE_TAKER', 'EXPIRE_BOTH'],
+                      labelBuilder: (v) => switch (v) {
+                        'NONE' => 'STP: 默认',
+                        'EXPIRE_MAKER' => 'STP: 撤Maker',
+                        'EXPIRE_TAKER' => 'STP: 撤Taker',
+                        'EXPIRE_BOTH' => 'STP: 撤双方',
+                        _ => v,
+                      },
+                      onChanged: (v) => onStpMode?.call(v),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (instrument.status != 'TRADING')
               LText(
                 instrument.isDelivery && instrument.status == 'SETTLING'

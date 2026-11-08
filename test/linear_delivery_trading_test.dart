@@ -839,6 +839,10 @@ class _Api extends ApiClient {
     String? bboPriceMode,
     String? productLine,
     String? clientOrderId,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     calls++;
     client = clientOrderId;

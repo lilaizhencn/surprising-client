@@ -498,6 +498,10 @@ class CloseApi extends ApiClient {
     String? bboPriceMode,
     String? productLine,
     String? clientOrderId,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     this.symbol = symbol;
     product = productLine;

@@ -483,6 +483,10 @@ class TradingOrderState extends ChangeNotifier {
     String? bboPriceMode,
     Instrument? targetInstrument,
     String? priceText,
+    int? takeProfitPriceTicks,
+    int? stopLossPriceTicks,
+    String? tpSlPriceSource,
+    String? stpMode,
   }) async {
     if (!await _restoreBeforeCommand()) return;
     if (_disposed || submittingOrder || tradingCommandPending) return;
@@ -605,6 +609,10 @@ class TradingOrderState extends ChangeNotifier {
         bboPriceMode: bboPriceMode,
         productLine: productLine,
         clientOrderId: intent?.clientOrderId,
+        takeProfitPriceTicks: takeProfitPriceTicks,
+        stopLossPriceTicks: stopLossPriceTicks,
+        tpSlPriceSource: tpSlPriceSource,
+        stpMode: stpMode,
       );
       if (order.orderId <= 0 ||
           (instrument.mode.tracksSingleOrderIntent &&

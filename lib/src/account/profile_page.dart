@@ -10,6 +10,9 @@ import '../ui/client_components.dart';
 import '../ui/theme_picker.dart';
 import '../ui/language_picker.dart';
 import 'security_sheet.dart';
+import 'vip_center_page.dart';
+import 'sub_account_page.dart';
+import 'proof_of_reserves_page.dart';
 import '../legal/legal_pages.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -200,6 +203,60 @@ class ProfilePage extends StatelessWidget {
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showSecuritySheet(context, kycOnly: true),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Panel(
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.workspace_premium_outlined, color: Color(0xFF00C6FF)),
+                title: const LText('VIP 费率与权益中心'),
+                subtitle: const LText('查看当前等级、费率折扣及近30天晋级进度'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => VipCenterPage(state: state),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Panel(
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.supervisor_account_outlined, color: Color(0xFF00E08F)),
+                title: const LText('子账户管理'),
+                subtitle: const LText('多策略子账户开通与零费率秒级内部划转'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SubAccountPage(state: state),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Panel(
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.verified_user_outlined, color: Color(0xFF7B4397)),
+                title: const LText('资产储备证明 (PoR)'),
+                subtitle: const LText('全网负债 SHA-256 默克尔树与独立数学验真'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ProofOfReservesPage(state: state),
+                  ),
+                ),
               ),
             ),
           ),

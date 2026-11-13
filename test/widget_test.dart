@@ -37,7 +37,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'access',
-        refreshToken: 'refresh',
       ),
       offline: true,
       apiClient: api,
@@ -77,7 +76,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'access',
-          refreshToken: 'refresh',
         ),
         offline: true,
         apiClient: api,
@@ -122,7 +120,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'access',
-        refreshToken: 'refresh',
       ),
       offline: true,
       apiClient: api,
@@ -157,7 +154,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'access',
-        refreshToken: 'refresh',
       ),
       offline: true,
     );
@@ -192,7 +188,6 @@ void main() {
                 status: 'ACTIVE',
               ),
               accessToken: 'access',
-              refreshToken: 'refresh',
             ),
             offline: true,
             apiClient: api,
@@ -275,7 +270,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'access',
-        refreshToken: 'refresh',
       ),
       offline: true,
       apiClient: _TransferApiClient(const {'status': 'PENDING'}),
@@ -357,7 +351,6 @@ void main() {
                 status: 'ACTIVE',
               ),
               accessToken: 'access',
-              refreshToken: 'refresh',
             ),
             offline: true,
             apiClient: DepositApi(),
@@ -424,7 +417,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'access',
-        refreshToken: 'refresh',
       ),
       offline: true,
       apiClient: _EmptyDepositApi(),
@@ -458,7 +450,6 @@ void main() {
                 status: 'ACTIVE',
               ),
               accessToken: 'access',
-              refreshToken: 'refresh',
             ),
             offline: true,
           )
@@ -552,7 +543,7 @@ void main() {
     expect(ProductMode.option.productLine, 'OPTION');
   });
 
-  test('round trips auth token expiry metadata for secure session restore', () {
+  test('round trips the single session token and its metadata for secure restore', () {
     final session = AuthSession(
       user: const AuthUser(
         userId: 7,
@@ -561,23 +552,16 @@ void main() {
         status: 'ACTIVE',
       ),
       accessToken: 'access',
-      refreshToken: 'refresh',
-      accessTokenExpiresAt: DateTime.now().toUtc().add(
-        const Duration(minutes: 30),
-      ),
-      refreshTokenExpiresAt: DateTime.now().toUtc().add(
-        const Duration(days: 30),
-      ),
+      sessionExpiresAt: DateTime.now().toUtc().add(const Duration(days: 365)),
     );
 
     final restored = AuthSession.fromJson(session.toJson());
 
-    expect(restored.accessTokenExpiresAt, session.accessTokenExpiresAt);
-    expect(restored.refreshTokenExpiresAt, session.refreshTokenExpiresAt);
-    expect(restored.refreshTokenExpired, isFalse);
+    expect(restored.accessToken, session.accessToken);
+    expect(restored.sessionExpiresAt, session.sessionExpiresAt);
   });
 
-  test('reconnects private realtime after access token rotation', () async {
+  test('reconnects private realtime after a new login replaces the session', () async {
     final privateRealtime = _RecordingRealtimeClient();
     final state = AppState(
       initialSession: const AuthSession(
@@ -588,7 +572,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'old-access',
-        refreshToken: 'old-refresh',
       ),
       config: const AppConfig(websocketUrl: 'ws://test'),
       apiClient: _PrivateRealtimeApiClient(),
@@ -597,7 +580,7 @@ void main() {
       seedInstruments: fallbackInstruments(),
     );
 
-    await state.api.onSessionRefreshed!(
+    await state.auth.loginGoogle(() async => 
       const AuthSession(
         user: AuthUser(
           userId: 1001,
@@ -606,7 +589,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'new-access',
-        refreshToken: 'new-refresh',
       ),
     );
 
@@ -624,7 +606,7 @@ void main() {
   });
 
   test(
-    'ignores a stale private realtime event after access token rotation',
+    'ignores a stale private realtime event after a new login replaces the session',
     () async {
       final privateRealtime = _RecordingRealtimeClient();
       final state = AppState(
@@ -636,7 +618,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'old-access',
-          refreshToken: 'old-refresh',
         ),
         config: const AppConfig(websocketUrl: 'ws://test'),
         apiClient: _PrivateRealtimeApiClient(),
@@ -644,7 +625,7 @@ void main() {
         sessionStore: _InMemorySessionStore(),
       );
 
-      await state.api.onSessionRefreshed!(
+      await state.auth.loginGoogle(() async => 
         const AuthSession(
           user: AuthUser(
             userId: 1001,
@@ -653,12 +634,11 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'first-access',
-          refreshToken: 'first-refresh',
         ),
       );
       final staleEvent = privateRealtime.events.first;
 
-      await state.api.onSessionRefreshed!(
+      await state.auth.loginGoogle(() async => 
         const AuthSession(
           user: AuthUser(
             userId: 1001,
@@ -667,7 +647,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'second-access',
-          refreshToken: 'second-refresh',
         ),
       );
       staleEvent(<String, dynamic>{
@@ -698,7 +677,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'old-access',
-        refreshToken: 'old-refresh',
       ),
       config: const AppConfig(websocketUrl: 'ws://test'),
       apiClient: _PrivateRealtimeApiClient(),
@@ -706,7 +684,7 @@ void main() {
       sessionStore: _InMemorySessionStore(),
     );
 
-    final firstRefresh = state.api.onSessionRefreshed!(
+    final firstRefresh = state.auth.loginGoogle(() async => 
       const AuthSession(
         user: AuthUser(
           userId: 1001,
@@ -715,12 +693,11 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'first-access',
-        refreshToken: 'first-refresh',
       ),
     );
     await privateRealtime.firstConnectStarted.future;
 
-    final secondRefresh = state.api.onSessionRefreshed!(
+    final secondRefresh = state.auth.loginGoogle(() async => 
       const AuthSession(
         user: AuthUser(
           userId: 1001,
@@ -729,7 +706,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'second-access',
-        refreshToken: 'second-refresh',
       ),
     );
     await privateRealtime.secondConnectStarted.future;
@@ -989,7 +965,6 @@ void main() {
                 status: 'ACTIVE',
               ),
               accessToken: 'access',
-              refreshToken: 'refresh',
             ),
             apiClient: api,
           )
@@ -1046,7 +1021,6 @@ void main() {
                   status: 'ACTIVE',
                 ),
                 accessToken: 'access',
-                refreshToken: 'refresh',
               ),
               apiClient: api,
             )
@@ -1200,7 +1174,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'test',
-        refreshToken: 'test',
       ),
       offline: true,
     )..selectedSymbol = 'BTC-USDT';
@@ -1656,7 +1629,6 @@ class _PrivateRealtimeApiClient extends _SpotRefreshApiClient {
         status: 'ACTIVE',
       ),
       accessToken: 'access-token',
-      refreshToken: 'refresh-token',
     );
   }
 }

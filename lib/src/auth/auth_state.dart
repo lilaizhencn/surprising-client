@@ -8,7 +8,7 @@ import '../session_store.dart';
 import '../telegram_login.dart';
 import '../google_login.dart';
 
-enum AuthSessionChange { signedIn, tokenRefreshed, signedOut, expired }
+enum AuthSessionChange { signedIn, signedOut, expired }
 
 /// Owns authentication, local unlocking and secure-session persistence.
 /// Trading data and realtime connections remain with their business owners.
@@ -29,7 +29,6 @@ class AuthState extends ChangeNotifier {
       _restored = true;
       api.setSession(initialSession);
     }
-    api.onSessionRefreshed = persistRefreshedSession;
     api.onSessionExpired = expire;
   }
 
@@ -136,8 +135,7 @@ class AuthState extends ChangeNotifier {
     if (session.user.userId <= 0) {
       throw StateError('登录响应缺少有效用户标识');
     }
-    if (session.accessToken.trim().isEmpty ||
-        session.refreshToken.trim().isEmpty) {
+    if (session.accessToken.trim().isEmpty) {
       throw StateError('登录响应缺少令牌');
     }
   }
@@ -229,53 +227,49 @@ class AuthState extends ChangeNotifier {
       _changed();
       return;
     }
-    final restored = await _refreshStoredSession(stored, operation);
+    final restored = await _verifyStoredSession(stored, operation);
     if (isCurrentRevision(operation)) _restored = restored;
   }
 
-  Future<bool> _refreshStoredSession(AuthSession stored, int operation) async {
-    if (stored.refreshTokenExpired) {
-      await _writeStorage(() async {
-        if (isCurrentRevision(operation)) await sessionStore.clear();
-      });
-      if (isCurrentRevision(operation)) {
-        _feedback(error: '登录状态已失效，请使用账号登录');
-        _changed();
-      }
-      return true;
-    }
+  /// 用本地保存的令牌向网关确认会话还在：200 恢复登录，401/403 清除并回到登录，
+  /// 网络不可用时保留本地令牌，等连接恢复后重试。
+  Future<bool> _verifyStoredSession(AuthSession stored, int operation) async {
     try {
-      final refreshed = await api.refresh(stored.refreshToken);
+      api.setSession(stored);
+      final user = await api.currentUser();
       if (!isCurrentRevision(operation)) return false;
-      if (refreshed.user.userId != stored.user.userId) {
+      if (user.userId != stored.user.userId) {
         throw const FormatException('登录用户与已保存会话不匹配');
       }
-      if (await _activate(refreshed, operation)) {
+      final verified = AuthSession(
+        user: user,
+        accessToken: stored.accessToken,
+        sessionExpiresAt: stored.sessionExpiresAt,
+      );
+      if (await _activate(verified, operation)) {
         _feedback(notice: '已恢复登录状态');
         _changed();
         return true;
       }
     } on ApiException catch (error) {
       if (!isCurrentRevision(operation)) return false;
-      if (error.statusCode == 428) {
-        _feedback(notice: '请阅读并确认更新后的协议以继续登录');
-        _changed();
-        return false;
-      }
       if (error.statusCode == 401 || error.statusCode == 403) {
         await _writeStorage(() async {
           if (isCurrentRevision(operation)) await sessionStore.clear();
         });
         if (isCurrentRevision(operation)) {
+          api.setSession(null);
           _feedback(error: '登录状态已失效，请重新登录');
           _changed();
         }
         return true;
       }
+      api.setSession(null);
       _feedback(notice: '网络暂不可用，请连接恢复后重试登录');
       _changed();
     } catch (_) {
       if (!isCurrentRevision(operation)) return false;
+      api.setSession(null);
       _feedback(notice: '网络暂不可用，请连接恢复后重试登录');
       _changed();
     }
@@ -596,7 +590,7 @@ class AuthState extends ChangeNotifier {
         return false;
       }
       if (_biometricAppBackgrounded) return false;
-      if (pending != null) await _refreshStoredSession(pending, operation);
+      if (pending != null) await _verifyStoredSession(pending, operation);
       if (!current()) return false;
       if (_current == null) {
         biometricUnlockError = lastError ?? lastNotice ?? '登录状态无法恢复，请重试或使用账号登录';
@@ -690,36 +684,13 @@ class AuthState extends ChangeNotifier {
     }
   }
 
-  Future<void> persistRefreshedSession(AuthSession next) async {
-    final previous = _current;
-    if (_disposed) return;
-    if (previous == null) {
-      api.setSession(pendingVerificationSession);
-      return;
-    }
-    if (previous.user.userId != next.user.userId) {
-      api.setSession(previous);
-      throw const FormatException('刷新会话与当前账户不匹配');
-    }
-    try {
-      _checkSession(next);
-    } catch (_) {
-      api.setSession(previous);
-      rethrow;
-    }
-    final operation = _revision;
-    _changeSession(next, AuthSessionChange.tokenRefreshed);
-    await _saveSession(next, operation);
-    await _sessionReady(
-      previous,
-      next,
-      AuthSessionChange.tokenRefreshed,
-      operation,
-    );
-    if (isCurrentRevision(operation)) _changed();
+  Future<void> logout() {
+    final token = _current?.accessToken;
+    // 先把令牌交给网关结束会话（不等待结果），再清本地状态。
+    if (token != null && !offline) unawaited(api.endRemoteSession(token));
+    return _close(AuthSessionChange.signedOut);
   }
 
-  Future<void> logout() => _close(AuthSessionChange.signedOut);
   Future<void> expire() => _close(AuthSessionChange.expired);
 
   Future<void> _close(AuthSessionChange change) async {
@@ -761,7 +732,6 @@ class AuthState extends ChangeNotifier {
     _disposed = true;
     ++_revision;
     _resetBiometricUnlock();
-    api.onSessionRefreshed = null;
     api.onSessionExpired = null;
     super.dispose();
   }

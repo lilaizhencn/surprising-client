@@ -47,7 +47,6 @@ Instrument _instrument() => Instrument.fromJson({
 const _session = AuthSession(
   user: AuthUser(userId: 1, username: 'spot', email: '', status: 'ACTIVE'),
   accessToken: 'qa',
-  refreshToken: 'qa',
 );
 
 void main() {

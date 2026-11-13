@@ -41,7 +41,6 @@ Instrument delivery({
 const actor = AuthSession(
   user: AuthUser(userId: 1, username: 'delivery', email: '', status: 'ACTIVE'),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 Position position({ProductMode mode = ProductMode.linearDelivery}) =>
     Position.fromJson({

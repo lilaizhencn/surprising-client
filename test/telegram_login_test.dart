@@ -22,8 +22,7 @@ Map<String, dynamic> session() => {
     'status': 'NORMAL',
   },
   'accessToken': 'access',
-  'refreshToken': 'refresh',
-};
+  };
 
 class TelegramApi extends ApiClient {
   TelegramApi(this.start, this.results) : super(const AppConfig());

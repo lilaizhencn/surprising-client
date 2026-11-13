@@ -267,77 +267,6 @@ void main() {
       expect(find.text('请先登录查看记录'), findsOneWidget);
     },
   );
-  testWidgets('KYC form survives credentials refreshing during country load', (
-    tester,
-  ) async {
-    final api = KycApi();
-    final state = AppState(
-      initialSession: session,
-      sessionStore: MemorySessionStore(),
-      offline: true,
-      apiClient: api,
-      settingsStore: MemorySettings(),
-    );
-    addTearDown(state.dispose);
-    await tester.pumpWidget(
-      MaterialApp(home: KycApplicationPage(state: state)),
-    );
-    await tester.pump();
-    await state.auth.persistRefreshedSession(
-      AuthSession(
-        user: session.user,
-        accessToken: 'renewed',
-        refreshToken: 'renewed',
-      ),
-    );
-    api.countries.complete([
-      {
-        'code': 'CN',
-        'names': {'zh': '中国'},
-      },
-    ]);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('登录状态已变更'), findsNothing);
-    expect(find.text('证件类型'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-  testWidgets('KYC status survives credentials refreshing during its read', (
-    tester,
-  ) async {
-    final api = RefreshingKycApi();
-    final state = AppState(
-      initialSession: session,
-      sessionStore: MemorySessionStore(),
-      offline: true,
-      apiClient: api,
-    );
-    addTearDown(state.dispose);
-    await tester.pumpWidget(
-      AppScope(
-        notifier: state,
-        child: const MaterialApp(
-          home: Scaffold(body: SecuritySheet(kycOnly: true)),
-        ),
-      ),
-    );
-    await tester.pump();
-    await state.auth.persistRefreshedSession(
-      AuthSession(
-        user: session.user,
-        accessToken: 'renewed',
-        refreshToken: 'renewed',
-      ),
-    );
-    api.pending.complete({
-      'status': 'REJECTED',
-      'rejectionReason': '请重新拍摄完整证件',
-    });
-    await tester.pumpAndSettle();
-    expect(find.textContaining('请重新拍摄完整证件'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
   testWidgets('KYC country load is fenced when the account changes', (
     tester,
   ) async {
@@ -614,7 +543,7 @@ class SecurityApi extends AccountApi {
   }
 
   @override
-  Future<void> revokeOtherSessions(String refreshToken) async {
+  Future<void> revokeOtherSessions() async {
     revokedOthers = true;
   }
 }

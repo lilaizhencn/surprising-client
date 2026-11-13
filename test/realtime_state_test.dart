@@ -250,7 +250,6 @@ void main() {
                   status: 'ACTIVE',
                 ),
                 accessToken: 'access',
-                refreshToken: 'refresh',
               ),
               offline: true,
             )

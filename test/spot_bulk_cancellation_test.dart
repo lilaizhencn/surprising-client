@@ -13,7 +13,6 @@ import 'package:surprising_client/src/session_store.dart';
 const _session = AuthSession(
   user: AuthUser(userId: 1, username: 'spot', email: '', status: 'ACTIVE'),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 Instrument _instrument() => Instrument.fromJson({
   'instrumentId': '1',
@@ -221,7 +220,6 @@ void main() {
               status: 'ACTIVE',
             ),
             accessToken: 'other',
-            refreshToken: 'other',
           ),
         );
       };

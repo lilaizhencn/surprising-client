@@ -8,7 +8,6 @@ import 'package:surprising_client/src/models.dart';
 AuthSession session(int id) => AuthSession(
   user: AuthUser(userId: id, username: 'qa-$id', email: '', status: 'ACTIVE'),
   accessToken: 'qa-$id',
-  refreshToken: 'qa-$id',
 );
 AppState state() => _PanelState(initialSession: session(1));
 void main() {

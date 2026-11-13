@@ -27,7 +27,6 @@ void main() {
     api.setSession(
       AuthSession.fromJson({
         'accessToken': token,
-        'refreshToken': '',
         'user': {
           'userId': 7,
           'username': 'openplatformqa',

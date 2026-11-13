@@ -17,7 +17,6 @@ AuthSession account(int id) => AuthSession(
     status: 'NORMAL',
   ),
   accessToken: 'synthetic-access',
-  refreshToken: 'synthetic-refresh',
 );
 
 AppState stateFor(RecoveryApi api, DurableSettings store, [int user = 7]) =>

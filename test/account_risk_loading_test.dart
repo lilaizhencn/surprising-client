@@ -246,7 +246,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'other-access',
-        refreshToken: 'other-refresh',
       );
       await signInAs(state, other);
       acceptRiskAccount(state, sequence: 2);

@@ -592,7 +592,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'isolated-native-fixture',
-          refreshToken: 'isolated-native-refresh',
         ),
         sessionStore: _SessionMemory(),
         settingsStore: _SettingsMemory(),
@@ -856,7 +855,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'isolated-native-fixture-7',
-          refreshToken: 'isolated-native-refresh-7',
         ),
         sessionStore: _SessionMemory(),
         settingsStore: _SettingsMemory(),
@@ -1072,7 +1070,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'isolated-native-fixture-7',
-          refreshToken: 'isolated-native-refresh-7',
         ),
         sessionStore: _SessionMemory(),
         settingsStore: _SettingsMemory(),
@@ -1719,8 +1716,7 @@ class _Fixture {
             'status': 'ACTIVE',
           },
           'accessToken': 'isolated-native-fixture-$owner',
-          'refreshToken': 'isolated-native-refresh-$owner',
-        }),
+          }),
       );
       await request.response.close();
       return;

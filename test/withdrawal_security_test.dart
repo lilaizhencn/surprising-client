@@ -221,7 +221,7 @@ void main() {
 
     expect(await state.disableBiometricLogin(), isTrue);
     expect(store.biometric, isFalse);
-    expect(store.session?.refreshToken, _session.refreshToken);
+    expect(store.session?.accessToken, _session.accessToken);
     expect(state.biometricLoginEnabled, isFalse);
     expect(state.lastNotice, contains('已关闭'));
   });
@@ -365,7 +365,6 @@ const _session = AuthSession(
     status: 'ACTIVE',
   ),
   accessToken: 'access-token',
-  refreshToken: 'refresh-token',
 );
 
 AppState _withdrawalState({

@@ -55,7 +55,6 @@ Instrument instrument([String id = '868', String symbol = 'BTC-USDT']) =>
 AuthSession authSession(int id) => AuthSession(
   user: AuthUser(userId: id, username: 'qa', email: '', status: 'ACTIVE'),
   accessToken: 'qa-$id',
-  refreshToken: 'qa-$id',
 );
 
 void main() {

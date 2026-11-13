@@ -126,7 +126,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'test-only',
-          refreshToken: 'test-only',
         ),
       );
       Widget screen(AppState state, {bool dark = false, bool large = false}) =>

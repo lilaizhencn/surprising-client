@@ -307,7 +307,6 @@ void main() {
               ..setSession(
                 AuthSession.fromJson({
                   'accessToken': 'test-only-access',
-                  'refreshToken': 'test-only-refresh',
                   'user': {'userId': 12},
                 }),
               );
@@ -333,51 +332,34 @@ void main() {
     );
   }
 
-  test(
-    'refresh and retry cannot reset the original request deadline',
-    () async {
-      final paths = <String>[];
-      final api =
-          await _api((request) async {
-              paths.add(request.uri.path);
-              if (request.uri.path.endsWith('/refresh')) {
-                await Future<void>.delayed(const Duration(milliseconds: 220));
-                request.response.write(
-                  jsonEncode({
-                    'accessToken': 'new-access',
-                    'refreshToken': 'new-refresh',
-                    'user': {'userId': 12},
-                  }),
-                );
-              } else if (request.headers.value('Authorization') ==
-                  'Bearer original') {
-                request.response.statusCode = 401;
-              } else {
-                await Future<void>.delayed(const Duration(milliseconds: 220));
-                request.response.write('{"ok":true}');
-              }
-              await request.response.close();
-            })
-            ..setSession(
-              AuthSession.fromJson({
-                'accessToken': 'original',
-                'refreshToken': 'original-refresh',
-                'user': {'userId': 12},
-              }),
-            );
-      await expectLater(
-        api.get('/requires-refresh'),
-        throwsA(isA<TimeoutException>()),
-      );
-      expect(paths, [
-        '/requires-refresh',
-        '/api/v1/auth/refresh',
-        '/requires-refresh',
-      ]);
-      // Let the test server finish its already accepted retry before teardown.
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-    },
-  );
+
+  test('a gateway 401 expires the session once and is never retried', () async {
+    final paths = <String>[];
+    var expired = 0;
+    final api = await _api((request) async {
+      paths.add(request.uri.path);
+      request.response.statusCode = 401;
+      await request.response.close();
+    })
+      ..setSession(
+        AuthSession.fromJson({
+          'accessToken': 'original',
+          'user': {'userId': 12},
+        }),
+      )
+      ..onSessionExpired = () async => expired++;
+    await expectLater(
+      api.get('/needs-login'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401)),
+    );
+    expect(paths, ['/needs-login']);
+    expect(expired, 1);
+    // 会话已清除：后续请求不再携带令牌。
+    paths.clear();
+    await expectLater(api.get('/again'), throwsA(isA<ApiException>()));
+    expect(paths, ['/again']);
+    expect(expired, 1);
+  });
 
   test('normal JSON and bounded document downloads remain supported', () async {
     final api = await _api((request) async {

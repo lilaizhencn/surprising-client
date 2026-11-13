@@ -35,7 +35,6 @@ final catalog = [
 const session = AuthSession(
   user: AuthUser(userId: 1, username: 'test', email: '', status: 'ACTIVE'),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 Map<String, dynamic> position(
   ProductMode p, {

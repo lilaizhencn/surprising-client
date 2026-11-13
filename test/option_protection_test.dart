@@ -14,7 +14,6 @@ import 'package:surprising_client/src/session_store.dart';
 const actorSession = AuthSession(
   user: AuthUser(userId: 1, username: 'option', email: '', status: 'ACTIVE'),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 Instrument contract({String status = 'TRADING'}) => Instrument.fromJson({
   'instrumentId': '74',
@@ -391,7 +390,6 @@ void main() {
               status: 'ACTIVE',
             ),
             accessToken: 'new',
-            refreshToken: 'new',
           ),
         );
         // The new account has no trading feedback; late old work must not add any.

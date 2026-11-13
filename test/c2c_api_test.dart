@@ -30,7 +30,6 @@ Map<String, dynamic> page() => {
 };
 AuthSession session(int owner) => AuthSession.fromJson({
   'accessToken': 'qa-$owner',
-  'refreshToken': 'qa-refresh-$owner',
   'user': {'userId': owner},
 });
 

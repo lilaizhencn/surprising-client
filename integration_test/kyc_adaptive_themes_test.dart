@@ -240,7 +240,6 @@ void main() {
             status: 'NORMAL',
           ),
           accessToken: 'kyc-qa-user',
-          refreshToken: 'kyc-qa-refresh',
         ),
         sessionStore: MemorySessionStore(),
         settingsStore: MemorySettings(),

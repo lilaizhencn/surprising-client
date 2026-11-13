@@ -165,7 +165,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('private-account-details'), findsOneWidget);
       expect(find.text('private-payment-sheet'), findsOneWidget);
-      expect(state.session?.refreshToken, savedSession.refreshToken);
+      expect(state.session?.accessToken, savedSession.accessToken);
     },
   );
 
@@ -253,7 +253,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.session, isNull);
     expect(state.requiresBiometricUnlock, isTrue);
-    expect(store.stored?.refreshToken, savedSession.refreshToken);
+    expect(store.stored?.accessToken, savedSession.accessToken);
     expect(find.textContaining('网络暂不可用'), findsOneWidget);
     store.authentication = Completer<bool>();
     api.refreshError = null;
@@ -477,7 +477,6 @@ const savedSession = AuthSession(
     status: 'NORMAL',
   ),
   accessToken: 'test-access',
-  refreshToken: 'test-refresh',
 );
 
 class MemoryBiometricStore implements SessionStore {
@@ -551,10 +550,10 @@ class BiometricApi extends ApiClient {
   int refreshCalls = 0;
   ApiException? refreshError;
   @override
-  Future<AuthSession> refresh(String refreshToken) async {
+  Future<AuthUser> currentUser() async {
     refreshCalls++;
     if (refreshError != null) throw refreshError!;
-    return savedSession;
+    return savedSession.user;
   }
 }
 

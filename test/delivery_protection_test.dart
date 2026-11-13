@@ -13,7 +13,6 @@ import 'package:surprising_client/src/session_store.dart';
 const actor = AuthSession(
   user: AuthUser(userId: 1, username: 'delivery', email: '', status: 'ACTIVE'),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 Instrument contract({
   ProductMode product = ProductMode.linearDelivery,

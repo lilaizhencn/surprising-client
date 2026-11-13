@@ -73,7 +73,7 @@ flutter run \
   --dart-define=SURPRISING_WEBSOCKET_URL=ws://10.0.2.2:9093/ws/v1
 ```
 
-Private WebSocket authentication sends the access token in an authenticate frame. Query user-ID fallback is disabled by default; enable `SURPRISING_WS_QUERY_USER_ID=true` only for a local backend that explicitly supports it.
+Login returns one session token (JWT), kept only in the platform secure storage and sent as `Authorization: Bearer`. There is no refresh token: the gateway keeps a 7-day sliding session, a 401 clears the local session and returns to login, and cold start / 1008 reconnect verify the session with `GET /api/v1/auth/session`. Private WebSocket authentication sends the session token in an authenticate frame. Query user-ID fallback is disabled by default; enable `SURPRISING_WS_QUERY_USER_ID=true` only for a local backend that explicitly supports it.
 
 Production builds use the shared API and WebSocket domain by default:
 

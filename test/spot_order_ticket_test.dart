@@ -36,7 +36,6 @@ Instrument spot({String status = 'TRADING'}) => Instrument.fromJson({
 const actorSession = AuthSession(
   user: AuthUser(userId: 1, username: 'spot', email: '', status: 'ACTIVE'),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 
 Future<void> submitSpot(AppState state) => state.placeOrder(
@@ -428,7 +427,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'new',
-          refreshToken: 'new',
         ),
       );
       final newAccountNotice = state.lastNotice;
@@ -816,7 +814,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'new',
-          refreshToken: 'new',
         ),
       );
       final newAccountNotice = state.lastNotice;
@@ -902,7 +899,7 @@ void main() {
     },
   );
   test(
-    'an old refresh cannot replay a spot POST or replace a newer account',
+    'a late 401 cannot replay a spot POST or expire a newer account',
     () async {
       final refreshSeen = Completer<void>(), release = Completer<void>();
       var posts = 0, callbacks = 0;
@@ -910,23 +907,10 @@ void main() {
       server.listen((request) async {
         await utf8.decoder.bind(request).join();
         request.response.headers.contentType = ContentType.json;
-        if (request.uri.path.endsWith('/auth/refresh')) {
+        if (request.uri.path.endsWith('/trading')) {
+          posts++;
           refreshSeen.complete();
           await release.future;
-          request.response.write(
-            jsonEncode({
-              'accessToken': 'refreshed',
-              'refreshToken': 'rotated',
-              'user': {
-                'userId': 1,
-                'username': 'old',
-                'email': '',
-                'status': 'ACTIVE',
-              },
-            }),
-          );
-        } else if (request.uri.path.endsWith('/trading')) {
-          posts++;
           request.response.statusCode = 401;
           request.response.write('{}');
         } else {
@@ -947,7 +931,7 @@ void main() {
         AppConfig(gatewayBaseUrl: 'http://127.0.0.1:${server.port}'),
         httpClient: http,
       )..setSession(actorSession);
-      api.onSessionRefreshed = (_) async {
+      api.onSessionExpired = () async {
         callbacks++;
       };
       final submitted = api.placeOrder(
@@ -976,7 +960,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'other',
-          refreshToken: 'other-refresh',
         ),
       );
       release.complete();
@@ -1079,7 +1062,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'other',
-          refreshToken: 'other',
         ),
       );
       state.lastNotice = 'new user';
@@ -1319,7 +1301,6 @@ void main() {
             status: 'ACTIVE',
           ),
           accessToken: 'other',
-          refreshToken: 'other',
         ),
       );
       api.result.complete((takerFeeRatePpm: 1000, marketMaxSlippagePpm: 10000));

@@ -13,7 +13,6 @@ import 'package:surprising_client/src/models.dart';
 const conversationId = '10000000-0000-4000-8000-000000000001';
 AuthSession ownerSession(int owner) => AuthSession.fromJson({
   'accessToken': 'qa-$owner',
-  'refreshToken': 'qa-refresh-$owner',
   'user': {'userId': owner},
 });
 Map<String, dynamic> conversationJson() => {

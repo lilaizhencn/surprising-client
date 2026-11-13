@@ -742,9 +742,7 @@ class _SecuritySheetState extends State<SecuritySheet>
                           '当前手机会保持登录，其他设备需要重新登录。',
                         );
                         if (!confirmed || !operationCurrent) return;
-                        await state.api.revokeOtherSessions(
-                          state.session!.refreshToken,
-                        );
+                        await state.api.revokeOtherSessions();
                         if (operationCurrent) await _load();
                       }, '其他设备已下线'),
               ),

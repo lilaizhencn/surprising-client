@@ -27,11 +27,8 @@ void main() {
         expect(loggedIn.user.userId, owner);
         final primary = await api.primaryAuthentication();
         expect(primary.passwordRequired, isTrue);
-        final refreshed = await api.refresh(loggedIn.refreshToken);
-        sessions.remove(loggedIn);
-        sessions.add(refreshed);
-        api.setSession(refreshed);
-        expect(refreshed.user.userId, owner);
+        final verified = await api.currentUser();
+        expect(verified.userId, owner);
         final summary = await api.get(
           '/api/v1/portfolio/income',
           userId: owner,
@@ -46,9 +43,7 @@ void main() {
       } finally {
         for (final session in sessions) {
           api.setSession(session);
-          await api.post('/api/v1/auth/logout', {
-            'refreshToken': session.refreshToken,
-          });
+          await api.endRemoteSession(session.accessToken);
         }
         http.close(force: true);
         if (owner != null) {

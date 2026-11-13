@@ -20,7 +20,6 @@ const session = AuthSession(
     status: 'NORMAL',
   ),
   accessToken: 'test',
-  refreshToken: 'test',
 );
 WalletPortfolio portfolio(double value) => WalletPortfolio.fromJson({
   'assets': [

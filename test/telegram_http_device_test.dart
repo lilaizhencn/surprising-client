@@ -59,7 +59,7 @@ void main() {
   });
 
   test(
-    'real HTTP sends the same persisted device through Telegram login, refresh and app restart',
+    'real HTTP sends the same persisted device through Telegram login, session verification and app restart',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final connections = <HttpClient>[];
@@ -79,10 +79,10 @@ void main() {
           'status': 'NORMAL',
         },
         'accessToken': 'synthetic-access',
-        'refreshToken': 'synthetic-refresh',
-      };
+        };
       server.listen((request) async {
-        final body = asMap(jsonDecode(await utf8.decoder.bind(request).join()));
+        final raw = await utf8.decoder.bind(request).join();
+        final body = raw.isEmpty ? <String, dynamic>{} : asMap(jsonDecode(raw));
         requests.add((
           request.uri.path,
           request.headers.value('x-device-id'),
@@ -134,16 +134,15 @@ void main() {
         cancelled: () => false,
       );
       first.setSession(authenticated);
-      final refreshed = await first.refresh(authenticated.refreshToken);
-      final restarted = client()..setSession(refreshed);
-      await restarted.refresh(refreshed.refreshToken);
+      final verified = await first.currentUser();
+      final restarted = client()..setSession(authenticated);
+      await restarted.currentUser();
       expect(requests, hasLength(4));
       expect(requests.map((request) => request.$2).toSet(), {persisted});
       expect(ApiClient.isDeviceId(persisted!), isTrue);
       expect(created, 1);
       expect(requests[1].$3, {'flowId': 's' * 43, 'verifier': 'v' * 43});
-      expect(requests.last.$3, {'refreshToken': 'synthetic-refresh'});
-      expect(refreshed.user.name, '小李');
+      expect(verified.name, '小李');
     },
   );
 }

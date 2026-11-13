@@ -74,8 +74,9 @@ class SecureSessionStore implements SessionStore {
     if (encoded == null || encoded.isEmpty) return null;
     try {
       final session = AuthSession.fromJson(asMap(jsonDecode(encoded)));
-      if (session.refreshToken.isEmpty) {
-        throw const FormatException('missing refresh token');
+      // 旧版本只保存 refresh token、access token 为空：没有可用令牌，需要重新登录。
+      if (session.accessToken.isEmpty) {
+        throw const FormatException('missing session token');
       }
       return session;
     } on FormatException {
@@ -87,8 +88,7 @@ class SecureSessionStore implements SessionStore {
   @override
   Future<void> saveSession(AuthSession session) async {
     await _storage.delete(key: telegramLoginStorageKey);
-    final securePayload = session.toJson()..['accessToken'] = '';
-    await _storage.write(key: _sessionKey, value: jsonEncode(securePayload));
+    await _storage.write(key: _sessionKey, value: jsonEncode(session.toJson()));
   }
 
   @override

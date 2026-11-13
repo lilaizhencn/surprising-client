@@ -70,7 +70,6 @@ void main() {
           status: 'ACTIVE',
         ),
         accessToken: 'affiliate-access-native',
-        refreshToken: 'fixture-only',
       );
       final api = ApiClient(config)..setSession(session);
       Future<void> enabled(bool value, {bool error = false}) async {

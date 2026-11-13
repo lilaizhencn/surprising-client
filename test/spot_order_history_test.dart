@@ -11,7 +11,6 @@ import 'package:surprising_client/src/models.dart';
 const session = AuthSession(
   user: AuthUser(userId: 1, username: 'spot', email: '', status: 'ACTIVE'),
   accessToken: 'qa',
-  refreshToken: 'qa',
 );
 Map<String, dynamic> order([String id = '9007199254740993']) => {
   'orderId': id,

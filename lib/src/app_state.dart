@@ -112,11 +112,10 @@ class AppState extends ChangeNotifier {
       await auth.restore();
       if (legalReviewRequired) throw const FormatException('会话未能恢复，请重新登录');
     } else {
-      final refreshed = await api.refresh(current.refreshToken);
-      if (session != current || refreshed.user.userId != current.user.userId) {
+      final user = await api.currentUser();
+      if (session != current || user.userId != current.user.userId) {
         throw const FormatException('登录账户已变化，请重新登录');
       }
-      await auth.persistRefreshedSession(refreshed);
     }
   }
 
@@ -1465,8 +1464,6 @@ class AppState extends ChangeNotifier {
       await _connectRealtime();
       if (!current()) return;
       await refreshAnnouncements();
-    } else if (change == AuthSessionChange.tokenRefreshed) {
-      await _connectRealtime(forceReconnect: true);
     } else {
       unawaited(_registerDevicePushToken());
       await refreshProductAvailability();
@@ -1903,13 +1900,17 @@ class AppState extends ChangeNotifier {
     _materializePrivate();
     notifyListeners();
     try {
-      if (previous.refreshTokenExpired) {
+      final user = await api.currentUser();
+      if (_disposed || !identical(session, previous)) return;
+      if (user.userId != previous.user.userId) {
         await auth.expire();
         return;
       }
-      final next = await api.refresh(previous.refreshToken);
-      if (_disposed || !identical(session, previous)) return;
-      await auth.persistRefreshedSession(next);
+      // 会话仍有效（令牌不变）：恢复私有实时连接。
+      _realtimeSessionPaused = false;
+      _realtimeAuthRetries = 0;
+      await _connectRealtime(forceReconnect: true);
+      return;
     } catch (error) {
       if (_disposed || !identical(session, previous)) return;
       if (error is ApiException && [401, 403].contains(error.statusCode)) {

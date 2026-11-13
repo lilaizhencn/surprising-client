@@ -157,18 +157,10 @@ extension C2cApi on ApiClient {
       _requireC2cOwner(owner);
       return value;
     } on ApiException catch (error) {
-      if (error.statusCode != 401 ||
-          _sessionUserId != owner ||
-          _accessToken != originalToken ||
-          _refreshToken == null) {
-        rethrow;
+      if (_sessionUserId == owner) {
+        await _expireIfRejected(error, originalToken, owner);
       }
-      await _refreshAccessToken();
-      _requireC2cOwner(owner);
-      scope.checkActive();
-      final value = await operation(_accessToken!, scope);
-      _requireC2cOwner(owner);
-      return value;
+      rethrow;
     }
   }, timeout: timeout);
 

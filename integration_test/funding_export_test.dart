@@ -50,7 +50,6 @@ void main() {
           status: 'NORMAL',
         ),
         accessToken: 'synthetic-only',
-        refreshToken: 'synthetic-only',
       ),
       offline: true,
       apiClient: api,

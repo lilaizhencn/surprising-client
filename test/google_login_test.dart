@@ -20,7 +20,6 @@ const session = AuthSession(
     status: 'NORMAL',
   ),
   accessToken: 'access',
-  refreshToken: 'refresh',
 );
 GoogleLoginConfig configuration() => GoogleLoginConfig.fromJson({
   'enabled': true,

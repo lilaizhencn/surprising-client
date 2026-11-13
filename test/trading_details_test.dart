@@ -97,7 +97,6 @@ AppState state() => AppState(
   initialSession: const AuthSession(
     user: AuthUser(userId: 1, username: 'test', email: '', status: 'NORMAL'),
     accessToken: 'test',
-    refreshToken: 'test',
   ),
 )..instruments = [instrument()];
 Map<String, dynamic> order({String status = 'OPEN', int executed = 2}) => {
@@ -136,7 +135,6 @@ void main() {
             status: 'NORMAL',
           ),
           accessToken: 'test',
-          refreshToken: 'test',
         ),
         api,
       );
@@ -191,7 +189,6 @@ void main() {
             status: 'NORMAL',
           ),
           accessToken: 'test',
-          refreshToken: 'test',
         ),
         offline: true,
         apiClient: api,

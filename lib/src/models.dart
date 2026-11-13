@@ -374,36 +374,27 @@ class AuthSession {
   const AuthSession({
     required this.user,
     required this.accessToken,
-    required this.refreshToken,
     this.requiresEmailVerification = false,
-    this.accessTokenExpiresAt,
-    this.refreshTokenExpiresAt,
+    this.sessionExpiresAt,
   });
 
   final AuthUser user;
-  final String accessToken;
-  final String refreshToken;
-  final bool requiresEmailVerification;
-  final DateTime? accessTokenExpiresAt;
-  final DateTime? refreshTokenExpiresAt;
 
-  bool get refreshTokenExpired {
-    final expiresAt = refreshTokenExpiresAt;
-    return expiresAt != null && !expiresAt.isAfter(DateTime.now().toUtc());
-  }
+  /// 网关签发的唯一会话令牌（JWT）。是否有效只由网关的会话决定：
+  /// 7 天滑动有效期，没有刷新令牌，失效后重新登录。
+  final String accessToken;
+  final bool requiresEmailVerification;
+
+  /// 登录时给出的令牌上限，不代表会话到期时间（会话是滑动有效期）。
+  final DateTime? sessionExpiresAt;
 
   Map<String, dynamic> toJson() {
     return {
       'user': user.toJson(),
       'accessToken': accessToken,
-      'refreshToken': refreshToken,
       'requiresEmailVerification': requiresEmailVerification,
-      if (accessTokenExpiresAt != null)
-        'accessTokenExpiresAt': accessTokenExpiresAt!.toUtc().toIso8601String(),
-      if (refreshTokenExpiresAt != null)
-        'refreshTokenExpiresAt': refreshTokenExpiresAt!
-            .toUtc()
-            .toIso8601String(),
+      if (sessionExpiresAt != null)
+        'sessionExpiresAt': sessionExpiresAt!.toUtc().toIso8601String(),
     };
   }
 
@@ -411,10 +402,8 @@ class AuthSession {
     return AuthSession(
       user: AuthUser.fromJson(asMap(json['user'])),
       accessToken: asString(json['accessToken']),
-      refreshToken: asString(json['refreshToken']),
       requiresEmailVerification: json['requiresEmailVerification'] == true,
-      accessTokenExpiresAt: asNullableDateTime(json['accessTokenExpiresAt']),
-      refreshTokenExpiresAt: asNullableDateTime(json['refreshTokenExpiresAt']),
+      sessionExpiresAt: asNullableDateTime(json['sessionExpiresAt']),
     );
   }
 }

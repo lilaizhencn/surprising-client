@@ -332,7 +332,6 @@ class TriggerState extends AppState {
             status: 'ACTIVE',
           ),
           accessToken: 'test',
-          refreshToken: 'refresh',
         ),
       ) {
     mode = ProductMode.linear;

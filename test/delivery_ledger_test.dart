@@ -27,7 +27,6 @@ void main() {
               status: 'ACTIVE',
             ),
             accessToken: 'test',
-            refreshToken: 'test',
           ),
         )..mode = ProductMode.linearDelivery;
         addTearDown(state.dispose);

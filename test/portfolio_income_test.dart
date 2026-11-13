@@ -99,7 +99,6 @@ void main() {
             status: 'NORMAL',
           ),
           accessToken: 'other',
-          refreshToken: 'other',
         ),
       );
       api.pending!.complete(incomeFixture());
@@ -136,7 +135,6 @@ void main() {
             status: 'NORMAL',
           ),
           accessToken: 'other',
-          refreshToken: 'other',
         ),
       );
       expect(state.portfolioIncome(), isNull);

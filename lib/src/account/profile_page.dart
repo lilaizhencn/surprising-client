@@ -275,7 +275,7 @@ class ProfilePage extends StatelessWidget {
                 state.biometricLoginEnabled
                     ? '下次打开 App 使用面容或指纹解锁'
                     : state.biometricLoginAvailable
-                    ? '只保存加密 refresh token，不保存 access token'
+                    ? '登录令牌只保存在系统安全存储中'
                     : '设备未检测到可用的生物识别能力',
               ),
               trailing: state.biometricLoginEnabled

@@ -65,7 +65,6 @@ class ApiClient {
     _disposed = true;
     cancelPendingRequests();
     _httpClient.close(force: true);
-    onSessionRefreshed = null;
     onSessionExpired = null;
     onLegalReviewRequired = null;
     onLegalReviewCompleted = null;
@@ -95,8 +94,6 @@ class ApiClient {
 
   String? _accessToken;
   int? _sessionUserId;
-  String? _refreshToken;
-  Future<AuthSession?>? _refreshInFlight;
 
   Future<String> Function()? deviceIdLoader;
   Future<String>? _deviceId;
@@ -129,7 +126,6 @@ class ApiClient {
             Error.throwWithStackTrace(error, stack);
           });
 
-  Future<void> Function(AuthSession session)? onSessionRefreshed;
   Future<void> Function()? onSessionExpired;
   void Function()? onLegalReviewRequired;
   void Function()? onLegalReviewCompleted;
@@ -178,7 +174,6 @@ class ApiClient {
   void setSession(AuthSession? session) {
     _sessionUserId = session?.user.userId;
     _accessToken = session?.accessToken;
-    _refreshToken = session?.refreshToken;
   }
 
   void setAccessToken(String? accessToken) {
@@ -188,18 +183,35 @@ class ApiClient {
         : accessToken.trim();
   }
 
-  Future<AuthSession> refresh(String refreshToken) async {
+  /// 向网关确认当前令牌对应的会话是否还有效，并取回最新的用户资料。
+  /// 响应不带令牌；会话令牌沿用本地保存的那一个。401/403 表示会话已失效。
+  Future<AuthUser> currentUser() async {
     final response = await _withRequest(
-      (scope) => _sendOnce(
-        'POST',
-        '/api/v1/auth/refresh',
-        body: {'refreshToken': refreshToken},
-        scope: scope,
-      ),
+      (scope) => _sendOnce('GET', '/api/v1/auth/session', scope: scope),
     );
-    final session = AuthSession.fromJson(asMap(response));
-    onLegalReviewCompleted?.call();
-    return session;
+    return AuthUser.fromJson(asMap(asMap(response)['user']));
+  }
+
+  /// 尽力通知网关结束这个会话；失败不影响本地退出。
+  Future<void> endRemoteSession(String token) async {
+    try {
+      final request = await _httpClient
+          .postUrl(
+            Uri.parse(
+              config.gatewayBaseUrl,
+            ).replace(path: '/api/v1/auth/logout'),
+          )
+          .timeout(const Duration(seconds: 5));
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.contentType = ContentType.json;
+      request.write('{}');
+      final response = await request.close().timeout(
+        const Duration(seconds: 5),
+      );
+      await response.drain<void>();
+    } catch (_) {
+      // 网关不可达时会话在 Valkey 里自然过期，本地已清除令牌。
+    }
   }
 
   Future<AuthSession> register({
@@ -336,10 +348,8 @@ class ApiClient {
     );
   }
 
-  Future<void> revokeOtherSessions(String refreshToken) async {
-    await post('/api/v1/security/sessions/revoke-all', {
-      'refreshToken': refreshToken,
-    });
+  Future<void> revokeOtherSessions() async {
+    await post('/api/v1/security/sessions/revoke-all', const {});
   }
 
   Future<List<Map<String, dynamic>>> devices() async => asList(
@@ -935,15 +945,8 @@ class ApiClient {
     try {
       return await read();
     } on ApiException catch (error) {
-      if (error.statusCode != 401 ||
-          originalToken != _accessToken ||
-          originalUser != _sessionUserId ||
-          _refreshToken == null) {
-        rethrow;
-      }
-      if (await _refreshAccessToken() == null) rethrow;
-      scope.checkActive();
-      return read();
+      await _expireIfRejected(error, originalToken, originalUser);
+      rethrow;
     }
   });
 
@@ -2693,60 +2696,29 @@ class ApiClient {
         scope: scope,
       );
     } on ApiException catch (error) {
-      if (error.statusCode != 401 ||
-          originalToken != _accessToken ||
-          originalUser != _sessionUserId ||
-          _refreshToken == null ||
-          path.startsWith('/api/v1/auth/')) {
-        rethrow;
-      }
-      final refreshed = await _refreshAccessToken();
-      if (refreshed == null) rethrow;
-      scope.checkActive();
-      return _sendOnce(
-        method,
-        path,
-        query: query,
-        body: body,
-        headers: headers,
-        userId: userId,
-        productLine: productLine,
-        unwrapResponseResult: unwrapResponseResult,
-        scope: scope,
-      );
-    }
-  }
-
-  Future<AuthSession?> _refreshAccessToken() async {
-    final inFlight = _refreshInFlight;
-    if (inFlight != null) return inFlight;
-    final token = _refreshToken;
-    if (token == null || token.isEmpty) return null;
-    final future = _refreshAccessTokenOnce(token);
-    _refreshInFlight = future;
-    try {
-      return await future;
-    } finally {
-      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
-    }
-  }
-
-  Future<AuthSession?> _refreshAccessTokenOnce(String refreshToken) async {
-    try {
-      final session = await refresh(refreshToken);
-      if (_refreshToken != refreshToken) return null;
-      setSession(session);
-      await onSessionRefreshed?.call(session);
-      return session;
-    } on ApiException catch (error) {
-      if (error.statusCode == 401 || error.statusCode == 403) {
-        if (_refreshToken != refreshToken) return null;
-        setSession(null);
-        await onSessionExpired?.call();
-        return null;
+      if (!path.startsWith('/api/v1/auth/')) {
+        await _expireIfRejected(error, originalToken, originalUser);
       }
       rethrow;
     }
+  }
+
+  /// 网关返回 401 表示会话已失效（过期、被踢下线、被冻结）：清除本地登录状态。
+  /// 只处理网关真实返回的 401，且账号没有在请求期间切换。
+  Future<void> _expireIfRejected(
+    ApiException error,
+    String? originalToken,
+    int? originalUser,
+  ) async {
+    if (!error.fromGateway ||
+        error.statusCode != 401 ||
+        originalToken == null ||
+        originalToken != _accessToken ||
+        originalUser != _sessionUserId) {
+      return;
+    }
+    setSession(null);
+    await onSessionExpired?.call();
   }
 
   Future<Object?> _sendOnce(
@@ -2801,9 +2773,9 @@ class ApiClient {
         path.startsWith('/api/v1/auth/') &&
         !const {
           '/api/v1/auth/me',
+          '/api/v1/auth/session',
           '/api/v1/auth/verify-email',
           '/api/v1/auth/resend-email-verification',
-          '/api/v1/auth/browser/revoke-others',
         }.contains(path);
     if (_accessToken != null && !credentialRequest) {
       request.headers.set('Authorization', 'Bearer $_accessToken');
@@ -2825,12 +2797,6 @@ class ApiClient {
     );
     scope.checkActive();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      if (response.statusCode == 428 && path == '/api/v1/auth/refresh') {
-        final problem = jsonDecode(payload);
-        if (problem is Map && problem['code'] == 'LEGAL_CONSENT_REQUIRED') {
-          onLegalReviewRequired?.call();
-        }
-      }
       throw ApiException.response(
         response,
         payload.isEmpty ? response.reasonPhrase : payload,
@@ -3067,7 +3033,12 @@ bool isDefinitiveOrderRejection(Object error) {
 }
 
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message, {this.retryAfterSeconds});
+  ApiException(
+    this.statusCode,
+    this.message, {
+    this.retryAfterSeconds,
+    this.fromGateway = false,
+  });
 
   factory ApiException.response(HttpClientResponse response, String message) {
     final header = response.headers.value(HttpHeaders.retryAfterHeader)?.trim();
@@ -3086,12 +3057,16 @@ class ApiException implements Exception {
       response.statusCode,
       message,
       retryAfterSeconds: seconds == null ? null : math.max(1, seconds),
+      fromGateway: true,
     );
   }
 
   final int statusCode;
   final String message;
   final int? retryAfterSeconds;
+
+  /// 状态码来自网关的真实响应；本地校验失败抛出的同码异常为 false。
+  final bool fromGateway;
 
   @override
   String toString() {

@@ -17,23 +17,17 @@ const _user = AuthUser(
 const _original = AuthSession(
   user: _user,
   accessToken: 'original-access',
-  refreshToken: 'original-refresh',
-);
-const _rotated = AuthSession(
-  user: _user,
-  accessToken: 'rotated-access',
-  refreshToken: 'rotated-refresh',
 );
 
 class _RefreshApi extends ApiClient {
   _RefreshApi() : super(const AppConfig());
   final refreshTokens = <String>[];
-  Future<AuthSession> Function()? reply;
+  Future<AuthUser> Function()? reply;
 
   @override
-  Future<AuthSession> refresh(String refreshToken) {
-    refreshTokens.add(refreshToken);
-    return reply?.call() ?? Future.value(_rotated);
+  Future<AuthUser> currentUser() {
+    refreshTokens.add('verify');
+    return reply?.call() ?? Future.value(_user);
   }
 }
 
@@ -263,20 +257,19 @@ void main() {
   );
 
   testWidgets(
-    '1008 refreshes the original token and reconnects with the rotated session',
+    '1008 verifies the session and reconnects with the same token',
     (tester) async {
       final f = _Fixture();
       try {
         await f.start(tester);
         f.realtime.revoke();
         await f.flush(tester);
-        expect(f.api.refreshTokens, ['original-refresh']);
-        expect(f.state.session, same(_rotated));
-        expect(f.store.persisted, same(_rotated));
-        expect(f.store.saved, [_rotated]);
+        expect(f.api.refreshTokens, ['verify']);
+        expect(f.state.session, same(_original));
+        expect(f.store.saved, isEmpty);
         expect(f.realtime.connections, [
           (userId: 7, accessToken: 'original-access'),
-          (userId: 7, accessToken: 'rotated-access'),
+          (userId: 7, accessToken: 'original-access'),
         ]);
       } finally {
         f.dispose();
@@ -286,7 +279,7 @@ void main() {
 
   for (final status in [401, 403]) {
     testWidgets(
-      '1008 followed by refresh $status clears session and resumes public traffic',
+      '1008 followed by verification $status clears session and resumes public traffic',
       (tester) async {
         final f = _Fixture();
         f.api.reply = () =>
@@ -295,7 +288,7 @@ void main() {
           await f.start(tester);
           f.realtime.revoke();
           await f.flush(tester);
-          expect(f.api.refreshTokens, ['original-refresh']);
+          expect(f.api.refreshTokens, ['verify']);
           expect(f.state.session, isNull);
           expect(f.store.persisted, isNull);
           expect(f.store.saved, isEmpty);
@@ -332,7 +325,7 @@ void main() {
         for (final seconds in [1, 2, 4]) {
           await f.flush(tester, Duration(seconds: seconds));
         }
-        expect(f.api.refreshTokens, List.filled(4, 'original-refresh'));
+        expect(f.api.refreshTokens, List.filled(4, 'verify'));
         expect(f.state.session, same(_original));
         expect(f.store.clears, 0);
         expect(f.store.saved, isEmpty);
@@ -353,10 +346,10 @@ void main() {
   );
 
   testWidgets(
-    'a refresh response arriving after logout cannot restore credentials or reconnect privately',
+    'a verification response arriving after logout cannot restore credentials or reconnect privately',
     (tester) async {
       final f = _Fixture();
-      final response = Completer<AuthSession>();
+      final response = Completer<AuthUser>();
       f.api.reply = () => response.future;
       try {
         await f.start(tester);
@@ -366,7 +359,7 @@ void main() {
         await f.state.logout();
         await f.flush(tester);
         final connectionCount = f.realtime.connections.length;
-        response.complete(_rotated);
+        response.complete(_user);
         await f.flush(tester);
         expect(f.state.session, isNull);
         expect(f.store.persisted, isNull);
@@ -381,10 +374,10 @@ void main() {
   );
 
   testWidgets(
-    'a refresh response arriving after disposal cannot save or reconnect',
+    'a verification response arriving after disposal cannot save or reconnect',
     (tester) async {
       final f = _Fixture();
-      final response = Completer<AuthSession>();
+      final response = Completer<AuthUser>();
       f.api.reply = () => response.future;
       try {
         await f.start(tester);
@@ -392,7 +385,7 @@ void main() {
         await f.flush(tester);
         expect(f.api.refreshTokens, hasLength(1));
         f.dispose();
-        response.complete(_rotated);
+        response.complete(_user);
         await f.flush(tester);
         expect(f.state.session, same(_original));
         expect(f.store.saved, isEmpty);
@@ -404,33 +397,4 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a session save completing after logout cannot overwrite cleared storage',
-    (tester) async {
-      final f = _Fixture();
-      final save = Completer<void>();
-      f.store.saveGate = save;
-      try {
-        await f.start(tester);
-        f.realtime.revoke();
-        await f.flush(tester);
-        expect(f.store.saved, [_rotated]);
-        final loggingOut = f.state.logout();
-        await f.flush(tester);
-        expect(f.state.session, isNull);
-        save.complete();
-        await loggingOut;
-        await f.flush(tester);
-        final connectionCount = f.realtime.connections.length;
-        await f.flush(tester);
-        expect(f.state.session, isNull);
-        expect(f.store.persisted, isNull);
-        expect(f.realtime.connections, hasLength(connectionCount));
-        expect(tester.takeException(), isNull);
-      } finally {
-        if (!save.isCompleted) save.complete();
-        f.dispose();
-      }
-    },
-  );
 }

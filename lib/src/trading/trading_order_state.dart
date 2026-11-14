@@ -766,7 +766,7 @@ class TradingOrderState extends ChangeNotifier {
           Map<String, dynamic> receipt;
           try {
             receipt = await api.get(
-              '/api/v1/gateway/trading/cancellation-batches',
+              '/api/v1/trading/orders/cancellation-batches',
               userId: pending.userId,
               productLine: 'SPOT',
               query: {'userId': '${pending.userId}', 'batchKey': batch.key},

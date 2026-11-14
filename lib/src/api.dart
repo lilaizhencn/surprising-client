@@ -392,7 +392,7 @@ class ApiClient {
   }
 
   Future<Map<String, String>> assetScales() async {
-    final result = await get('/api/v1/gateway/instrument/asset-scales');
+    final result = await get('/api/v1/instruments/asset-scales');
     return result.map((key, value) => MapEntry(key.toUpperCase(), '$value'));
   }
 
@@ -423,13 +423,13 @@ class ApiClient {
     final line = instrument.mode.productLine;
     final results = await Future.wait([
       get(
-        '/api/v1/gateway/trading-fees/effective',
+        '/api/v1/trading/fees/effective',
         userId: userId,
         productLine: line,
         query: {'instrumentId': instrument.instrumentId, 'productLine': line},
       ),
       get(
-        '/api/v1/gateway/trading/price-protection',
+        '/api/v1/trading/orders/price-protection',
         userId: userId,
         productLine: line,
       ),
@@ -518,7 +518,7 @@ class ApiClient {
     String? line;
     switch (category) {
       case 'funding-ledger':
-        path = '/api/v1/gateway/account/ledger';
+        path = '/api/v1/accounts/ledger';
         key = 'entries';
       case 'option-exercise':
         if (!product.isOption) throw const FormatException('期权流水产品线不匹配');
@@ -533,12 +533,12 @@ class ApiClient {
         continue productLedger;
       productLedger:
       case 'product-ledger':
-        path = '/api/v1/gateway/account/product-ledger';
+        path = '/api/v1/accounts/product-ledger';
         key = 'entries';
         query['accountType'] = product.accountType;
         line = product.productLine;
       case 'transfer':
-        path = '/api/v1/gateway/account/transfers';
+        path = '/api/v1/accounts/transfers';
         key = 'transfers';
         query['accountType'] = product.accountType;
         line = product.productLine;
@@ -557,7 +557,7 @@ class ApiClient {
         line = product.productLine;
         if (instrumentId.isNotEmpty) query['instrumentId'] = instrumentId;
       case 'trade':
-        path = '/api/v1/gateway/trading/trades';
+        path = '/api/v1/trading/orders/trades';
         key = 'trades';
         query['userId'] = '$userId';
         line = product.productLine;
@@ -565,7 +565,7 @@ class ApiClient {
         if (from != null) query['startTime'] = '${from.millisecondsSinceEpoch}';
         if (to != null) query['endTime'] = '${to.millisecondsSinceEpoch}';
       case 'order':
-        path = '/api/v1/gateway/trading/history';
+        path = '/api/v1/trading/orders/history';
         key = 'orders';
         query['userId'] = '$userId';
         line = product.productLine;
@@ -1073,7 +1073,7 @@ class ApiClient {
   Future<Instrument> instrumentLatest(String id, ProductMode product) async {
     final scales = await assetScales();
     final raw = await get(
-      '/api/v1/gateway/instrument/latest',
+      '/api/v1/instruments/latest',
       query: {'instrumentId': id, 'productLine': product.productLine},
       productLine: product.productLine,
     );
@@ -1096,7 +1096,7 @@ class ApiClient {
     String? cursor;
     while (true) {
       final json = await get(
-        '/api/v1/gateway/instrument/list',
+        '/api/v1/instruments/list',
         query: {...filters, 'includeMarketSummary': 'true', 'cursor': ?cursor},
       );
       final rows = json['instruments'] ?? json['items'];
@@ -1176,7 +1176,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await get(
-      '/api/v1/gateway/trading-market/orderbook',
+      '/api/v1/trading/market/orderbook',
       query: {'symbol': symbol, 'depth': '$depth'},
       productLine: productLine,
     );
@@ -1246,7 +1246,7 @@ class ApiClient {
     if (accountType != null) query['accountType'] = accountType;
     final scales = await assetScales();
     final json = await get(
-      '/api/v1/gateway/account/product-balances',
+      '/api/v1/accounts/product-balances',
       query: query,
       productLine: productLine,
     );
@@ -1266,7 +1266,7 @@ class ApiClient {
     Instrument instrument,
     String marginMode,
   ) => get(
-    '/api/v1/gateway/trading-leverage/settings',
+    '/api/v1/trading/leverage/settings',
     query: {
       'userId': '$userId',
       'instrumentId': instrument.instrumentId,
@@ -1282,7 +1282,7 @@ class ApiClient {
     String marginMode,
     int leveragePpm,
   ) => post(
-    '/api/v1/gateway/trading-leverage/settings',
+    '/api/v1/trading/leverage/settings',
     {
       'userId': userId,
       'instrumentId': instrument.instrumentId,
@@ -1296,7 +1296,7 @@ class ApiClient {
 
   Future<List<Position>> positions(int userId, {String? productLine}) async {
     final json = await get(
-      '/api/v1/gateway/account/positions',
+      '/api/v1/accounts/positions',
       query: {'userId': '$userId'},
       productLine: productLine,
     );
@@ -1307,7 +1307,7 @@ class ApiClient {
 
   Future<String> positionMode(int userId, {String? productLine}) async {
     final json = await get(
-      '/api/v1/gateway/account/position-mode',
+      '/api/v1/accounts/position-mode',
       query: {'userId': '$userId'},
       userId: userId,
       productLine: productLine,
@@ -1321,7 +1321,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/account/position-mode',
+      '/api/v1/accounts/position-mode',
       {
         'userId': userId,
         if (productLine != null && productLine.isNotEmpty)
@@ -1345,7 +1345,7 @@ class ApiClient {
     if (symbol != null) query['symbol'] = symbol;
     if (cursor != null && cursor.isNotEmpty) query['cursor'] = cursor;
     final json = await get(
-      '/api/v1/gateway/trading/open',
+      '/api/v1/trading/orders/open',
       query: query,
       productLine: productLine,
     );
@@ -1382,7 +1382,7 @@ class ApiClient {
     String? stpMode,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading',
+      '/api/v1/trading/orders',
       _orderPayload(
         userId: userId,
         symbol: symbol,
@@ -1428,7 +1428,7 @@ class ApiClient {
     String? stpMode,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/test',
+      '/api/v1/trading/orders/test',
       _orderPayload(
         userId: userId,
         symbol: symbol,
@@ -1460,7 +1460,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/batch',
+      '/api/v1/trading/orders/batch',
       {'orders': orders},
       userId: userId,
       productLine: productLine,
@@ -1501,7 +1501,7 @@ class ApiClient {
       payload['postOnly'] = postOnly;
     }
     final json = await post(
-      '/api/v1/gateway/trading/amend',
+      '/api/v1/trading/orders/amend',
       payload,
       userId: userId,
       productLine: productLine,
@@ -1515,7 +1515,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/batch-amend',
+      '/api/v1/trading/orders/batch-amend',
       {'orders': orders},
       userId: userId,
       productLine: productLine,
@@ -1529,7 +1529,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/cancel',
+      '/api/v1/trading/orders/cancel',
       {'userId': userId, 'orderId': orderId},
       userId: userId,
       productLine: productLine,
@@ -1544,7 +1544,7 @@ class ApiClient {
     String? batchKey,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/batch-cancel',
+      '/api/v1/trading/orders/batch-cancel',
       {
         'batchKey':
             batchKey ??
@@ -1561,7 +1561,7 @@ class ApiClient {
 
   Future<List<int>> cancellationPlan(int userId, {String? instrumentId}) async {
     final json = await get(
-      '/api/v1/gateway/trading/cancellation-plan',
+      '/api/v1/trading/orders/cancellation-plan',
       userId: userId,
       productLine: 'SPOT',
       query: {'userId': '$userId', 'instrumentId': ?instrumentId},
@@ -1586,7 +1586,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/cancel-open',
+      '/api/v1/trading/orders/cancel-open',
       {
         'userId': userId,
         ...?symbol == null ? null : {'symbol': symbol},
@@ -1623,7 +1623,7 @@ class ApiClient {
       if (instrument != null) 'instrumentId': instrument.instrumentId,
     };
     final json = await get(
-      '/api/v1/gateway/trading/algo/open',
+      '/api/v1/trading/orders/algo/open',
       query: query,
       userId: userId,
       productLine: productLine,
@@ -1673,7 +1673,7 @@ class ApiClient {
       throw const FormatException('算法单请求身份无效');
     }
     final json = await post(
-      '/api/v1/gateway/trading/algo',
+      '/api/v1/trading/orders/algo',
       {
         'userId': userId,
         'clientAlgoOrderId': clientAlgoOrderId,
@@ -1707,7 +1707,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/algo/cancel',
+      '/api/v1/trading/orders/algo/cancel',
       {'userId': userId, 'algoOrderId': algoOrderId},
       userId: userId,
       productLine: productLine,
@@ -1729,7 +1729,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/algo/cancel-open',
+      '/api/v1/trading/orders/algo/cancel-open',
       {
         'userId': userId,
         ...?symbol == null ? null : {'symbol': symbol},
@@ -1751,7 +1751,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/cancel-all-after',
+      '/api/v1/trading/orders/cancel-all-after',
       {
         'userId': userId,
         ...?symbol == null ? null : {'symbol': symbol},
@@ -1771,7 +1771,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading/close-position',
+      '/api/v1/trading/orders/close-position',
       {
         'userId': userId,
         'clientOrderId':
@@ -1794,7 +1794,7 @@ class ApiClient {
     final query = {'userId': '$userId', 'limit': '100'};
     if (symbol != null) query['symbol'] = symbol;
     final json = await get(
-      '/api/v1/gateway/trading-trigger/open',
+      '/api/v1/trading/trigger-orders/open',
       query: query,
       userId: userId,
       productLine: productLine,
@@ -1841,7 +1841,7 @@ class ApiClient {
       'positionSide': positionSide,
     }..removeWhere((_, value) => value == null);
     final json = await post(
-      '/api/v1/gateway/trading-trigger',
+      '/api/v1/trading/trigger-orders',
       payload,
       userId: userId,
       productLine: productLine,
@@ -1856,7 +1856,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading-trigger/batch',
+      '/api/v1/trading/trigger-orders/batch',
       {'atomic': atomic, 'orders': orders},
       userId: userId,
       productLine: productLine,
@@ -1876,7 +1876,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading-trigger/cancel',
+      '/api/v1/trading/trigger-orders/cancel',
       {'userId': userId, 'triggerOrderId': triggerOrderId},
       userId: userId,
       productLine: productLine,
@@ -1890,7 +1890,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading-trigger/batch-cancel',
+      '/api/v1/trading/trigger-orders/batch-cancel',
       {
         'orders': triggerOrderIds
             .map(
@@ -1914,7 +1914,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await post(
-      '/api/v1/gateway/trading-trigger/cancel-open',
+      '/api/v1/trading/trigger-orders/cancel-open',
       {
         'userId': userId,
         ...?symbol == null ? null : {'symbol': symbol},
@@ -1969,7 +1969,7 @@ class ApiClient {
     };
     try {
       return await post(
-        '/api/v1/gateway/account/transfers',
+        '/api/v1/accounts/transfers',
         body,
         userId: userId,
         headers: {
@@ -2034,7 +2034,7 @@ class ApiClient {
   }) async {
     final values = await Future.wait([
       get(
-        '/api/v1/gateway/account/balances',
+        '/api/v1/accounts/balances',
         query: {'userId': '$userId'},
         userId: userId,
         productLine: ProductMode.spot.productLine,
@@ -2736,7 +2736,7 @@ class ApiClient {
     if (userId != null && _sessionUserId != null && userId != _sessionUserId) {
       throw ApiException(401, '登录账户已变化，未发送请求');
     }
-    if (path.startsWith('/api/v1/gateway/') && !path.contains('/wallet/')) {
+    if ((path.startsWith('/api/v1/trading/') || path.startsWith('/api/v1/accounts') || path.startsWith('/api/v1/instruments')) && !path.contains('/wallet/')) {
       final symbol = asString(body?['symbol'] ?? query?['symbol']);
       final instrument = instrumentCatalog
           .where(
@@ -2806,7 +2806,7 @@ class ApiClient {
     final decoded = jsonDecode(payload);
     scope.checkActive();
     if (method == 'POST' &&
-        path.startsWith('/api/v1/gateway/trading') &&
+        path.startsWith('/api/v1/trading/orders') &&
         decoded is Map &&
         decoded.containsKey('outcome')) {
       final receipt = asMap(decoded);

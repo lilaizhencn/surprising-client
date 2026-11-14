@@ -11,7 +11,7 @@ class TradingReceiptResolver {
     bool? confirmed;
     if (pending.clientAlgoOrderId != null) {
       final receipt = await api.get(
-        '/api/v1/gateway/trading/algo/submission',
+        '/api/v1/trading/orders/algo/submission',
         userId: pending.userId,
         productLine: pending.product.productLine,
         query: {
@@ -62,8 +62,8 @@ class TradingReceiptResolver {
         pending.cancelTriggerOrderId != null) {
       final receipt = await api.get(
         pending.cancelTriggerOrderId != null
-            ? '/api/v1/gateway/trading-trigger/cancellations/${pending.cancelTriggerOrderId}'
-            : '/api/v1/gateway/trading-trigger/submission',
+            ? '/api/v1/trading/trigger-orders/cancellations/${pending.cancelTriggerOrderId}'
+            : '/api/v1/trading/trigger-orders/submission',
         userId: pending.userId,
         productLine: pending.product.productLine,
         query: {
@@ -89,7 +89,7 @@ class TradingReceiptResolver {
     } else if (pending.ocoTakeProfitClientId != null &&
         pending.ocoStopLossClientId != null) {
       final receipt = await api.get(
-        '/api/v1/gateway/trading-trigger/oco-submission',
+        '/api/v1/trading/trigger-orders/oco-submission',
         userId: pending.userId,
         productLine: pending.product.productLine,
         query: {
@@ -114,7 +114,7 @@ class TradingReceiptResolver {
       }
     } else if (pending.amendRequestId != null) {
       final receipt = await api.get(
-        '/api/v1/gateway/trading/amendments',
+        '/api/v1/trading/orders/amendments',
         userId: pending.userId,
         productLine: pending.product.productLine,
         query: {
@@ -138,7 +138,7 @@ class TradingReceiptResolver {
       }
     } else if (pending.cancelOrderId != null) {
       final receipt = await api.get(
-        '/api/v1/gateway/trading/cancellations/${pending.cancelOrderId}',
+        '/api/v1/trading/orders/cancellations/${pending.cancelOrderId}',
         userId: pending.userId,
         productLine: pending.product.productLine,
         query: {'userId': '${pending.userId}'},
@@ -162,7 +162,7 @@ class TradingReceiptResolver {
       }
     } else if (pending.clientOrderId != null && pending.instrumentId != null) {
       final receipt = await api.get(
-        '/api/v1/gateway/trading/submission',
+        '/api/v1/trading/orders/submission',
         userId: pending.userId,
         productLine: pending.product.productLine,
         query: {
@@ -194,7 +194,7 @@ class TradingReceiptResolver {
         }
         try {
           final order = await api.get(
-            '/api/v1/gateway/trading/by-client-order-id',
+            '/api/v1/trading/orders/by-client-order-id',
             userId: pending.userId,
             productLine: pending.product.productLine,
             query: {
@@ -233,7 +233,7 @@ class TradingReceiptResolver {
         pending.amendRequestId == null &&
         pending.commandId != null) {
       final receipt = await api.get(
-        '/api/v1/gateway/trading/commands/${Uri.encodeComponent(pending.commandId!)}',
+        '/api/v1/trading/orders/commands/${Uri.encodeComponent(pending.commandId!)}',
         userId: pending.userId,
         productLine: pending.product.productLine,
       );

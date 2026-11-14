@@ -455,7 +455,7 @@ class ApiClient {
     if (!instrument.isOption) throw const FormatException('期权产品线不匹配');
     final quote = OptionReference.fromJson(
       await get(
-        '/api/v1/gateway/candlestick/options/quote',
+        '/api/v1/candlestick/options/quote',
         query: {'instrumentId': instrument.instrumentId},
         productLine: 'OPTION',
       ),
@@ -551,7 +551,7 @@ class ApiClient {
         key = 'withdrawals';
         query['limit'] = '50';
       case 'funding-payment':
-        path = '/api/v1/gateway/funding/payments';
+        path = '/api/v1/funding/payments';
         key = 'payments';
         query['userId'] = '$userId';
         line = product.productLine;
@@ -1138,7 +1138,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await get(
-      '/api/v1/gateway/candlestick/trades/recent',
+      '/api/v1/candlestick/trades/recent',
       query: {'symbol': symbol, 'limit': '50'},
       productLine: productLine,
     );
@@ -1203,7 +1203,7 @@ class ApiClient {
     };
     final start = end.subtract(interval * 300);
     final json = await get(
-      '/api/v1/gateway/candlestick/candles',
+      '/api/v1/candlestick/candles',
       query: {
         'symbol': symbol,
         'period': period,
@@ -1223,7 +1223,7 @@ class ApiClient {
     required String toCurrency,
   }) async {
     final json = await get(
-      '/api/v1/gateway/price-fx/convert',
+      '/api/v1/price/fx/convert',
       query: {
         'amount': '1',
         'fromCurrency': fromCurrency,
@@ -2200,7 +2200,7 @@ class ApiClient {
       final query = {'userId': '$userId', 'settleAsset': settleAsset};
       if (accountType != null) query['accountType'] = accountType;
       final json = await get(
-        '/api/v1/gateway/risk/account/latest',
+        '/api/v1/risk/account/latest',
         query: query,
         userId: userId,
         productLine: productLine,
@@ -2241,7 +2241,7 @@ class ApiClient {
   }) async {
     try {
       final json = await get(
-        '/api/v1/gateway/risk/positions/latest',
+        '/api/v1/risk/positions/latest',
         query: {'userId': '$userId'},
         userId: userId,
         productLine: productLine,
@@ -2259,7 +2259,7 @@ class ApiClient {
     String? productLine,
   }) async {
     final json = await get(
-      '/api/v1/gateway/liquidation/orders',
+      '/api/v1/liquidations/orders',
       query: {'userId': '$userId', 'limit': '30'},
       userId: userId,
       productLine: productLine,

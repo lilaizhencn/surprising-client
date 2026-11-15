@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../models.dart';
 
 /// Each palette has a distinct canvas and saturated accent; trading colors retain their meaning.

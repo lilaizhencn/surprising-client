@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api.dart';
 import 'app_scope.dart';
@@ -455,6 +455,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
   Map<String, dynamic>? pending;
   C2cAttachment? attachment;
   PlatformFile? uploadFile;
+  Uint8List? uploadBytes;
   String? uploadId, error;
   bool loading = true,
       older = false,
@@ -730,22 +731,23 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
   Future<void> attach({bool retry = false}) async {
     if (uploading || sending || pending != null) return;
     if (!retry) {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-        withData: true,
       );
-      if (!current || result == null) return;
-      final file = result.files.single;
-      if (file.bytes == null || file.size > 10485760 || file.size == 0) {
+      if (!current || file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!current) return;
+      if (bytes.isEmpty || bytes.length > 10485760) {
         setState(() => error = '请选择 10 MB 以内的 JPG、PNG 或 PDF');
         return;
       }
       uploadFile = file;
+      uploadBytes = bytes;
       uploadId = c2cUuid();
     }
-    final file = uploadFile, originalId = uploadId;
-    if (file == null || originalId == null) return;
+    final file = uploadFile, bytes = uploadBytes, originalId = uploadId;
+    if (file == null || bytes == null || originalId == null) return;
     setState(() {
       uploading = true;
       error = null;
@@ -771,13 +773,14 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
             : file.extension?.toLowerCase() == 'png'
             ? 'image/png'
             : 'image/jpeg',
-        file.bytes!,
+        bytes,
       );
       if (current) {
         setState(() {
           attachment = ready;
           uploadId = null;
           uploadFile = null;
+          uploadBytes = null;
         });
       }
     } catch (failure) {
@@ -1154,7 +1157,7 @@ class _AttachmentState extends State<_Attachment> {
           await (bytes ??
               widget.state.api.c2cDownload(widget.owner, widget.attachment.id));
       if (!current) return;
-      await FilePicker.platform.saveFile(
+      await FilePicker.saveFile(
         dialogTitle: '保存附件',
         fileName: widget.attachment.name.replaceAll(RegExp(r'[/\\]'), '_'),
         bytes: content,

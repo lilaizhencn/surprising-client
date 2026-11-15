@@ -615,8 +615,8 @@ class AppState extends ChangeNotifier {
   bool _realtimeSessionPaused = false;
   int _realtimeAuthRetries = 0;
   Timer? _realtimeAuthRetryTimer;
-  final _publicSubscriptions = <String, Map<String, String>>{};
-  final _privateSubscriptions = <String, Map<String, String>>{};
+  final _publicSubscriptions = <String, Map<String, Object?>>{};
+  final _privateSubscriptions = <String, Map<String, Object?>>{};
   int _announcementsRequestVersion = 0;
 
   bool get isLoggedIn => auth.isLoggedIn;
@@ -1985,12 +1985,13 @@ class AppState extends ChangeNotifier {
   }
 
   void _subscribePublicSelected() {
-    final subscriptions = <Map<String, String>>[];
+    final subscriptions = <Map<String, Object?>>[];
     void add(
       String channel,
       ProductMode product,
       String symbol, [
       String? interval,
+      int? depth,
     ]) {
       if (symbol.isEmpty) return;
       subscriptions.add({
@@ -2008,6 +2009,7 @@ class AppState extends ChangeNotifier {
         else
           'symbol': symbol,
         'period': ?interval,
+        'depth': ?depth,
       });
     }
 
@@ -2018,7 +2020,7 @@ class AppState extends ChangeNotifier {
     for (final instrument in instruments.where((i) => i.mode.isDerivative)) {
       add('trades', instrument.mode, instrument.symbol);
     }
-    add('depth', mode, selectedSymbol);
+    add('depth', mode, selectedSymbol, null, 20);
     add('candles', mode, selectedSymbol, period);
     if (mode.isDerivative) {
       add('mark', mode, selectedSymbol);
@@ -2041,7 +2043,7 @@ class AppState extends ChangeNotifier {
 
   void _subscribePrivateSelected() {
     final subscriptions = !isLoggedIn
-        ? <Map<String, String>>[]
+        ? <Map<String, Object?>>[]
         : [
             for (final product in ProductMode.values.where(
               (p) => !disabledProducts.contains(p),
@@ -2062,7 +2064,7 @@ class AppState extends ChangeNotifier {
     _syncRealtimeSubscriptions();
   }
 
-  String _subscriptionKey(Map<String, String> subscription) =>
+  String _subscriptionKey(Map<String, Object?> subscription) =>
       '${subscription['productLine']}:${subscription['channel']}:${subscription['instrumentId'] ?? subscription['symbol'] ?? '*'}:${subscription['period'] ?? ''}';
 
   void _syncRealtimeSubscriptions() {

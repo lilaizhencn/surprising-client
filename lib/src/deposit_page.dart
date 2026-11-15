@@ -1,7 +1,7 @@
 import 'i18n/client_messages.dart';
 import 'dart:ui' as ui;
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
@@ -155,7 +155,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
           data == null) {
         return;
       }
-      final saved = await FilePicker.platform.saveFile(
+      final saved = await FilePicker.saveFile(
         dialogTitle: '保存充值二维码',
         fileName:
             'deposit-${currentAddress.symbol}-${currentAddress.chain}.png',

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/api.dart';
@@ -1724,14 +1724,15 @@ class _RecordingRealtimeClient extends RealtimeClient {
   }
 
   @override
-  void replaceSubscriptions(List<Map<String, String>> values) {
+  void replaceSubscriptions(List<Map<String, Object?>> values) {
     subscriptions.clear();
     for (final s in values) {
       subscribe(
-        s['channel']!,
-        symbol: s['symbol'],
-        period: s['period'],
-        productLine: s['productLine'],
+        s['channel']! as String,
+        symbol: s['symbol'] as String?,
+        period: s['period'] as String?,
+        productLine: s['productLine'] as String?,
+        depth: s['depth'] as int?,
       );
     }
   }
@@ -1742,6 +1743,7 @@ class _RecordingRealtimeClient extends RealtimeClient {
     String? symbol,
     String? period,
     String? productLine,
+    int? depth,
   }) {
     subscriptions.add(
       _RecordedSubscription(

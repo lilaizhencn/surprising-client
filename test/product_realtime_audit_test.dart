@@ -233,6 +233,7 @@ void main() {
         'channel': 'depth',
         'productLine': 'LINEAR_PERPETUAL',
         'instrumentId': '${100 + ProductMode.linear.index}',
+        'depth': 20,
       });
       depth(2, type: 'SNAPSHOT');
       depth(3, previous: 2, quantity: 0);
@@ -542,9 +543,9 @@ class DeferredCancelApi extends ApiClient {
 
 class DepthProbe extends RealtimeClient {
   DepthProbe() : super(const AppConfig(websocketUrl: ''));
-  final recovered = <Map<String, String>>[];
+  final recovered = <Map<String, Object?>>[];
   @override
-  void resubscribe(Map<String, String> subscription) =>
+  void resubscribe(Map<String, Object?> subscription) =>
       recovered.add(subscription);
 }
 

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/account/api_key_edit_dialog.dart';
 import 'package:surprising_client/src/api.dart';

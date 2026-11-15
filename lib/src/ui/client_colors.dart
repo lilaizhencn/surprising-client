@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 abstract final class ClientColors {
   static const foreground = Color(0xFFF2F0F3);

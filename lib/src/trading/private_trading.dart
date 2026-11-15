@@ -1,7 +1,7 @@
 import '../i18n/client_messages.dart';
 import 'trading_details.dart';
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../account_records.dart' show formatExecutionPrice;
 import '../app_state.dart';
 import '../auth/auth_sheet.dart';

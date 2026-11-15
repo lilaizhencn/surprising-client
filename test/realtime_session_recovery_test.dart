@@ -36,10 +36,10 @@ class _Realtime extends RealtimeClient {
   final connections = <({int? userId, String? accessToken})>[];
   void Function()? disconnected;
   int? _lastCloseCode;
-  final resubscriptions = <Map<String, String>>[];
+  final resubscriptions = <Map<String, Object?>>[];
 
   @override
-  void resubscribe(Map<String, String> subscription) {
+  void resubscribe(Map<String, Object?> subscription) {
     resubscriptions.add({...subscription});
   }
 

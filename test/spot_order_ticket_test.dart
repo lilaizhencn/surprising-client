@@ -3,7 +3,7 @@ import 'support/core_snapshot_fixture.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';

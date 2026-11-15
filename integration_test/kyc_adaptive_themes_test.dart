@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' show DisplayFeatureState;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:surprising_client/src/api.dart';
@@ -12,33 +13,55 @@ import 'package:surprising_client/src/models.dart';
 import '../test/support/authentication.dart';
 import '../test/transfer_page_test.dart' show MemorySettings;
 
-/// Only the OS file selector is substituted. Uploads and KYC writes use real HTTP.
-class SyntheticDocumentPicker extends FilePicker {
+final class _SyntheticPlatformFile extends PlatformFile {
+  _SyntheticPlatformFile({required this.name, required this._bytes});
+
   @override
-  Future<FilePickerResult?> pickFiles({
+  final String name;
+  final Uint8List _bytes;
+
+  @override
+  Uri get uri => Uri.file('/$name');
+
+  @override
+  int? lengthSync() => _bytes.length;
+
+  @override
+  Future<int?> length() async => _bytes.length;
+
+  @override
+  Future<Uint8List> readAsBytes() async => _bytes;
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.value(_bytes);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Only the OS file selector is substituted. Uploads and KYC writes use real HTTP.
+class SyntheticDocumentPicker extends FilePickerPlatform {
+  @override
+  Future<PlatformFile?> pickFile({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
     Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = false,
     int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
   }) async {
     final bytes = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=',
     );
-    return FilePickerResult([
-      PlatformFile(
-        name: 'synthetic-identity.png',
-        size: bytes.length,
-        bytes: bytes,
-      ),
-    ]);
+    return _SyntheticPlatformFile(
+      name: 'synthetic-identity.png',
+      bytes: bytes,
+    );
   }
 }
 
@@ -227,9 +250,9 @@ void main() {
           await Future<void>.delayed(const Duration(seconds: 1));
         }
       });
-      final originalPicker = FilePicker.platform;
-      FilePicker.platform = SyntheticDocumentPicker();
-      addTearDown(() => FilePicker.platform = originalPicker);
+      final originalPicker = FilePickerPlatform.instance;
+      FilePickerPlatform.instance = SyntheticDocumentPicker();
+      addTearDown(() => FilePickerPlatform.instance = originalPicker);
       final state = AppState(
         apiClient: ApiClient(const AppConfig(gatewayBaseUrl: qaUrl)),
         initialSession: const AuthSession(

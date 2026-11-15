@@ -1,7 +1,7 @@
 import '../i18n/client_messages.dart';
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import '../funding_records_page.dart';
 import '../models.dart';

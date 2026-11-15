@@ -1,6 +1,6 @@
 import '../i18n/client_messages.dart';
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import '../auth/auth_sheet.dart';
 import '../market/market_chart.dart';

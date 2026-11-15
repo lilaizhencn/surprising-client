@@ -1,5 +1,5 @@
 import '../i18n/client_messages.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import 'client_components.dart';
 import 'client_glass.dart';

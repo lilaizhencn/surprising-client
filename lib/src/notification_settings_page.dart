@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'app_state.dart';
 import 'i18n/client_messages.dart';
 import 'models.dart';
@@ -339,7 +339,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           const SizedBox(width: 8),
           Switch(
             value: value,
-            activeColor: const Color(0xFF00C6FF),
+            activeThumbColor: const Color(0xFF00C6FF),
             activeTrackColor: const Color(0x4D00C6FF),
             inactiveThumbColor: const Color(0xFFB0B0C0),
             inactiveTrackColor: const Color(0xFF2F2F43),

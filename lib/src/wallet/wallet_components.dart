@@ -1,6 +1,6 @@
 import '../i18n/client_messages.dart';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../models.dart';
 import '../ui/client_colors.dart';
 import '../ui/client_components.dart';

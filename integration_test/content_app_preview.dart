@@ -1,5 +1,5 @@
 // Local device QA entry point. Uses the complete production shell and real content API.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:surprising_client/src/api.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';

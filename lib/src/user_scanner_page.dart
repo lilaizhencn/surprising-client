@@ -2,7 +2,7 @@ import 'i18n/client_messages.dart';
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -206,14 +206,14 @@ class _UserScannerPageState extends State<UserScannerPage>
     final owner = identity;
     try {
       await _syncCamera();
-      final selection = await FilePicker.platform.pickFiles(
+      final selection = await FilePicker.pickFile(
         type: FileType.image,
       );
       // Activity results may arrive before the app resumes. Keep the selected
       // image until foreground processing is possible, rather than dropping it.
       if (!mounted || owner != identity || !await _resumePhoto()) return;
       if (!mounted || owner != identity || tabs.index != 0) return;
-      final path = selection?.files.single.path;
+      final path = selection?.path;
       if (path == null) return;
       final result = await camera.analyzeImage(
         path,

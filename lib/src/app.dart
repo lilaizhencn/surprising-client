@@ -1,8 +1,7 @@
 import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:app_links/app_links.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_ui/material_ui.dart';
 import 'announcements/announcement_center.dart';
 import 'app_scope.dart';
 import 'affiliate/affiliate_page.dart';

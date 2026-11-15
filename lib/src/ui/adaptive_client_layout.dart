@@ -1,5 +1,5 @@
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The Navigator owns route state; page routes share a hinge-safe region.
 class ClientRouteObserver extends NavigatorObserver {

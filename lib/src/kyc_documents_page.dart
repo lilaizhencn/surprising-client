@@ -1,6 +1,6 @@
 import 'i18n/client_messages.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'app_state.dart';
 import 'models.dart';
 
@@ -107,7 +107,7 @@ class _KycDocumentsPageState extends State<KycDocumentsPage> {
           row['originalFilename'],
           fallback: 'document-$id.pdf',
         ).replaceAll(RegExp(r'[/\\]'), '_');
-        await FilePicker.platform.saveFile(
+        await FilePicker.saveFile(
           dialogTitle: '保存认证材料',
           fileName: name,
           bytes: bytes,

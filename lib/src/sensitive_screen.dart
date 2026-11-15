@@ -2,7 +2,7 @@ import 'i18n/client_messages.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:screen_protector/screen_protector.dart';
 
 /// The withdrawal route owns native capture protection until the flow is closed.

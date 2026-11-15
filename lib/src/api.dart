@@ -2535,8 +2535,8 @@ class ApiClient {
     await post('/api/v1/user/devices/register', {
       'deviceToken': deviceToken,
       'platform': platform,
-      if (deviceName != null) 'deviceName': deviceName,
-      if (locale != null) 'locale': locale,
+      'deviceName': ?deviceName,
+      'locale': ?locale,
     });
   }
 
@@ -3236,10 +3236,10 @@ class RealtimeClient {
   bool _isPrivate(Map<String, dynamic> message) =>
       message['op'] == 'snapshot' ||
       _privateChannels.contains(message['channel']);
-  final _desired = <String, Map<String, String>>{};
-  final _installed = <String, Map<String, String>>{};
+  final _desired = <String, Map<String, Object?>>{};
+  final _installed = <String, Map<String, Object?>>{};
 
-  void replaceSubscriptions(List<Map<String, String>> subscriptions) {
+  void replaceSubscriptions(List<Map<String, Object?>> subscriptions) {
     _desired.clear();
     for (final s in subscriptions) {
       _desired['${s['productLine']}:${s['channel']}:${s['instrumentId'] ?? s['symbol'] ?? '*'}:${s['period'] ?? ''}'] =
@@ -3251,7 +3251,7 @@ class RealtimeClient {
   void _reconcileSubscriptions() {
     final socket = _socket;
     if (socket == null || socket.readyState != WebSocket.open) return;
-    final allowed = <String, Map<String, String>>{
+    final allowed = <String, Map<String, Object?>>{
       for (final entry in _desired.entries)
         if (!_privateChannels.contains(entry.value['channel']) ||
             _authenticated)
@@ -3273,7 +3273,7 @@ class RealtimeClient {
   }
 
   /// Request a fresh baseline for one installed channel without disturbing others.
-  void resubscribe(Map<String, String> subscription) {
+  void resubscribe(Map<String, Object?> subscription) {
     final key =
         '${subscription['productLine']}:${subscription['channel']}:${subscription['instrumentId'] ?? subscription['symbol'] ?? '*'}:${subscription['period'] ?? ''}';
     final installed = _installed[key];
@@ -3491,7 +3491,7 @@ class RealtimeClient {
     String period = '1m',
     String? productLine,
   }) {
-    subscribe('depth', symbol: symbol, productLine: productLine);
+    subscribe('depth', symbol: symbol, productLine: productLine, depth: 20);
     subscribe('trades', symbol: symbol, productLine: productLine);
     subscribe(
       'candles',
@@ -3513,13 +3513,15 @@ class RealtimeClient {
     String? symbol,
     String? period,
     String? productLine,
+    int? depth,
   }) {
-    final command = <String, String>{'channel': channel};
+    final command = <String, Object?>{'channel': channel};
     if (symbol != null) command['symbol'] = symbol;
     if (period != null) command['period'] = period;
     if (productLine != null && productLine.isNotEmpty) {
       command['productLine'] = productLine;
     }
+    if (depth != null) command['depth'] = depth;
     _desired['$productLine:$channel:${symbol ?? '*'}:${period ?? ''}'] =
         command;
     _reconcileSubscriptions();

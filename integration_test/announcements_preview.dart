@@ -1,6 +1,6 @@
 // Manual/native automation entry point with normal Flutter bindings and real content APIs.
 // Run against ContentQaServer; this entry point is excluded from production builds.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:webview_flutter/webview_flutter.dart';

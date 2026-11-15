@@ -1,6 +1,6 @@
 import 'i18n/client_messages.dart';
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'app_scope.dart';
 import 'wallet/withdrawal_page.dart' show WithdrawalPage;
 import 'exchange_widgets.dart';

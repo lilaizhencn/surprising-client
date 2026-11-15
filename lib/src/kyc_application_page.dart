@@ -1,7 +1,7 @@
 import 'i18n/client_messages.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'app_state.dart';
 import 'models.dart';
 import 'ui/adaptive_client_layout.dart';
@@ -146,26 +146,23 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
   Future<void> _upload(String slot) async {
     if (busy || uploading != null || !current) return;
     final version = generation;
-    FilePickerResult? result;
+    PlatformFile? picked;
     try {
-      result = await FilePicker.platform.pickFiles(
+      picked = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-        withData: true,
       );
     } catch (_) {
       if (current) setState(() => error = '无法打开文件选择器，请检查访问权限');
       return;
     }
-    if (!current ||
-        version != generation ||
-        result == null ||
-        result.files.isEmpty) {
+    if (!current || version != generation || picked == null) {
       return;
     }
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty || bytes.length > 10 * 1024 * 1024) {
+    final file = picked;
+    final bytes = await file.readAsBytes();
+    if (!current || version != generation) return;
+    if (bytes.isEmpty || bytes.length > 10 * 1024 * 1024) {
       setState(() => error = '请选择不超过 10 MB 的 JPG、PNG 或 PDF 材料');
       return;
     }

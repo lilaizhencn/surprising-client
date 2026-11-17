@@ -314,7 +314,7 @@ String assetDisplayName(String symbol) {
   return switch (symbol.toUpperCase()) {
     'BTC' => 'Bitcoin',
     'ETH' => 'Ethereum',
-    'SPEX' => 'Surprising EX',
+    'SPEX' => 'AETERN',
     'SOL' => 'Solana',
     'USDT' => 'Tether',
     'USDC' => 'USD Coin',

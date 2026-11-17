@@ -173,7 +173,7 @@ class _SurprisingClientAppState extends State<SurprisingClientApp> {
         builder: (context, preferences, _) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
-            title: 'Surprising',
+            title: 'AETERN',
             navigatorKey: _navigatorKey,
             navigatorObservers: [_routeObserver],
             builder: (context, child) => BiometricLockGate(

@@ -1,4 +1,5 @@
 import '../i18n/client_messages.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import 'client_components.dart';
@@ -77,7 +78,10 @@ class ExchangeBottomNav extends StatelessWidget {
                       child: _ExchangeNavButton(
                         item: items[i],
                         selected: selectedIndex == i,
-                        onTap: () => onSelected(i),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onSelected(i);
+                        },
                       ),
                     ),
                 ],
@@ -127,7 +131,10 @@ class ExchangeSideNav extends StatelessWidget {
                       child: _ExchangeNavButton(
                         item: items[i],
                         selected: selectedIndex == i,
-                        onTap: () => onSelected(i),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onSelected(i);
+                        },
                       ),
                     ),
                   const SizedBox(height: 12),

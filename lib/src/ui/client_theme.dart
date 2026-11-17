@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import '../models.dart';
+import 'theme/tokens.dart';
 
 /// Each palette has a distinct canvas and saturated accent; trading colors retain their meaning.
 ColorScheme clientColorScheme(ClientTheme theme) {
@@ -14,14 +15,14 @@ ColorScheme clientColorScheme(ClientTheme theme) {
     primary,
   ) = switch (theme) {
     ClientTheme.dark => (
-      0xFF090B0E,
-      0xFF15171C,
-      0xFF24262C,
-      0xFF54401C,
-      0xFFF8F4EA,
-      0xFFC8C5BD,
-      0xFF66615A,
-      0xFFFFC247,
+      0xFF05060F,
+      0xFF0A0D1A,
+      0xFF101426,
+      0xFF171C33,
+      0xFFF4F6FF,
+      0xFFB3BBE0,
+      0xFF283154,
+      0xFF00E5FF,
     ),
     ClientTheme.light => (
       0xFFCCD7EB,
@@ -83,7 +84,7 @@ ColorScheme clientColorScheme(ClientTheme theme) {
     primaryContainer: Color(active),
     onPrimaryContainer: Color(ink),
     secondary: switch (theme) {
-      ClientTheme.dark => const Color(0xFF79A7FF),
+      ClientTheme.dark => const Color(0xFF7C4DFF),
       ClientTheme.light => const Color(0xFF7132A4),
       ClientTheme.ocean => const Color(0xFF69AAFF),
       ClientTheme.forest => const Color(0xFFE5CA61),
@@ -118,6 +119,7 @@ ThemeData buildClientTheme(ClientTheme theme) {
     useMaterial3: true,
     brightness: colors.brightness,
     colorScheme: colors,
+    extensions: const [SurprisingTokens.darkSpace],
     scaffoldBackgroundColor: colors.surfaceDim,
     canvasColor: colors.surfaceDim,
     dividerColor: colors.outlineVariant,

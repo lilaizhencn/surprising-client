@@ -1043,7 +1043,7 @@ const Set<String> clientSourceMessages = {
   "Read the applicable agreements, privacy information and product risk disclosures.",
   "Read the current revision",
   "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.",
-  "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.",
+  "Read the terms, privacy information and product risk disclosures that apply to AETERN.",
   "Ready",
   "Realized PnL",
   "Realtime",
@@ -1307,7 +1307,7 @@ const Set<String> clientSourceMessages = {
   "Sumsub 身份与人脸核验",
   "Support",
   "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.",
-  "Surprising EX home",
+  "AETERN home",
   "Swap accounts",
   "Switch to",
   "Symbol",
@@ -1367,7 +1367,7 @@ const Set<String> clientSourceMessages = {
   "The request timed out before it was sent. Please retry.",
   "The request was not accepted. Please try again shortly.",
   "The requested order or record is no longer available.",
-  "The requested route is not part of the current Surprising EX workspace.",
+  "The requested route is not part of the current AETERN workspace.",
   "The required legal documents are unavailable. Please retry.",
   "The response could not be processed in time. Check the result before retrying.",
   "The result is not yet confirmed. Check your orders or settings before submitting again.",
@@ -1671,7 +1671,7 @@ const Set<String> clientSourceMessages = {
   "{p0}暂无可交易合约",
   "{p0}触发 {p1}",
   "{p0}，重试",
-  "© 2026 Surprising EX. All rights reserved.",
+  "© 2026 AETERN. All rights reserved.",
   "· Memo/Tag:",
   "· 买方实收",
   "· 剩余",
@@ -4758,8 +4758,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "Read the current revision",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "Read the terms, privacy information and product risk disclosures that apply to AETERN.",
     "Ready": "Ready",
     "Realized PnL": "Realized PnL",
     "Realtime": "Realtime",
@@ -5096,7 +5096,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "Support",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.",
-    "Surprising EX home": "Surprising EX home",
+    "AETERN home": "AETERN home",
     "Swap accounts": "Swap accounts",
     "Switch to": "Switch to",
     "Symbol": "Symbol",
@@ -5187,8 +5187,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "The request was not accepted. Please try again shortly.",
     "The requested order or record is no longer available.":
         "The requested order or record is no longer available.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "The requested route is not part of the current Surprising EX workspace.",
+    "The requested route is not part of the current AETERN workspace.":
+        "The requested route is not part of the current AETERN workspace.",
     "The required legal documents are unavailable. Please retry.":
         "The required legal documents are unavailable. Please retry.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -5615,8 +5615,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "There is currently no trading contract for  {p0}",
     "{p0}触发 {p1}": "{p0} trigger {p1}",
     "{p0}，重试": "{p0}, try again",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX. All rights reserved.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN. All rights reserved.",
     "· Memo/Tag:": "· Memo/Tag:",
     "· 买方实收": "· Purchased by the buyer",
     "· 剩余": "· Remaining",
@@ -8968,8 +8968,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "阅读现行版本",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "交易前先读取合约目录。priceTicks、quantitySteps 为整数，实际单位由 priceTickUnits、quantityStepUnits 和币种账务精度决定，不能假设所有币种均为 8 位小数。使用可保留整数精度的 JSON 解析器处理 int64 ID、序号和金额，不得经过 JavaScript Number 舍入。",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "阅读适用于 Surprising EX 的协议、隐私说明及产品风险披露。",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "阅读适用于 AETERN 的协议、隐私说明及产品风险披露。",
     "Ready": "已就绪",
     "Realized PnL": "已实现盈亏",
     "Realtime": "实时",
@@ -9278,7 +9278,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "客服支持",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "证件通过身份认证接口上传，本页面不提供人脸识别功能。",
-    "Surprising EX home": "Surprising EX 首页",
+    "AETERN home": "AETERN 首页",
     "Swap accounts": "交换账户",
     "Switch to": "切换为",
     "Symbol": "合约",
@@ -9360,7 +9360,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "The request was not accepted. Please try again shortly.": "请求尚未受理，请稍后重试。",
     "The requested order or record is no longer available.":
         "该订单或记录已不存在，请刷新后查看最新状态。",
-    "The requested route is not part of the current Surprising EX workspace.":
+    "The requested route is not part of the current AETERN workspace.":
         "请求的页面不存在。",
     "The required legal documents are unavailable. Please retry.":
         "必要协议暂不可用，请重试。",
@@ -9736,8 +9736,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "{p0}暂无可交易合约",
     "{p0}触发 {p1}": "{p0}触发 {p1}",
     "{p0}，重试": "{p0}，重试",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX。保留所有权利。",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN。保留所有权利。",
     "· Memo/Tag:": "· 备注 / 标签：",
     "· 买方实收": "· 买方实收",
     "· 剩余": "· 剩余",
@@ -12727,8 +12727,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "閱讀現行版本",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "交易前先讀取合約目錄。priceTicks、quantitySteps 為整數，實際單位由 priceTickUnits、quantityStepUnits 和幣種賬務精度決定，不能假設所有幣種均為 8 位小數。使用可保留整數精度的 JSON 解析器處理 int64 ID、序號和金額，不得經過 JavaScript Number 舍入。",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "閱讀適用於 Surprising EX 的協議、隱私說明及產品風險披露。",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "閱讀適用於 AETERN 的協議、隱私說明及產品風險披露。",
     "Ready": "已就緒",
     "Realized PnL": "已實現盈虧",
     "Realtime": "實時",
@@ -13037,7 +13037,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "客服支援",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "證件透過身份認證介面上傳，本頁面不提供人臉識別功能。",
-    "Surprising EX home": "Surprising EX 首頁",
+    "AETERN home": "AETERN 首頁",
     "Swap accounts": "交換賬戶",
     "Switch to": "切換為",
     "Symbol": "合約",
@@ -13119,7 +13119,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "The request was not accepted. Please try again shortly.": "請求尚未受理，請稍後重試。",
     "The requested order or record is no longer available.":
         "該訂單或記錄已不存在，請重新整理後檢視最新狀態。",
-    "The requested route is not part of the current Surprising EX workspace.":
+    "The requested route is not part of the current AETERN workspace.":
         "請求的頁面不存在。",
     "The required legal documents are unavailable. Please retry.":
         "必要協議暫不可用，請重試。",
@@ -13495,8 +13495,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "{p0}暫無可交易合約",
     "{p0}触发 {p1}": "{p0}觸發 {p1}",
     "{p0}，重试": "{p0}，重試",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX。保留所有權利。",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN。保留所有權利。",
     "· Memo/Tag:": "· 備註 / 標籤：",
     "· 买方实收": "· 買方實收",
     "· 剩余": "· 剩餘",
@@ -16638,8 +16638,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "Leer la revisión actual",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "Lea el catálogo de instrumentos antes de operar.precioTicks y cantidadLos pasos son números enteros;priceTickUnits, cantidadStepUnits y las escalas de activos determinan sus unidades.No asuma que cada activo tiene 8 decimales.Conserve los ID, secuencias y cantidades de int64 con un analizador JSON seguro para enteros;nunca los redondee a través del número de JavaScript.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Lea los términos, la información de privacidad y las divulgaciones de riesgos del producto que se aplican a Surprising EX.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "Lea los términos, la información de privacidad y las divulgaciones de riesgos del producto que se aplican a AETERN.",
     "Ready": "Listo",
     "Realized PnL": "Realizado PnL",
     "Realtime": "Tiempo real",
@@ -16981,7 +16981,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "Soporte",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "Soportado por el punto final real `/api/v1/compliance/kyc/documents`.La página no afirma tener capacidad de reconocimiento facial.",
-    "Surprising EX home": "Surprising EX inicio",
+    "AETERN home": "AETERN inicio",
     "Swap accounts": "Intercambiar cuentas",
     "Switch to": "Cambiar a",
     "Symbol": "Símbolo",
@@ -17075,8 +17075,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "La solicitud no fue aceptada.Inténtelo de nuevo en breve.",
     "The requested order or record is no longer available.":
         "La orden o registro solicitado ya no está disponible.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "La ruta solicitada no forma parte del espacio de trabajo Surprising EX actual.",
+    "The requested route is not part of the current AETERN workspace.":
+        "La ruta solicitada no forma parte del espacio de trabajo AETERN actual.",
     "The required legal documents are unavailable. Please retry.":
         "Los documentos legales requeridos no están disponibles.Vuelva a intentarlo.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -17505,8 +17505,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "Actualmente no existe ningún contrato comercial para  {p0}",
     "{p0}触发 {p1}": "{p0} disparador {p1}",
     "{p0}，重试": "{p0}, inténtalo de nuevo",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.Reservados todos los derechos.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.Reservados todos los derechos.",
     "· Memo/Tag:": "· Nota/Etiqueta:",
     "· 买方实收": "· Comprado por el comprador",
     "· 剩余": "· Restante",
@@ -21114,8 +21114,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "Lire la révision actuelle",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "Lisez le catalogue d'instruments avant de négocier.priceTicks etQuantitySteps sont des nombres entiers ;Les priceTickUnits, lesQuantityStepUnits et les échelles d'actifs déterminent leurs unités.Ne présumez pas que chaque actif comporte 8 décimales.Préservez les ID, les séquences et les montants int64 avec un analyseur JSON sécurisé pour les entiers ;ne les arrondissez jamais via JavaScript Number.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Lisez les conditions, les informations de confidentialité et les informations sur les risques liés au produit qui s'appliquent au Surprising EX.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "Lisez les conditions, les informations de confidentialité et les informations sur les risques liés au produit qui s'appliquent au AETERN.",
     "Ready": "Prêt",
     "Realized PnL": "Réalisé PnL",
     "Realtime": "en temps réel",
@@ -21461,7 +21461,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "Prise en charge",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "Pris en charge par le véritable point de terminaison `/api/v1/compliance/kyc/documents`.La page ne revendique pas de capacité de reconnaissance faciale.",
-    "Surprising EX home": "Surprising EX maison",
+    "AETERN home": "AETERN maison",
     "Swap accounts": "Échanger des comptes",
     "Switch to": "Passer à",
     "Symbol": "Symbole",
@@ -21555,8 +21555,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "La demande n'a pas été acceptée.Veuillez réessayer sous peu.",
     "The requested order or record is no longer available.":
         "La commande ou l'enregistrement demandé n'est plus disponible.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "L'itinéraire demandé ne fait pas partie de l'espace de travail Surprising EX actuel.",
+    "The requested route is not part of the current AETERN workspace.":
+        "L'itinéraire demandé ne fait pas partie de l'espace de travail AETERN actuel.",
     "The required legal documents are unavailable. Please retry.":
         "Les documents juridiques requis ne sont pas disponibles.Veuillez réessayer.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -21991,8 +21991,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "Il n’existe actuellement aucun contrat commercial pour  {p0}.",
     "{p0}触发 {p1}": "{p0} déclencheur {p1}",
     "{p0}，重试": "{p0}, réessayez",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.Tous droits réservés.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.Tous droits réservés.",
     "· Memo/Tag:": "· Mémo/Étiquette :",
     "· 买方实收": "· Acheté par l'acheteur",
     "· 剩余": "· Restant",
@@ -25637,8 +25637,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "Lesen Sie die aktuelle Revision",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "Lesen Sie vor dem Handel den Instrumentenkatalog.PriceTicks und QuantitySteps sind Ganzzahlen;PriceTickUnits, QuantityStepUnits und Asset-Skalen bestimmen ihre Einheiten.Gehen Sie nicht davon aus, dass jeder Vermögenswert 8 Dezimalstellen hat.Behalten Sie int64-IDs, -Sequenzen und -Beträge mit einem ganzzahlsicheren JSON-Parser bei.Runden Sie sie niemals durch JavaScript-Zahlen.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Lesen Sie die Bedingungen, Datenschutzinformationen und Produktrisikohinweise, die für Surprising EX gelten.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "Lesen Sie die Bedingungen, Datenschutzinformationen und Produktrisikohinweise, die für AETERN gelten.",
     "Ready": "Bereit",
     "Realized PnL": "Realisiert PnL",
     "Realtime": "Echtzeit",
@@ -25983,7 +25983,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "-Unterstützung",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "Unterstützt vom echten Endpunkt „/api/v1/compliance/kyc/documents“.Die Seite beansprucht keine Fähigkeit zur Gesichtserkennung.",
-    "Surprising EX home": "Surprising EX Startseite",
+    "AETERN home": "AETERN Startseite",
     "Swap accounts": "Swap-Konten",
     "Switch to": "Wechseln zu",
     "Symbol": "-Symbol",
@@ -26077,8 +26077,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "Die Anfrage wurde nicht angenommen.Bitte versuchen Sie es in Kürze noch einmal.",
     "The requested order or record is no longer available.":
         "Der angeforderte Auftrag oder Datensatz ist nicht mehr verfügbar.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "Die angeforderte Route ist nicht Teil des aktuellen Surprising EX-Arbeitsbereichs.",
+    "The requested route is not part of the current AETERN workspace.":
+        "Die angeforderte Route ist nicht Teil des aktuellen AETERN-Arbeitsbereichs.",
     "The required legal documents are unavailable. Please retry.":
         "Die erforderlichen Rechtsdokumente sind nicht verfügbar.Bitte versuchen Sie es erneut.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -26513,8 +26513,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "Derzeit besteht kein Handelsvertrag für  {p0}",
     "{p0}触发 {p1}": "{p0} Auslöser {p1}",
     "{p0}，重试": "{p0}, versuchen Sie es erneut",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.Alle Rechte vorbehalten.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.Alle Rechte vorbehalten.",
     "· Memo/Tag:": "· Memo/Tag:",
     "· 买方实收": "· Vom Käufer gekauft",
     "· 剩余": "· Verbleibend",
@@ -30151,8 +30151,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "Leia a revisão atual",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "Leia o catálogo de instrumentos antes de negociar.priceTicks e amountSteps são números inteiros;priceTickUnits, amountStepUnits e escalas de ativos determinam suas unidades.Não presuma que cada ativo tenha 8 casas decimais.Preserve IDs, sequências e quantidades int64 com um analisador JSON seguro para números inteiros;nunca arredonde-os através do número JavaScript.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Leia os termos, informações de privacidade e divulgações de risco do produto que se aplicam ao Surprising EX.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "Leia os termos, informações de privacidade e divulgações de risco do produto que se aplicam ao AETERN.",
     "Ready": "pronto",
     "Realized PnL": "Realizado PnL",
     "Realtime": "em tempo real",
@@ -30493,7 +30493,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "Suporte",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "Suportado pelo terminal `/api/v1/compliance/kyc/documents` real.A página não reivindica capacidade de reconhecimento facial.",
-    "Surprising EX home": "Surprising EX página inicial",
+    "AETERN home": "AETERN página inicial",
     "Swap accounts": "Trocar contas",
     "Switch to": "Mudar para",
     "Symbol": "Símbolo",
@@ -30585,8 +30585,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "A solicitação não foi aceita.Por favor, tente novamente em breve.",
     "The requested order or record is no longer available.":
         "O pedido ou registro solicitado não está mais disponível.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "A rota solicitada não faz parte da área de trabalho Surprising EX atual.",
+    "The requested route is not part of the current AETERN workspace.":
+        "A rota solicitada não faz parte da área de trabalho AETERN atual.",
     "The required legal documents are unavailable. Please retry.":
         "Os documentos legais exigidos não estão disponíveis.Por favor, tente novamente.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -31012,8 +31012,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "Atualmente não há contrato comercial para  {p0}",
     "{p0}触发 {p1}": "{p0} gatilho {p1}",
     "{p0}，重试": "{p0}, tente novamente",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.Todos os direitos reservados.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.Todos os direitos reservados.",
     "· Memo/Tag:": "· Memorando/Etiqueta:",
     "· 买方实收": "· Adquirido pelo comprador",
     "· 剩余": "· Restante",
@@ -34570,8 +34570,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "Прочитать текущую версию",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "Перед торговлей прочтите каталог инструментов.PriceTicks и QuantitySteps являются целыми числами;PriceTickUnits, QuantityStepUnits и шкалы активов определяют свои единицы измерения.Не думайте, что каждый актив имеет 8 десятичных знаков.Сохраняйте идентификаторы, последовательности и суммы int64 с помощью синтаксического анализатора JSON, безопасного для целых чисел;никогда не округляйте их через число JavaScript.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Прочтите условия, информацию о конфиденциальности и информацию о рисках, применимых к Surprising EX.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "Прочтите условия, информацию о конфиденциальности и информацию о рисках, применимых к AETERN.",
     "Ready": "Готово",
     "Realized PnL": "Реализован PnL",
     "Realtime": "В реальном времени",
@@ -34913,7 +34913,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "Поддержка",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "Поддерживается реальной конечной точкой `/api/v1/compliance/kyc/documents`.На странице не заявлена ​​возможность распознавания лиц.",
-    "Surprising EX home": "Surprising EX домой",
+    "AETERN home": "AETERN домой",
     "Swap accounts": "Обмен счетов",
     "Switch to": "Переключиться на",
     "Symbol": "Символ",
@@ -35003,8 +35003,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "Запрос не принят.Пожалуйста, повторите попытку в ближайшее время.",
     "The requested order or record is no longer available.":
         "Запрошенный заказ или запись больше не доступны.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "Запрошенный маршрут не является частью текущего рабочего пространства Surprising EX.",
+    "The requested route is not part of the current AETERN workspace.":
+        "Запрошенный маршрут не является частью текущего рабочего пространства AETERN.",
     "The required legal documents are unavailable. Please retry.":
         "Необходимые юридические документы недоступны.Пожалуйста, повторите попытку.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -35431,8 +35431,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "На данный момент нет торгового контракта на  {p0}.",
     "{p0}触发 {p1}": "{p0} триггер {p1}",
     "{p0}，重试": "{p0}, попробуйте еще раз",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.Все права защищены.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.Все права защищены.",
     "· Memo/Tag:": "· Памятка/Тег:",
     "· 买方实收": "· Приобретено покупателем",
     "· 剩余": "· Осталось",
@@ -38935,8 +38935,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "اقرأ المراجعة الحالية",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "اقرأ كتالوج الأدوات قبل التداول.PriceTicks وQuantitySteps عبارة عن أعداد صحيحة؛تحدد الأسعار والوحدات والكمية ومقاييس الأصول وحداتها.لا تفترض أن كل أصل يحتوي على 8 أرقام عشرية.الحفاظ على معرفات وتسلسلات ومبالغ int64 باستخدام محلل JSON آمن للأعداد الصحيحة؛لا تقم أبدًا بتقريبها من خلال رقم JavaScript.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "اقرأ الشروط ومعلومات الخصوصية والإفصاحات عن مخاطر المنتج التي تنطبق على Surprising EX.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "اقرأ الشروط ومعلومات الخصوصية والإفصاحات عن مخاطر المنتج التي تنطبق على AETERN.",
     "Ready": "جاهز",
     "Realized PnL": "تحققت PnL",
     "Realtime": "في الوقت الحقيقي",
@@ -39272,7 +39272,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "دعم",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "مدعوم بنقطة النهاية الحقيقية `/api/v1/compliance/kyc/documents`.لا تطالب الصفحة بإمكانية التعرف على الوجوه.",
-    "Surprising EX home": "Surprising EX المنزل",
+    "AETERN home": "AETERN المنزل",
     "Swap accounts": "حسابات المبادلة",
     "Switch to": "قم بالتبديل إلى",
     "Symbol": "الرمز",
@@ -39364,8 +39364,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "لم يتم قبول الطلب.يرجى المحاولة مرة أخرى قريبا.",
     "The requested order or record is no longer available.":
         "الأمر أو السجل المطلوب لم يعد متاحًا.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "المسار المطلوب ليس جزءًا من مساحة العمل Surprising EX الحالية.",
+    "The requested route is not part of the current AETERN workspace.":
+        "المسار المطلوب ليس جزءًا من مساحة العمل AETERN الحالية.",
     "The required legal documents are unavailable. Please retry.":
         "المستندات القانونية المطلوبة غير متوفرة.يرجى إعادة المحاولة.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -39782,8 +39782,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "لا يوجد حاليا أي عقد تداول لـ  {p0}",
     "{p0}触发 {p1}": "{p0} الزناد {p1}",
     "{p0}，重试": "{p0}، حاول مرة أخرى",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.جميع الحقوق محفوظة.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.جميع الحقوق محفوظة.",
     "· Memo/Tag:": "· المذكرة/العلامة:",
     "· 买方实收": "· تم شراؤها من قبل المشتري",
     "· 剩余": "· المتبقي",
@@ -43106,8 +43106,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "現在のリビジョンを読む",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "取引する前に商品カタログをお読みください。PriceTicks と amountSteps は整数です。PriceTickUnits、quantityStepUnits、および資産スケールが単位を決定します。すべての資産に小数点以下 8 桁があると想定しないでください。整数セーフな JSON パーサーを使用して int64 ID、シーケンス、および量を保持します。決して JavaScript 数値で四捨五入しないでください。",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Surprising EX に適用される規約、プライバシー情報、および製品リスク開示をお読みください。",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "AETERN に適用される規約、プライバシー情報、および製品リスク開示をお読みください。",
     "Ready": "準備完了",
     "Realized PnL": "実現 PnL",
     "Realtime": "リアルタイム",
@@ -43430,7 +43430,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "のサポート",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "実際の `/api/v1/compliance/kyc/documents` エンドポイントによってサポートされます。このページでは顔認識機能を謳っていません。",
-    "Surprising EX home": "Surprising EX ホーム",
+    "AETERN home": "AETERN ホーム",
     "Swap accounts": "アカウントを交換する",
     "Switch to": "に切り替える",
     "Symbol": "記号",
@@ -43518,8 +43518,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "リクエストは受け入れられませんでした。しばらくしてからもう一度お試しください。",
     "The requested order or record is no longer available.":
         "要求された注文またはレコードは利用できなくなりました。",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "要求されたルートは現在の Surprising EX ワークスペースの一部ではありません。",
+    "The requested route is not part of the current AETERN workspace.":
+        "要求されたルートは現在の AETERN ワークスペースの一部ではありません。",
     "The required legal documents are unavailable. Please retry.":
         "必要な法的文書が入手できません。再試行してください。",
     "The response could not be processed in time. Check the result before retrying.":
@@ -43917,8 +43917,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "現在、 {p0} の取引契約はありません。",
     "{p0}触发 {p1}": "{p0} トリガー {p1}",
     "{p0}，重试": "{p0}、もう一度試してください",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.無断転載を禁じます。",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.無断転載を禁じます。",
     "· Memo/Tag:": "· メモ/タグ:",
     "· 买方实收": "· 購入者が購入",
     "· 剩余": "· 残り",
@@ -47013,8 +47013,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "현재 개정판 읽기",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "거래하기 전에 기기 카탈로그를 읽어보세요.PriceTicks 및 QuantitySteps는 정수입니다.PriceTickUnits, QuantityStepUnits 및 자산 규모에 따라 단위가 결정됩니다.모든 자산에 소수점 이하 8자리가 있다고 가정하지 마십시오.정수 안전 JSON 파서를 사용하여 int64 ID, 시퀀스 및 양을 보존합니다.절대로 JavaScript Number로 반올림하지 마십시오.",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Surprising EX에 ​​적용되는 약관, 개인정보 보호 정보 및 제품 위험 공개를 읽어보세요.",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "AETERN에 ​​적용되는 약관, 개인정보 보호 정보 및 제품 위험 공개를 읽어보세요.",
     "Ready": "준비",
     "Realized PnL": "는 PnL를 실현했습니다.",
     "Realtime": "실시간",
@@ -47334,7 +47334,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "지원",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "실제 `/api/v1/compliance/kyc/documents` 엔드포인트에서 지원됩니다.페이지에서는 얼굴 인식 기능을 주장하지 않습니다.",
-    "Surprising EX home": "Surprising EX 홈",
+    "AETERN home": "AETERN 홈",
     "Swap accounts": "스왑 계좌",
     "Switch to": "로 전환",
     "Symbol": "기호",
@@ -47421,8 +47421,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "요청이 수락되지 않았습니다.잠시 후 다시 시도해 주세요.",
     "The requested order or record is no longer available.":
         "요청한 주문 또는 기록을 더 이상 사용할 수 없습니다.",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "요청한 경로는 현재 Surprising EX 작업 공간의 일부가 아닙니다.",
+    "The requested route is not part of the current AETERN workspace.":
+        "요청한 경로는 현재 AETERN 작업 공간의 일부가 아닙니다.",
     "The required legal documents are unavailable. Please retry.":
         "필요한 법률 문서를 사용할 수 없습니다.다시 시도해 주세요.",
     "The response could not be processed in time. Check the result before retrying.":
@@ -47820,8 +47820,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "현재  {p0}에 대한 거래 계약이 없습니다.",
     "{p0}触发 {p1}": "{p0} 트리거 {p1}",
     "{p0}，重试": "{p0}, 다시 시도하세요",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX.모든 권리 보유.",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN.모든 권리 보유.",
     "· Memo/Tag:": "· 메모/태그:",
     "· 买方实收": "· 구매자가 구매함",
     "· 剩余": "· 남음",
@@ -50989,8 +50989,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Read the current revision": "वर्तमान संशोधन पढ़ें",
     "Read the instrument catalog before trading. priceTicks and quantitySteps are integers; priceTickUnits, quantityStepUnits and asset scales determine their units. Do not assume every asset has 8 decimals. Preserve int64 IDs, sequences and amounts with an integer-safe JSON parser; never round them through JavaScript Number.":
         "ट्रेडिंग से पहले इंस्ट्रूमेंट कैटलॉग पढ़ें।मूल्य टिक्स और मात्रा चरण पूर्णांक हैं;प्राइसटिकयूनिट्स, क्वांटिटीस्टेपयूनिट्स और एसेट स्केल उनकी इकाइयाँ निर्धारित करते हैं।यह न मानें कि प्रत्येक संपत्ति में 8 दशमलव हैं।पूर्णांक-सुरक्षित JSON पार्सर के साथ int64 आईडी, अनुक्रम और मात्राएँ सुरक्षित रखें;उन्हें कभी भी JavaScript संख्या के माध्यम से पूर्णांकित न करें।",
-    "Read the terms, privacy information and product risk disclosures that apply to Surprising EX.":
-        "Surprising EX पर लागू होने वाली शर्तें, गोपनीयता जानकारी और उत्पाद जोखिम प्रकटीकरण पढ़ें।",
+    "Read the terms, privacy information and product risk disclosures that apply to AETERN.":
+        "AETERN पर लागू होने वाली शर्तें, गोपनीयता जानकारी और उत्पाद जोखिम प्रकटीकरण पढ़ें।",
     "Ready": "तैयार",
     "Realized PnL": "ने PnL को साकार किया",
     "Realtime": "रीयलटाइम",
@@ -51330,7 +51330,7 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "Support": "समर्थन",
     "Supported by the real `/api/v1/compliance/kyc/documents` endpoint. The page does not claim face recognition capability.":
         "वास्तविक `/api/v1/compliance/kyc/documents` समापन बिंदु द्वारा समर्थित।पेज चेहरा पहचानने की क्षमता का दावा नहीं करता.",
-    "Surprising EX home": "Surprising EX होम",
+    "AETERN home": "AETERN होम",
     "Swap accounts": "स्वैप खाते",
     "Switch to": "पर स्विच करें",
     "Symbol": "प्रतीक",
@@ -51422,8 +51422,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
         "अनुरोध स्वीकार नहीं किया गया।कृपया शीघ्र ही पुनः प्रयास करें.",
     "The requested order or record is no longer available.":
         "अनुरोधित आदेश या रिकॉर्ड अब उपलब्ध नहीं है।",
-    "The requested route is not part of the current Surprising EX workspace.":
-        "अनुरोधित मार्ग वर्तमान Surprising EX कार्यक्षेत्र का हिस्सा नहीं है।",
+    "The requested route is not part of the current AETERN workspace.":
+        "अनुरोधित मार्ग वर्तमान AETERN कार्यक्षेत्र का हिस्सा नहीं है।",
     "The required legal documents are unavailable. Please retry.":
         "आवश्यक कानूनी दस्तावेज़ अनुपलब्ध हैं।कृपया फिर से कोशिश करें।",
     "The response could not be processed in time. Check the result before retrying.":
@@ -51845,8 +51845,8 @@ const Map<String, Map<String, String>> clientMessageCatalogs = {
     "{p0}暂无可交易合约": "{p0} के लिए वर्तमान में कोई व्यापारिक अनुबंध नहीं है",
     "{p0}触发 {p1}": "{p0} ट्रिगर {p1}",
     "{p0}，重试": "{p0}, पुनः प्रयास करें",
-    "© 2026 Surprising EX. All rights reserved.":
-        "© 2026 Surprising EX।सर्वाधिकार सुरक्षित।",
+    "© 2026 AETERN. All rights reserved.":
+        "© 2026 AETERN।सर्वाधिकार सुरक्षित।",
     "· Memo/Tag:": "· मेमो/टैग:",
     "· 买方实收": "· खरीदार द्वारा खरीदा गया",
     "· 剩余": "· शेष",

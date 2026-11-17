@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../ui/theme/aetern_logo.dart';
 import '../app_scope.dart';
 import '../app_state.dart';
 import '../models.dart';
@@ -258,11 +259,8 @@ class _AuthSheetState extends State<AuthSheet> {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    'Surprising',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                const Expanded(
+                  child: AeternBrandLockup(markSize: 28, fontSize: 18),
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),

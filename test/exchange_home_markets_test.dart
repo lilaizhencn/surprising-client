@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:surprising_client/src/ui/theme/aetern_logo.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/exchange_widgets.dart';
@@ -38,7 +39,8 @@ void main() {
             await tester.pumpWidget(
               SurprisingClientApp(state: state, bootstrap: false),
             );
-            expect(find.text('交易所'), findsOneWidget);
+            expect(find.text('交易所'), findsNothing);
+      expect(find.byType(AeternBrandLockup), findsOneWidget);
             expect(find.text('总资产估值'), findsOneWidget);
             expect(find.textContaining('今日收益 '), findsOneWidget);
             expect(find.text('链上充币'), findsOneWidget);

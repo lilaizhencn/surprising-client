@@ -369,7 +369,9 @@ void main() {
         );
         await tester.tap(find.text('当前委托 (0)'));
         await tester.pumpAndSettle();
-        final cancel = find.text('撤销当前交易对委托');
+        final cancel = find.byKey(const ValueKey('cancel-open-orders'));
+        expect(cancel, findsOneWidget);
+        expect(find.byTooltip('撤销当前交易对委托'), findsOneWidget);
         await tester.ensureVisible(cancel);
         await tester.tap(cancel);
         await tester.pumpAndSettle();

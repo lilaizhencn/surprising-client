@@ -895,6 +895,24 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> announcementDetail({
+    required int announcementId,
+    required String locale,
+    required String productLine,
+    required String platform,
+    required String placement,
+  }) {
+    return get(
+      '/api/v1/announcements/$announcementId',
+      query: {
+        'locale': locale,
+        'productLine': productLine,
+        'platform': platform,
+        'placement': placement,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> markAnnouncementRead({
     required int announcementId,
     required String productLine,

@@ -21,19 +21,10 @@ Future<void> confirmSpotCancellation(
       symbol = state.selectedSymbol;
   final accepted = await showDialog<bool>(
     context: context,
-    builder: (dialog) => AlertDialog(
-      title: LText(onlyCurrent ? '撤销 $symbol 当前委托？' : '撤销全部现货委托？'),
-      content: const LText('只处理本次读取到的委托。部分成交或已结束的订单可能无法撤销，请查看逐项结果。'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialog, false),
-          child: const LText('返回'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(dialog, true),
-          child: const LText('确认撤单'),
-        ),
-      ],
+    builder: (dialog) => AuroraConfirmDialog(
+      title: onlyCurrent ? '撤销 $symbol 当前委托？' : '撤销全部现货委托？',
+      message: '只处理本次读取到的委托。部分成交或已结束的订单可能无法撤销，请查看逐项结果。',
+      confirmLabel: '确认撤单',
     ),
   );
   if (accepted == true &&
@@ -172,32 +163,57 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
               ),
             ],
           ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final entry in [
-                if (!state.mode.isSpot) (0, '持仓 (${state.positions.length})'),
-                (1, '当前委托 (${state.openOrders.length})'),
-                (2, '止盈止损 / 策略 ($botCount)'),
-                (3, '最近订单更新'),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(entry.$2),
-                    selected: tab == entry.$1,
-                    onSelected: (_) {
-                      setState(() => tab = entry.$1);
-                      if (entry.$1 == 0) {
-                        unawaited(state.refreshRiskDetails());
-                      }
-                      if (entry.$1 == 2) unawaited(state.refreshAlgoOrders());
-                    },
-                  ),
+        Row(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final entry in [
+                      if (!state.mode.isSpot)
+                        (0, '持仓 (${state.positions.length})'),
+                      (1, '当前委托 (${state.openOrders.length})'),
+                      (2, '止盈止损 / 策略 ($botCount)'),
+                      (3, '最近订单更新'),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(entry.$2),
+                          selected: tab == entry.$1,
+                          onSelected: (_) {
+                            setState(() => tab = entry.$1);
+                            if (entry.$1 == 0) {
+                              unawaited(state.refreshRiskDetails());
+                            }
+                            if (entry.$1 == 2) {
+                              unawaited(state.refreshAlgoOrders());
+                            }
+                          },
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
+              ),
+            ),
+            if (tab == 1 && state.mode == ProductMode.spot && state.isLoggedIn)
+              IconButton(
+                key: const ValueKey('cancel-open-orders'),
+                tooltip: state.onlyCurrentTradingPair
+                    ? '撤销当前交易对委托'
+                    : '撤销全部现货委托',
+                onPressed:
+                    state.submittingOrder || state.tradingCommandPending
+                    ? null
+                    : () => confirmSpotCancellation(context, state),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  side: BorderSide.none,
+                ),
+                icon: const Icon(Icons.delete_sweep_outlined),
+              ),
+          ],
         ),
         CheckboxListTile(
           dense: true,
@@ -261,14 +277,6 @@ class _PrivateTradingPanelState extends State<PrivateTradingPanel> {
             ),
         ],
         if (tab == 1 && state.mode == ProductMode.spot && state.isLoggedIn) ...[
-          OutlinedButton(
-            onPressed: state.submittingOrder || state.tradingCommandPending
-                ? null
-                : () => confirmSpotCancellation(context, state),
-            child: LText(
-              state.onlyCurrentTradingPair ? '撤销当前交易对委托' : '撤销全部现货委托',
-            ),
-          ),
           if (state.lastCancellationResult?.userId == state.userId) ...[
             LText(
               '已处理 ${state.lastCancellationResult!.requested} 笔，成功 ${state.lastCancellationResult!.completed} 笔，失败 ${state.lastCancellationResult!.failed} 笔',

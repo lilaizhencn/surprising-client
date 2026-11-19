@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:surprising_client/src/ui/theme/aetern_logo.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
 import 'package:surprising_client/src/ui/adaptive_client_layout.dart';
@@ -35,7 +36,8 @@ void main() {
       expect(bounds.overlaps(hinge), false);
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
-      expect(find.text('交易所'), findsOneWidget);
+      expect(find.text('交易所'), findsNothing);
+      expect(find.byType(AeternBrandLockup), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

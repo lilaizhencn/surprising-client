@@ -13,6 +13,7 @@ import '../ui/client_colors.dart';
 import '../ui/client_components.dart';
 import '../ui/client_navigation.dart';
 import '../ui/crypto_avatar.dart';
+import '../ui/theme/aetern_logo.dart';
 import '../user_scanner_page.dart';
 import 'market_chart.dart';
 
@@ -67,9 +68,13 @@ class _HomePageState extends State<HomePage> {
             Row(
               children: [
                 const Expanded(
-                  child: LText(
-                    '交易所',
-                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: AeternBrandLockup(markSize: 28, fontSize: 18),
+                    ),
                   ),
                 ),
                 IconButton(

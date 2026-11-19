@@ -226,8 +226,16 @@ class _TradePageState extends State<TradePage> {
                 const SizedBox(height: 4),
                 LayoutBuilder(
                   builder: (context, constraints) {
+                    final screenHeight = MediaQuery.sizeOf(context).height;
+                    final ticketHeight = (bracketExpanded
+                            ? screenHeight * 0.58
+                            : screenHeight * 0.50)
+                        .clamp(
+                          bracketExpanded ? 480.0 : 440.0,
+                          bracketExpanded ? 680.0 : 600.0,
+                        );
                     final entry = SizedBox(
-                      height: bracketExpanded ? 460 : 380,
+                      height: ticketHeight,
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -384,23 +392,7 @@ class _TradePageState extends State<TradePage> {
                         ],
                       ),
                     );
-                    if (constraints.maxWidth < 1000) return entry;
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 6,
-                          child: KlinePanel(
-                            candles: state.candles,
-                            period: state.period,
-                            onPeriod: (period) =>
-                                unawaited(state.selectPeriod(period)),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(flex: 7, child: entry),
-                      ],
-                    );
+                    return entry;
                   },
                 ),
                 const SizedBox(height: 8),
@@ -440,35 +432,6 @@ class _TradePageState extends State<TradePage> {
                   ),
                   const SizedBox(height: 2),
                 ],
-                Theme(
-                  data: Theme.of(
-                    context,
-                  ).copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 2),
-                    collapsedIconColor: Theme.of(
-                      context,
-                    ).colorScheme.onSurfaceVariant,
-                    iconColor: Theme.of(context).colorScheme.onSurface,
-                    title: LText(
-                      '${instrument.displayName.replaceAll('-', '')} ${instrument.contractLabel} K线图表',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    children: [
-                      KlinePanel(
-                        candles: state.candles,
-                        period: state.period,
-                        onPeriod: (period) =>
-                            unawaited(state.selectPeriod(period)),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),

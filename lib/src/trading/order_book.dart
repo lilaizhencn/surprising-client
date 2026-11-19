@@ -30,6 +30,8 @@ class OrderBookPanel extends StatefulWidget {
 
 class _OrderBookPanelState extends State<OrderBookPanel> {
   int _tab = 0;
+  int _visibleLevels = 20;
+  static const _depthChoices = [5, 10, 20, 50];
 
   @override
   Widget build(BuildContext context) {
@@ -37,12 +39,13 @@ class _OrderBookPanelState extends State<OrderBookPanel> {
     final colors = Theme.of(context).colorScheme;
     final instrument = widget.instrument;
     final orderBook = widget.orderBook;
+    final visible = _visibleLevels;
     final maxQuantity = [
-      ...orderBook.asks.take(5),
-      ...orderBook.bids.take(5),
+      ...orderBook.asks.take(visible),
+      ...orderBook.bids.take(visible),
     ].fold<int>(0, (value, level) => math.max(value, level.quantitySteps));
-    final asks = orderBook.asks.take(5).toList().reversed.toList();
-    final bids = orderBook.bids.take(5).toList();
+    final asks = orderBook.asks.take(visible).toList().reversed.toList();
+    final bids = orderBook.bids.take(visible).toList();
     final askTotal = asks.fold<BigInt>(
       BigInt.zero,
       (sum, level) => sum + BigInt.from(level.quantitySteps),
@@ -82,16 +85,19 @@ class _OrderBookPanelState extends State<OrderBookPanel> {
                 onTap: () => setState(() => _tab = 1),
               ),
               if (_tab == 0)
-                InkWell(
-                  onTap: () => showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (_) => AppScope(
-                      notifier: state,
-                      child: FullOrderBookSheet(onPrice: widget.onPrice),
-                    ),
-                  ),
-                  borderRadius: BorderRadius.circular(4),
+                PopupMenuButton<int>(
+                  key: const ValueKey('order-book-depth-menu'),
+                  tooltip: clientLabel(context, '盘口档位'),
+                  initialValue: _visibleLevels,
+                  padding: EdgeInsets.zero,
+                  onSelected: (value) => setState(() => _visibleLevels = value),
+                  itemBuilder: (context) => [
+                    for (final depth in _depthChoices)
+                      PopupMenuItem<int>(
+                        value: depth,
+                        child: LText('$depth档'),
+                      ),
+                  ],
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 5,
@@ -101,13 +107,23 @@ class _OrderBookPanelState extends State<OrderBookPanel> {
                       color: colors.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: LText(
-                      '20档',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: colors.onSurfaceVariant,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        LText(
+                          '$_visibleLevels档',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down,
+                          size: 14,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -136,49 +152,64 @@ class _OrderBookPanelState extends State<OrderBookPanel> {
               ],
             ),
             const SizedBox(height: 3),
-            if (widget.recovering)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
-                child: LText(
-                  '盘口恢复中',
-                  key: ValueKey('depth-recovering'),
-                  style: TextStyle(fontSize: 10),
-                ),
-              ),
-            for (final level in asks)
-              BookLine(
-                level: level,
-                maxQuantity: maxQuantity,
-                instrument: instrument,
-                color: colors.error,
-                onTap: widget.onPrice,
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(
-                displayPrice == null
-                    ? '--'
-                    : money(displayPrice, digits: instrument.pricePrecision),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: colors.tertiary,
-                ),
+            Expanded(
+              child: Column(
+                children: [
+                  if (widget.recovering)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                      child: LText(
+                        '盘口恢复中',
+                        key: ValueKey('depth-recovering'),
+                        style: TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        for (final level in asks)
+                          BookLine(
+                            level: level,
+                            maxQuantity: maxQuantity,
+                            instrument: instrument,
+                            color: colors.error,
+                            onTap: widget.onPrice,
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Text(
+                            displayPrice == null
+                                ? '--'
+                                : money(
+                                    displayPrice,
+                                    digits: instrument.pricePrecision,
+                                  ),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: colors.tertiary,
+                            ),
+                          ),
+                        ),
+                        for (final level in bids)
+                          BookLine(
+                            level: level,
+                            maxQuantity: maxQuantity,
+                            instrument: instrument,
+                            color: colors.tertiary,
+                            onTap: widget.onPrice,
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (bids.isNotEmpty || asks.isNotEmpty)
+                    OrderBookRatioBar(buyRatio: buyRatio)
+                  else
+                    const SizedBox(height: 4),
+                ],
               ),
             ),
-            for (final level in bids)
-              BookLine(
-                level: level,
-                maxQuantity: maxQuantity,
-                instrument: instrument,
-                color: colors.tertiary,
-                onTap: widget.onPrice,
-              ),
-            const Spacer(),
-            if (bids.isNotEmpty || asks.isNotEmpty)
-              OrderBookRatioBar(buyRatio: buyRatio)
-            else
-              const SizedBox(height: 4),
           ] else ...[
             Row(
               children: [

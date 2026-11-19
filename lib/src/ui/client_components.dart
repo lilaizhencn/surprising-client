@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart';
 import '../models.dart';
 import 'client_colors.dart';
+import 'theme/tokens.dart';
 import '../i18n/client_messages.dart';
 
 String clientText(ClientLanguage language, String zh, String en) {
@@ -564,4 +565,92 @@ class _SparklePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class AuroraConfirmDialog extends StatelessWidget {
+  const AuroraConfirmDialog({
+    required this.title,
+    required this.message,
+    required this.confirmLabel,
+    this.cancelLabel = '返回',
+    super.key,
+  });
+
+  final String title;
+  final String message;
+  final String confirmLabel;
+  final String cancelLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: tokens.auroraPrimaryGradient,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: tokens.glow(1),
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(1.5),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          decoration: BoxDecoration(
+            color: tokens.bgElevated2,
+            borderRadius: BorderRadius.circular(16.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LText(
+                title,
+                style: TextStyle(
+                  color: tokens.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              LText(
+                message,
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: LText(cancelLabel),
+                  ),
+                  const SizedBox(width: 8),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: tokens.auroraPrimaryGradient,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: tokens.bgVoid,
+                      ),
+                      onPressed: () => Navigator.pop(context, true),
+                      child: LText(confirmLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

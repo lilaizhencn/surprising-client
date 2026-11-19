@@ -558,6 +558,7 @@ class AppState extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> announcements = const [];
+  final Map<int, Map<String, dynamic>> announcementDetails = {};
   List<Map<String, dynamic>> announcementBanners = const [];
   List<Map<String, dynamic>> announcementModals = const [];
   int unreadAnnouncementCount = 0;
@@ -618,6 +619,7 @@ class AppState extends ChangeNotifier {
   final _publicSubscriptions = <String, Map<String, Object?>>{};
   final _privateSubscriptions = <String, Map<String, Object?>>{};
   int _announcementsRequestVersion = 0;
+  final Map<int, int> _announcementDetailRequestVersions = {};
 
   bool get isLoggedIn => auth.isLoggedIn;
 
@@ -1000,6 +1002,53 @@ class AppState extends ChangeNotifier {
         announcementsLoading = false;
         notifyListeners();
       }
+    }
+  }
+
+  Future<Map<String, dynamic>?> loadAnnouncementDetail(int announcementId) async {
+    if (announcementId <= 0) return null;
+    if (offline) {
+      // Cached body may be shown, but offline cache is not used to decide read state.
+      return announcementDetails[announcementId];
+    }
+    final requestVersion =
+        (_announcementDetailRequestVersions[announcementId] ?? 0) + 1;
+    _announcementDetailRequestVersions[announcementId] = requestVersion;
+    try {
+      final locale = language.contentLocale;
+      final platform = defaultTargetPlatform == TargetPlatform.iOS
+          ? 'IOS'
+          : 'ANDROID';
+      final response = await api.announcementDetail(
+        announcementId: announcementId,
+        locale: locale,
+        productLine: 'ALL',
+        platform: platform,
+        placement: 'CENTER',
+      );
+      if (_announcementDetailRequestVersions[announcementId] != requestVersion) {
+        return announcementDetails[announcementId];
+      }
+      final detail = asMap(response);
+      announcementDetails[announcementId] = detail;
+      announcements = [
+        for (final row in announcements)
+          parseInt64(row['announcementId']) == announcementId
+              ? {...row, if (detail['readAt'] != null) 'readAt': detail['readAt']}
+              : row,
+      ];
+      announcementError = null;
+      notifyListeners();
+      return detail;
+    } catch (error) {
+      if (_announcementDetailRequestVersions[announcementId] != requestVersion) {
+        return null;
+      }
+      announcementError = language == ClientLanguage.en
+          ? 'Announcement details are temporarily unavailable: ${clientErrorMessage(error)}'
+          : '公告详情暂时无法加载：${clientErrorMessage(error)}';
+      notifyListeners();
+      return null;
     }
   }
 

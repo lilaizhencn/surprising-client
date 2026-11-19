@@ -74,9 +74,9 @@ class ExchangeBottomNav extends StatelessWidget {
           child: ClientGlassSurface(
             radius: 28,
             child: SizedBox(
-              height: 54,
+              height: 68,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 child: Row(
                   children: [
                     for (var i = 0; i < items.length; i++)
@@ -84,7 +84,7 @@ class ExchangeBottomNav extends StatelessWidget {
                         child: _ExchangeNavButton(
                           item: items[i],
                           selected: selectedIndex == i,
-                          showLabel: false,
+                          showLabel: true,
                           onTap: () {
                             HapticFeedback.selectionClick();
                             onSelected(i);
@@ -197,7 +197,7 @@ class _ExchangeNavButton extends StatelessWidget {
                         : const Duration(milliseconds: 180),
                     padding: EdgeInsets.symmetric(
                       horizontal: showLabel ? 14 : 16,
-                      vertical: showLabel ? 3 : 8,
+                      vertical: showLabel ? 4 : 6,
                     ),
                     decoration: BoxDecoration(
                       color: selected
@@ -208,7 +208,7 @@ class _ExchangeNavButton extends StatelessWidget {
                     child: Icon(
                       selected ? item.selectedIcon : item.icon,
                       color: selected ? colors.primary : colors.onSurfaceVariant,
-                      size: showLabel ? 24 : 25,
+                      size: showLabel ? 24 : 26,
                     ),
                   ),
                   if (showLabel) ...[

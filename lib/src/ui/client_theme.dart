@@ -225,7 +225,31 @@ ThemeData buildClientTheme(ClientTheme theme) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: colors.surfaceContainerHighest,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      activeIndicatorBorder: BorderSide.none,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.outlineVariant),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.outlineVariant),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.primary, width: 1.5),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.outlineVariant.withValues(alpha: .55)),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.error),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.error, width: 1.5),
+      ),
     ),
   );
 }

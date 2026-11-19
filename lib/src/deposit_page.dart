@@ -402,6 +402,10 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
         backgroundColor: exchangeBackground(context),
         appBar: AppBar(
           backgroundColor: exchangeBackground(context),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          toolbarHeight: 56,
           centerTitle: true,
           leading: IconButton(
             onPressed: _back,
@@ -435,7 +439,7 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
         body: token == null
             ? const Center(child: LText('请先登录'))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 32),
                 children: [
                   if (error != null)
                     Padding(
@@ -453,9 +457,12 @@ class _MobileDepositPageState extends State<MobileDepositPage> {
                   if (loading || addressLoading)
                     const LinearProgressIndicator(),
                   if (stage == 0) ...[
-                    ExchangeSearchField(
-                      onChanged: (value) => setState(() => query = value),
-                      hintText: clientLabel(context, '搜索数字货币'),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 8),
+                      child: ExchangeSearchField(
+                        onChanged: (value) => setState(() => query = value),
+                        hintText: clientLabel(context, '搜索数字货币'),
+                      ),
                     ),
                     if (recent.isNotEmpty && query.isEmpty) ...[
                       const SizedBox(height: 24),

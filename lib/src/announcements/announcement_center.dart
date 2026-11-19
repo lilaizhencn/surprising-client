@@ -1,6 +1,7 @@
 import '../i18n/client_messages.dart';
 import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
+import '../app_state.dart';
 import '../models.dart';
 import '../ui/client_components.dart';
 import 'article_reader.dart';
@@ -30,20 +31,69 @@ class AnnouncementCenterPage extends StatefulWidget {
 }
 
 class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
-  int? selectedAnnouncementId;
+  int? _openingAnnouncementId;
+
+  Future<void> _openAnnouncement(
+    AppState state,
+    Map<String, dynamic> row,
+  ) async {
+    final id = _announcementId(row);
+    if (id == null || _openingAnnouncementId != null) return;
+    setState(() => _openingAnnouncementId = id);
+    try {
+      final fresh = await state.loadAnnouncementDetail(id);
+      if (!mounted) return;
+      final detail = fresh ?? state.announcementDetails[id];
+      if (detail == null) return;
+      final listRow = state.announcements
+          .where((item) => _announcementId(item) == id)
+          .firstOrNull;
+      final alreadyRead = listRow?['readAt'] != null;
+      // Read status follows the latest list / mark-read response, never the cached body.
+      if (fresh != null && state.isLoggedIn && !alreadyRead) {
+        await state.markAnnouncementRead(id);
+      }
+      if (!mounted) return;
+      final title = '${detail['title'] ?? row['title'] ?? ''}';
+      final html = detail['bodyHtml'] is String
+          ? detail['bodyHtml'] as String
+          : '';
+      final language = state.language;
+      if (html.isNotEmpty) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => ArticleReaderPage(
+              title: title,
+              html: html,
+              gatewayBaseUrl: state.api.config.gatewayBaseUrl,
+              language: language,
+              locale:
+                  '${detail['locale'] ?? (language == ClientLanguage.en ? 'en-US' : 'zh-CN')}',
+            ),
+          ),
+        );
+      } else {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => _AnnouncementDetailPage(
+              title: title,
+              category: _announcementCategory(detail['category'], language),
+              body: '${detail['body'] ?? ''}',
+              publishedAt: '${detail['startsAt'] ?? ''}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingAnnouncementId = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final language = state.language;
     final rows = state.announcements;
-    final available = rows.where((row) => _announcementId(row) != null);
-    final selected =
-        available
-            .where((row) => _announcementId(row) == selectedAnnouncementId)
-            .firstOrNull ??
-        available.where((row) => row['readAt'] == null).firstOrNull ??
-        available.firstOrNull;
     return Column(
       children: [
         Padding(
@@ -60,12 +110,20 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              IconButton(
-                tooltip: clientText(language, '刷新', 'Refresh'),
-                onPressed: state.announcementsLoading
+              TextButton(
+                key: const ValueKey('mark-all-announcements-read'),
+                onPressed:
+                    !state.isLoggedIn ||
+                        state.unreadAnnouncementCount == 0 ||
+                        state.announcementsLoading
                     ? null
-                    : state.refreshAnnouncements,
-                icon: const Icon(Icons.refresh),
+                    : () async {
+                        await state.markAllAnnouncementsRead();
+                        if (mounted) setState(() {});
+                      },
+                child: LText(
+                  clientText(language, '全部已读', 'Mark all read'),
+                ),
               ),
             ],
           ),
@@ -102,119 +160,32 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: LText(
-                              clientText(
-                                language,
-                                '未读 ${state.unreadAnnouncementCount} 条',
-                                '${state.unreadAnnouncementCount} unread',
-                              ),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: state.unreadAnnouncementCount == 0
-                                ? null
-                                : () async {
-                                    await state.markAllAnnouncementsRead();
-                                    if (mounted) setState(() {});
-                                  },
-                            child: LText(
-                              clientText(language, '全部已读', 'Mark all read'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (selected != null) ...[
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _announcementCategory(
-                                    selected['category'],
-                                    language,
-                                  ),
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.labelMedium,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${selected['title'] ?? ''}',
-                                  style: Theme.of(context).textTheme.titleLarge,
-                                ),
-                                if ('${selected['summary'] ?? ''}'
-                                    .isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text('${selected['summary']}'),
-                                ],
-                                const SizedBox(height: 14),
-                                if (selected['bodyHtml'] is String &&
-                                    (selected['bodyHtml'] as String).isNotEmpty)
-                                  FilledButton.tonalIcon(
-                                    icon: const Icon(Icons.article_outlined),
-                                    label: LText(
-                                      clientText(
-                                        language,
-                                        '阅读完整公告',
-                                        'Read full announcement',
-                                      ),
-                                    ),
-                                    onPressed: () =>
-                                        Navigator.of(context).push<void>(
-                                          MaterialPageRoute(
-                                            builder: (_) => ArticleReaderPage(
-                                              title:
-                                                  '${selected['title'] ?? ''}',
-                                              html:
-                                                  selected['bodyHtml']
-                                                      as String,
-                                              gatewayBaseUrl: state
-                                                  .api
-                                                  .config
-                                                  .gatewayBaseUrl,
-                                              language: language,
-                                              locale:
-                                                  '${selected['locale'] ?? (language == ClientLanguage.en ? 'en-US' : 'zh-CN')}',
-                                            ),
-                                          ),
-                                        ),
-                                  )
-                                else
-                                  SelectableText('${selected['body'] ?? ''}'),
-                                const SizedBox(height: 12),
-                                Text(
-                                  '${selected['startsAt'] ?? ''}',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.labelMedium,
-                                ),
-                              ],
-                            ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+                        child: LText(
+                          clientText(
+                            language,
+                            '未读 ${state.unreadAnnouncementCount} 条',
+                            '${state.unreadAnnouncementCount} unread',
                           ),
                         ),
-                      ],
-                      const SizedBox(height: 8),
+                      ),
                       for (final row in rows)
                         Card(
-                          color:
-                              _announcementId(row) != null &&
-                                  _announcementId(row) ==
-                                      _announcementId(selected)
-                              ? Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest
-                              : null,
                           child: ListTile(
-                            leading: Icon(
-                              row['readAt'] == null
-                                  ? Icons.markunread_outlined
-                                  : Icons.drafts_outlined,
-                            ),
+                            leading: _openingAnnouncementId == _announcementId(row)
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Icon(
+                                    row['readAt'] == null
+                                        ? Icons.markunread_outlined
+                                        : Icons.drafts_outlined,
+                                  ),
                             title: Text(
                               '${row['title'] ?? ''}',
                               maxLines: 2,
@@ -234,14 +205,7 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
                             trailing: const Icon(Icons.chevron_right),
                             onTap: _announcementId(row) == null
                                 ? null
-                                : () async {
-                                    final id = _announcementId(row);
-                                    if (id == null) return;
-                                    setState(() => selectedAnnouncementId = id);
-                                    if (row['readAt'] == null) {
-                                      await state.markAnnouncementRead(id);
-                                    }
-                                  },
+                                : () => _openAnnouncement(state, row),
                           ),
                         ),
                       if (state.announcementsHasMore)
@@ -260,6 +224,39 @@ class _AnnouncementCenterPageState extends State<AnnouncementCenterPage> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AnnouncementDetailPage extends StatelessWidget {
+  const _AnnouncementDetailPage({
+    required this.title,
+    required this.category,
+    required this.body,
+    required this.publishedAt,
+  });
+
+  final String title;
+  final String category;
+  final String body;
+  final String publishedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: LText(category)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          if (publishedAt.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(publishedAt, style: Theme.of(context).textTheme.labelMedium),
+          ],
+          const SizedBox(height: 16),
+          SelectableText(body),
+        ],
+      ),
     );
   }
 }

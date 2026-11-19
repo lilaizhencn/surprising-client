@@ -71,7 +71,7 @@ class _SecuritySheetState extends State<SecuritySheet>
   (int?, int)? loadedIdentity;
   (int?, int)? operationIdentity;
   (int?, int)? _identity(AppState state) =>
-      state.isLoggedIn ? (state.userId, state.auth.revision) : null;
+      state.isLoggedIn ? (state.loginUserId, state.auth.revision) : null;
   bool get operationCurrent =>
       mounted &&
       operationIdentity == loadedIdentity &&

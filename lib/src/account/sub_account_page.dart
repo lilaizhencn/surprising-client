@@ -27,7 +27,7 @@ class _SubAccountPageState extends State<SubAccountPage> {
     if (!widget.state.isLoggedIn || widget.state.session == null) return;
     setState(() => _loading = true);
     try {
-      final list = await widget.state.api.loadSubAccounts(widget.state.userId!);
+      final list = await widget.state.api.loadSubAccounts(widget.state.loginUserId!);
       if (mounted) setState(() => _subAccounts = list);
     } catch (_) {
       // 容错降级
@@ -104,7 +104,7 @@ class _SubAccountPageState extends State<SubAccountPage> {
                           setDialogState(() => creating = true);
                           try {
                             await widget.state.api.createSubAccount(
-                              widget.state.userId!,
+                              widget.state.loginUserId!,
                               subAccountName: name,
                               permissions: permissions,
                             );
@@ -210,7 +210,7 @@ class _SubAccountPageState extends State<SubAccountPage> {
                                 try {
                                   final units = (amt * 10000).toInt();
                                   final res = await widget.state.api.transferSubAccount(
-                                    widget.state.userId!,
+                                    widget.state.loginUserId!,
                                     subUserId: subAccount.subUserId,
                                     fromParentToSub: fromParentToSub,
                                     asset: asset,

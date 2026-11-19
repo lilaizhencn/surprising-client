@@ -76,9 +76,9 @@ class _AffiliatePageState extends State<AffiliatePage> {
     super.didChangeDependencies();
     final state = AppScope.of(context);
     app = state;
-    if (initialized && owner == state.userId) return;
+    if (initialized && owner == state.loginUserId) return;
     initialized = true;
-    owner = state.userId;
+    owner = state.loginUserId;
     kolEnabled = false;
     subject = '';
     selected = null;
@@ -122,7 +122,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
         '/api/v1/affiliate/me',
         query: {'productLine': line},
       );
-      if (!mounted || current != generation || state.userId != user) return;
+      if (!mounted || current != generation || state.loginUserId != user) return;
       final ownProfile = asMap(self['profile']);
       if (ownProfile['userId'] != '$user' ||
           ownProfile['kolEnabled'] is! bool) {
@@ -153,7 +153,7 @@ class _AffiliatePageState extends State<AffiliatePage> {
         state.api.get('/api/v1/affiliate/payouts'),
         state.api.assetScales(),
       ]);
-      if (!mounted || current != generation || state.userId != user) return;
+      if (!mounted || current != generation || state.loginUserId != user) return;
       final overview = values[0];
       final profile = asMap(overview['profile']);
       final counts = asMap(overview['counts']);

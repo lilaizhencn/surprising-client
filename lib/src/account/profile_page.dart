@@ -10,6 +10,7 @@ import '../ui/client_components.dart';
 import '../ui/theme_picker.dart';
 import '../ui/language_picker.dart';
 import 'security_sheet.dart';
+import 'account_switch_sheet.dart';
 import 'vip_center_page.dart';
 import 'sub_account_page.dart';
 import 'proof_of_reserves_page.dart';
@@ -50,7 +51,7 @@ class ProfilePage extends StatelessWidget {
                     ),
                     LText(
                       state.isLoggedIn
-                          ? 'UID ${state.userId} · ${state.session!.user.status}'
+                          ? 'UID ${state.loginUserId} · ${state.session!.user.status}'
                           : '登录后同步订单、持仓和资产',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -81,6 +82,18 @@ class ProfilePage extends StatelessWidget {
             ],
           ),
         ),
+        if (state.isLoggedIn)
+          ListTile(
+            leading: const Icon(Icons.switch_account_outlined),
+            title: const LText('切换账户'),
+            subtitle: Text(
+              state.session!.isSubAccount
+                  ? (state.session!.operatingAccount?.name ?? 'UID ${state.userId}')
+                  : clientLabel(context, '主账号'),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showAccountSwitchSheet(context, state),
+          ),
         const SizedBox(height: 12),
         Panel(
           child: Column(

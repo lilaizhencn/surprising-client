@@ -31,8 +31,8 @@ class _ProofOfReservesPageState extends State<ProofOfReservesPage> {
     try {
       final snap = await widget.state.api.loadLatestPor();
       UserPorProofModel? proof;
-      if (widget.state.isLoggedIn && widget.state.userId != null) {
-        proof = await widget.state.api.loadMyPorProof(widget.state.userId!);
+      if (widget.state.isLoggedIn && widget.state.loginUserId != null) {
+        proof = await widget.state.api.loadMyPorProof(widget.state.loginUserId!);
       }
       if (mounted) {
         setState(() {

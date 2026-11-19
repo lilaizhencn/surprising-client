@@ -397,7 +397,7 @@ class _UserScannerPageState extends State<UserScannerPage>
                           borderRadius: BorderRadius.circular(24),
                         ),
                         child: QrImageView(
-                          data: userQrCode(state.userId!),
+                          data: userQrCode(state.loginUserId!),
                           size: 240,
                           backgroundColor: Colors.white,
                         ),
@@ -405,7 +405,7 @@ class _UserScannerPageState extends State<UserScannerPage>
                     ),
                     const SizedBox(height: 24),
                     SelectableText(
-                      'UID ${state.userId}',
+                      'UID ${state.loginUserId}',
                       textAlign: TextAlign.center,
                     ),
                   ],

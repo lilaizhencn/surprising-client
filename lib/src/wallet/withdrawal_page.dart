@@ -79,6 +79,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     if (!state.isLoggedIn || owner != state.userId) {
       return _unavailable(state, '账户已变化，请重新打开提币');
     }
+    if (state.session?.isSubAccount == true) {
+      return _unavailable(state, '子账号不能直接链上提现，请切回主账号');
+    }
     if (state.wallet.pending != null) return _recovery(state);
     if (!state.walletReady) {
       return _unavailable(state, state.walletError ?? '可提币余额暂不可用，请刷新');

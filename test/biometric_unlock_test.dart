@@ -550,6 +550,10 @@ class BiometricApi extends ApiClient {
   int refreshCalls = 0;
   ApiException? refreshError;
   @override
+  Future<AuthSession> currentSession() async =>
+      AuthSession(user: await currentUser(), accessToken: '');
+
+  @override
   Future<AuthUser> currentUser() async {
     refreshCalls++;
     if (refreshError != null) throw refreshError!;

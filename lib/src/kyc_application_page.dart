@@ -56,7 +56,7 @@ class _KycApplicationPageState extends State<KycApplicationPage> {
   String? country, error;
   (int?, int)? identity;
   (int?, int)? get accountIdentity => widget.state.isLoggedIn
-      ? (widget.state.userId, widget.state.auth.revision)
+      ? (widget.state.loginUserId, widget.state.auth.revision)
       : null;
   String provider = '',
       type = 'ID_CARD',

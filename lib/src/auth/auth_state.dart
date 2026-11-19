@@ -67,6 +67,7 @@ class AuthState extends ChangeNotifier {
   LoginChallenge? pendingLoginChallenge;
   AuthSession? pendingVerificationSession;
   AuthSession? pendingBiometricSession;
+  bool switchingAccount = false;
   bool loading = false;
   String? lastError;
   String? lastNotice;
@@ -180,6 +181,66 @@ class AuthState extends ChangeNotifier {
     }
   }
 
+  /// Reuse the login lifecycle: invalidate projections before refreshing private feeds.
+  Future<bool> switchOperatingAccount(int userId) async {
+    final previous = _current;
+    if (offline) {
+      _feedback(error: '离线模式不可切换账户');
+      _changed();
+      return false;
+    }
+    if (previous == null || switchingAccount || _disposed || userId <= 0) {
+      return false;
+    }
+    switchingAccount = true;
+    api.switchingOperatingAccount = true;
+    api.cancelPendingRequests();
+    final operation = ++_revision;
+    _changed();
+    bool switchingResponseReceived = false;
+    try {
+      final response = await api.switchOperatingAccount(userId);
+      switchingResponseReceived = true;
+      if (!isCurrentRevision(operation)) return false;
+      final next = previous.withServerSession(response);
+      if (next.operatingUserId != userId) {
+        throw const FormatException('切换结果与所选账户不匹配');
+      }
+      api.cancelPendingRequests();
+      api.switchingOperatingAccount = false;
+      final activated = await _activate(next, operation);
+      if (activated) _feedback(notice: '已切换账户');
+      return activated;
+    } catch (error) {
+      if (isCurrentRevision(operation)) {
+        // A lost response may already have changed the server-side session.
+        // Do not continue trading under the old displayed identity.
+        if (switchingResponseReceived ||
+            error is! ApiException ||
+            !error.fromGateway ||
+            error.statusCode >= 500) {
+          await expire();
+        }
+        _feedback(error: '切换未完成，请重新确认登录状态：$error');
+      }
+      return false;
+    } finally {
+      switchingAccount = false;
+      api.switchingOperatingAccount = false;
+      _changed();
+    }
+  }
+
+  Future<void> applyServerSession(AuthSession response) async {
+    final previous = _current;
+    if (previous == null || switchingAccount) return;
+    final next = previous.withServerSession(response);
+    if (next.operatingUserId == previous.operatingUserId) return;
+    api.cancelPendingRequests();
+    await _activate(next, ++_revision);
+    _changed();
+  }
+
   Future<void> restore() {
     if (offline || _restored || _disposed || _current != null) {
       return Future<void>.value();
@@ -236,16 +297,13 @@ class AuthState extends ChangeNotifier {
   Future<bool> _verifyStoredSession(AuthSession stored, int operation) async {
     try {
       api.setSession(stored);
-      final user = await api.currentUser();
+      final response = await api.currentSession();
+      final user = response.user;
       if (!isCurrentRevision(operation)) return false;
       if (user.userId != stored.user.userId) {
         throw const FormatException('登录用户与已保存会话不匹配');
       }
-      final verified = AuthSession(
-        user: user,
-        accessToken: stored.accessToken,
-        sessionExpiresAt: stored.sessionExpiresAt,
-      );
+      final verified = stored.withServerSession(response);
       if (await _activate(verified, operation)) {
         _feedback(notice: '已恢复登录状态');
         _changed();

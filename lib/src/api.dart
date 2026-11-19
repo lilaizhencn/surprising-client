@@ -94,6 +94,8 @@ class ApiClient {
 
   String? _accessToken;
   int? _sessionUserId;
+  int? _operatingUserId;
+  bool switchingOperatingAccount = false;
 
   Future<String> Function()? deviceIdLoader;
   Future<String>? _deviceId;
@@ -173,11 +175,13 @@ class ApiClient {
 
   void setSession(AuthSession? session) {
     _sessionUserId = session?.user.userId;
+    _operatingUserId = session?.operatingUserId;
     _accessToken = session?.accessToken;
   }
 
   void setAccessToken(String? accessToken) {
     _sessionUserId = null;
+    _operatingUserId = null;
     _accessToken = accessToken == null || accessToken.trim().isEmpty
         ? null
         : accessToken.trim();
@@ -185,11 +189,21 @@ class ApiClient {
 
   /// 向网关确认当前令牌对应的会话是否还有效，并取回最新的用户资料。
   /// 响应不带令牌；会话令牌沿用本地保存的那一个。401/403 表示会话已失效。
-  Future<AuthUser> currentUser() async {
+  Future<AuthSession> currentSession() async {
     final response = await _withRequest(
       (scope) => _sendOnce('GET', '/api/v1/auth/session', scope: scope),
     );
-    return AuthUser.fromJson(asMap(asMap(response)['user']));
+    return AuthSession.fromJson(asMap(response));
+  }
+
+  Future<AuthUser> currentUser() async => (await currentSession()).user;
+
+  Future<AuthSession> switchOperatingAccount(int userId) async {
+    final response = await post(
+      '/api/v1/sub-account/operating-account',
+      {'userId': userId},
+    );
+    return AuthSession.fromJson(response);
   }
 
   /// 尽力通知网关结束这个会话；失败不影响本地退出。
@@ -920,6 +934,7 @@ class ApiClient {
   Future<Uint8List> downloadKycDocument(int id) => _withRequest((scope) async {
     final originalToken = _accessToken;
     final originalUser = _sessionUserId;
+    final originalOperatingUser = _operatingUserId;
     Future<Uint8List> read() async {
       final token = _accessToken;
       final uri = Uri.parse(
@@ -945,7 +960,12 @@ class ApiClient {
     try {
       return await read();
     } on ApiException catch (error) {
-      await _expireIfRejected(error, originalToken, originalUser);
+      await _expireIfRejected(
+        error,
+        originalToken,
+        originalUser,
+        originalOperatingUser,
+      );
       rethrow;
     }
   });
@@ -2683,6 +2703,7 @@ class ApiClient {
   }) async {
     final originalToken = _accessToken;
     final originalUser = _sessionUserId;
+    final originalOperatingUser = _operatingUserId;
     try {
       return await _sendOnce(
         method,
@@ -2697,7 +2718,12 @@ class ApiClient {
       );
     } on ApiException catch (error) {
       if (!path.startsWith('/api/v1/auth/')) {
-        await _expireIfRejected(error, originalToken, originalUser);
+        await _expireIfRejected(
+          error,
+          originalToken,
+          originalUser,
+          originalOperatingUser,
+        );
       }
       rethrow;
     }
@@ -2708,13 +2734,16 @@ class ApiClient {
   Future<void> _expireIfRejected(
     ApiException error,
     String? originalToken,
-    int? originalUser,
-  ) async {
+    int? originalUser, [
+    int? originalOperatingUser,
+  ]) async {
     if (!error.fromGateway ||
         error.statusCode != 401 ||
         originalToken == null ||
         originalToken != _accessToken ||
-        originalUser != _sessionUserId) {
+        originalUser != _sessionUserId ||
+        (originalOperatingUser != null &&
+            originalOperatingUser != _operatingUserId)) {
       return;
     }
     setSession(null);
@@ -2733,7 +2762,23 @@ class ApiClient {
     required _HttpRequestScope scope,
   }) async {
     final token = _accessToken;
-    if (userId != null && _sessionUserId != null && userId != _sessionUserId) {
+    final operatingPath = path.startsWith('/api/v1/trading/') ||
+        path.startsWith('/api/v1/accounts') ||
+        path.startsWith('/api/v1/gateway/account') ||
+        path.startsWith('/api/v1/realtime/') ||
+        path.startsWith('/api/v1/portfolio/') ||
+        path.startsWith('/api/v1/risk/') ||
+        path.startsWith('/api/v1/liquidations/') ||
+        path.startsWith('/api/v1/insurance/') ||
+        path.startsWith('/api/v1/adl/');
+    if (switchingOperatingAccount && operatingPath) {
+      throw ApiException(409, '正在切换账户，请稍候');
+    }
+    if (_operatingUserId != _sessionUserId && path.startsWith('/api/v1/wallet/')) {
+      throw ApiException(403, '请切回主账号操作充值或链上提现');
+    }
+    final expectedUserId = operatingPath ? _operatingUserId : _sessionUserId;
+    if (userId != null && expectedUserId != null && userId != expectedUserId) {
       throw ApiException(401, '登录账户已变化，未发送请求');
     }
     if ((path.startsWith('/api/v1/trading/') || path.startsWith('/api/v1/accounts') || path.startsWith('/api/v1/instruments')) && !path.contains('/wallet/')) {

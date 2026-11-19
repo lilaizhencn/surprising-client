@@ -621,7 +621,8 @@ class AppState extends ChangeNotifier {
 
   bool get isLoggedIn => auth.isLoggedIn;
 
-  int? get userId => auth.userId;
+  int? get loginUserId => auth.userId;
+  int? get userId => session?.operatingUserId;
 
   Instrument get selectedInstrument =>
       instruments
@@ -1420,7 +1421,7 @@ class AppState extends ChangeNotifier {
     for (final view in privateViews.values) {
       view.status = 'STALE';
     }
-    if (previous?.user.userId != next?.user.userId || next == null) {
+    if (previous?.operatingUserId != next?.operatingUserId || next == null) {
       _clearWalletData();
       ++_privateDataRequestVersion;
       privateViews.clear();
@@ -1435,6 +1436,7 @@ class AppState extends ChangeNotifier {
       positions = const [];
       positionRisks = const [];
       _clearAccountRisk();
+      liquidationOrders = const [];
       orders.resetAccount();
     } else {
       assetsReady = false;
@@ -1827,7 +1829,7 @@ class AppState extends ChangeNotifier {
     }
     try {
       await realtime.connect(
-        userId: current?.user.userId,
+        userId: current?.operatingUserId,
         accessToken: current?.accessToken,
         onEvent: (message) {
           if (connectGeneration != _realtimeGeneration ||
@@ -1837,7 +1839,7 @@ class AppState extends ChangeNotifier {
           }
           if (current != null &&
               message['op'] == 'authenticated' &&
-              parseInt64(message['userId']) == current.user.userId) {
+              parseInt64(message['userId']) == current.operatingUserId) {
             _privateAuthenticated = true;
           }
           if (message['op'] != 'error') _realtimeReconnectAttempts = 0;
@@ -1900,10 +1902,15 @@ class AppState extends ChangeNotifier {
     _materializePrivate();
     notifyListeners();
     try {
-      final user = await api.currentUser();
+      final response = await api.currentSession();
+      final user = response.user;
       if (_disposed || !identical(session, previous)) return;
       if (user.userId != previous.user.userId) {
         await auth.expire();
+        return;
+      }
+      if (response.operatingUserId != previous.operatingUserId) {
+        await auth.applyServerSession(response);
         return;
       }
       // 会话仍有效（令牌不变）：恢复私有实时连接。

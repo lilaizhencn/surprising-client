@@ -370,15 +370,75 @@ class LoginChallenge implements Exception {
   bool get expired => !expiresAt.isAfter(DateTime.now());
 }
 
+class OperatingAccount {
+  const OperatingAccount({
+    required this.userId,
+    required this.parent,
+    this.name,
+    this.status,
+    this.permissions,
+  });
+
+  final int userId;
+  final bool parent;
+  final String? name;
+  final String? status;
+  final String? permissions;
+
+  factory OperatingAccount.fromJson(Map<String, dynamic> json) {
+    final id = requireInt64(json['userId'], 'operatingAccount.userId');
+    if (id <= 0 || json['parent'] is! bool) {
+      throw const FormatException('操作账户响应不完整');
+    }
+    return OperatingAccount(
+      userId: id,
+      parent: json['parent'] == true,
+      name: nullableString(json['displayName']) ?? nullableString(json['username']),
+      status: nullableString(json['subAccountStatus']),
+      permissions: nullableString(json['subAccountPermissions']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'parent': parent,
+    'displayName': name,
+    'subAccountStatus': status,
+    'subAccountPermissions': permissions,
+  };
+}
+
 class AuthSession {
   const AuthSession({
     required this.user,
     required this.accessToken,
     this.requiresEmailVerification = false,
     this.sessionExpiresAt,
+    this.operatingAccount,
   });
 
   final AuthUser user;
+  final OperatingAccount? operatingAccount;
+  int get operatingUserId => operatingAccount?.userId ?? user.userId;
+  bool get isSubAccount => operatingUserId != user.userId;
+
+  /// /auth/session and switch responses do not reissue the login token.
+  AuthSession withServerSession(AuthSession response) {
+    if (response.user.userId != user.userId) {
+      throw const FormatException('登录主体不匹配');
+    }
+    final operating = response.operatingAccount;
+    if (operating != null &&
+        operating.parent != (operating.userId == response.user.userId)) {
+      throw const FormatException('操作账户主体不匹配');
+    }
+    return AuthSession(
+      user: response.user,
+      accessToken: accessToken,
+      sessionExpiresAt: sessionExpiresAt,
+      operatingAccount: response.operatingAccount,
+    );
+  }
 
   /// 网关签发的唯一会话令牌（JWT）。是否有效只由网关的会话决定：
   /// 7 天滑动有效期，没有刷新令牌，失效后重新登录。
@@ -391,6 +451,7 @@ class AuthSession {
   Map<String, dynamic> toJson() {
     return {
       'user': user.toJson(),
+      if (operatingAccount != null) 'operatingAccount': operatingAccount!.toJson(),
       'accessToken': accessToken,
       'requiresEmailVerification': requiresEmailVerification,
       if (sessionExpiresAt != null)
@@ -401,6 +462,9 @@ class AuthSession {
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     return AuthSession(
       user: AuthUser.fromJson(asMap(json['user'])),
+      operatingAccount: json['operatingAccount'] == null
+          ? null
+          : OperatingAccount.fromJson(asMap(json['operatingAccount'])),
       accessToken: asString(json['accessToken']),
       requiresEmailVerification: json['requiresEmailVerification'] == true,
       sessionExpiresAt: asNullableDateTime(json['sessionExpiresAt']),

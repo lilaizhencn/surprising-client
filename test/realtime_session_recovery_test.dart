@@ -25,6 +25,10 @@ class _RefreshApi extends ApiClient {
   Future<AuthUser> Function()? reply;
 
   @override
+  Future<AuthSession> currentSession() async =>
+      AuthSession(user: await currentUser(), accessToken: '');
+
+  @override
   Future<AuthUser> currentUser() {
     refreshTokens.add('verify');
     return reply?.call() ?? Future.value(_user);

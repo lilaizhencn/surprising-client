@@ -268,6 +268,10 @@ class AuthenticationApi extends ApiClient {
   }
 
   @override
+  Future<AuthSession> currentSession() async =>
+      AuthSession(user: await currentUser(), accessToken: '');
+
+  @override
   Future<AuthUser> currentUser() async {
     refreshCalls++;
     final error = refreshFailure;

@@ -1,21 +1,13 @@
-import 'i18n/client_messages.dart';
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
-import 'package:flutter/foundation.dart';
+import 'package:kline_chart/kline_chart.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
+import 'i18n/client_messages.dart';
 import 'models.dart';
 
-String chartColor(Color color) =>
-    'rgba(${(color.r * 255).round()},${(color.g * 255).round()},${(color.b * 255).round()},${color.a})';
-
-/// Web PriceChart parity: deduplication, zero-volume gap bars and a 120-bar window.
+/// Validated, bounded OHLC bars; times are seconds until the native adapter.
 List<Map<String, Object>> chartCandles(
   List<Candle> candles, {
   String? period,
@@ -106,6 +98,7 @@ List<Map<String, Object>> chartCandles(
   return result.skip(math.max(0, result.length - 120)).toList();
 }
 
+/// The original Flutter canvas renderer, shared by market and trading pages.
 class NativePriceChart extends StatefulWidget {
   const NativePriceChart({
     required this.candles,
@@ -116,196 +109,192 @@ class NativePriceChart extends StatefulWidget {
   final List<Candle> candles;
   final String period;
   final Instrument instrument;
+
   @override
   State<NativePriceChart> createState() => _NativePriceChartState();
 }
 
 class _NativePriceChartState extends State<NativePriceChart> {
-  WebViewController? controller;
-  bool started = false, ready = false, failed = false;
-  Timer? timeout;
+  final controller = KLineController()
+    ..itemCount = 38
+    ..minCount = 12
+    ..maxCount = 90
+    ..showTimeAxis = true
+    ..showMainIndicators = [IndicatorType.ma]
+    ..showSubIndicators = [IndicatorType.vol, IndicatorType.macd];
   Timer? chartClock;
+
+  String marketKey(NativePriceChart chart) =>
+      '${chart.instrument.mode.productLine}:${chart.instrument.instrumentId}:${chart.instrument.symbol}:${chart.period}';
 
   @override
   void initState() {
     super.initState();
+    syncCandles(resetView: true);
+    // Keep the existing zero-volume current-bucket rule without network work.
     chartClock = Timer.periodic(
       const Duration(seconds: 1),
-      (_) => unawaited(_render()),
+      (_) => syncCandles(),
     );
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!started) {
-      started = true;
-      unawaited(_initialize());
-    } else {
-      unawaited(_render());
-    }
+    applyTheme();
   }
 
-  Future<void> _initialize() async {
-    if (WebViewPlatform.instance == null) {
-      if (mounted) setState(() => failed = true);
-      return;
-    }
-    try {
-      final background = Theme.of(context).colorScheme.surface;
-      final surface = chartColor(background);
-      final view = WebViewController();
-      await view.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await view.setBackgroundColor(background);
-      await view.addJavaScriptChannel(
-        'ChartReady',
-        onMessageReceived: (_) {
-          if (!mounted) return;
-          timeout?.cancel();
-          setState(() {
-            ready = true;
-            failed = false;
-          });
-          unawaited(_render());
-        },
-      );
-      await view.addJavaScriptChannel(
-        'ChartError',
-        onMessageReceived: (_) {
-          if (mounted) setState(() => failed = true);
-        },
-      );
-      await view.addJavaScriptChannel(
-        'ChartLink',
-        onMessageReceived: (message) {
-          final uri = Uri.tryParse(message.message);
-          if (uri?.scheme == 'https' &&
-              ['www.tradingview.com', 'tradingview.com'].contains(uri?.host)) {
-            unawaited(
-              launchUrl(
-                uri!,
-                mode: LaunchMode.externalApplication,
-              ).catchError((Object _) => false),
-            );
-          }
-        },
-      );
-      await view.setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) => request.url == 'about:blank'
-              ? NavigationDecision.navigate
-              : NavigationDecision.prevent,
-        ),
-      );
-      final assets = await Future.wait([
-        rootBundle.loadString('assets/charts/chart.html'),
-        rootBundle.loadString(
-          'assets/charts/lightweight-charts.standalone.production.js',
-        ),
-        rootBundle.loadString('assets/charts/chart_bridge.js'),
-      ]);
-      if (!mounted) return;
-      final html = assets[0]
-          .replaceAll('__SURFACE__', surface)
-          .replaceFirst(
-            '<!-- CHART_LIBRARY -->',
-            '<script>${assets[1]}</script>',
-          )
-          .replaceFirst(
-            '<!-- CHART_BRIDGE -->',
-            '<script>${assets[2]}</script>',
-          );
-      setState(() {
-        controller = view;
-        ready = false;
-        failed = false;
-      });
-      timeout?.cancel();
-      timeout = Timer(const Duration(seconds: 12), () {
-        if (mounted && !ready) setState(() => failed = true);
-      });
-      await view.loadHtmlString(html);
-    } catch (_) {
-      if (mounted) setState(() => failed = true);
-    }
+  void applyTheme() {
+    final colors = Theme.of(context).colorScheme;
+    const figures = [FontFeature.tabularFigures()];
+    final ruler = TextStyle(
+      color: colors.onSurfaceVariant,
+      fontSize: 10,
+      fontFeatures: figures,
+    );
+    controller
+      ..chartStyle = KLineChartStyle(
+        backgroundColor: colors.surface,
+        gridLineColor: colors.outlineVariant.withValues(alpha: .3),
+        gridLineWidth: .5,
+        rulerTextStyle: ruler,
+        highLowLineColor: colors.onSurfaceVariant,
+        highLowTextStyle: ruler,
+        currentPriceLineColor: colors.primary.withValues(alpha: .65),
+        currentPriceBackgroundColor: colors.surfaceContainerHighest,
+        currentPriceTextStyle: ruler.copyWith(color: colors.onSurface),
+      )
+      ..candleStyle = KLineCandleStyle(
+        riseColor: colors.tertiary,
+        fallColor: colors.error,
+        riseWickColor: colors.tertiary.withValues(alpha: .62),
+        fallWickColor: colors.error.withValues(alpha: .62),
+      )
+      ..volumeStyle = KLineVolumeStyle(
+        riseColor: colors.tertiary,
+        fallColor: colors.error,
+      )
+      ..indicatorColors = [colors.primary, colors.secondary, colors.tertiary]
+      ..crosshairStyle = KLineCrosshairStyle(
+        color: colors.primary,
+        strokeWidth: .5,
+      )
+      ..infoStyle = KLineInfoStyle(
+        backgroundColor: colors.surface.withValues(alpha: .96),
+        textStyle: ruler.copyWith(color: colors.onSurface, fontSize: 11),
+      )
+      ..infoWidgetBorder = Border.all(color: colors.outlineVariant, width: .5);
+    controller.priceFormatter = (value) =>
+        money(value, digits: widget.instrument.pricePrecision.clamp(0, 12));
+    controller.volumeFormatter = (value) =>
+        value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
+    controller.indicatorFormatter = (value, type, period) =>
+        type == IndicatorType.vol || type == IndicatorType.maVol
+        ? controller.formatVolume(value)
+        : controller.formatPrice(value);
   }
 
   @override
   void didUpdateWidget(covariant NativePriceChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    unawaited(_render());
+    final changedMarket = marketKey(oldWidget) != marketKey(widget);
+    if (changedMarket) {
+      controller.itemCount = 38;
+      controller.longPressOffset.update(Offset.zero);
+    }
+    syncCandles(resetView: changedMarket);
   }
 
-  Future<void> _render() async {
-    final view = controller;
-    if (!mounted || view == null || !ready) return;
-    final colors = Theme.of(context).colorScheme;
-    final instrument = widget.instrument;
-    final precision = instrument.pricePrecision.clamp(0, 12);
-    final tick = instrument.priceFromTicks(1);
-    final payload = {
-      'market':
-          '${instrument.mode.productLine}:${instrument.instrumentId}:${instrument.symbol}:${widget.period}',
-      'bars': chartCandles(widget.candles, period: widget.period),
-      'precision': precision,
-      'minMove': tick.isFinite && tick > 0 ? tick : math.pow(10, -precision),
-      'volumeUnit': instrument.baseAsset,
-      'theme': {
-        'background': chartColor(colors.surface),
-        'ink': chartColor(colors.onSurfaceVariant),
-        'border': chartColor(colors.outline),
-        'grid': chartColor(colors.surfaceContainerHighest),
-        'up': chartColor(colors.tertiary),
-        'down': chartColor(colors.error),
-        'wickUp': chartColor(colors.tertiary.withValues(alpha: .62)),
-        'wickDown': chartColor(colors.error.withValues(alpha: .62)),
-      },
-    };
-    try {
-      await view.runJavaScript('window.renderChart(${jsonEncode(payload)})');
-    } catch (_) {
-      if (mounted) setState(() => failed = true);
+  bool sameBar(KLineData a, KLineData b) =>
+      a.time == b.time &&
+      a.open == b.open &&
+      a.high == b.high &&
+      a.low == b.low &&
+      a.close == b.close &&
+      a.volume == b.volume;
+
+  void syncCandles({bool resetView = false}) {
+    final next = [
+      for (final bar in chartCandles(widget.candles, period: widget.period))
+        KLineData(
+          // Candle -> normalized seconds -> native library milliseconds, once.
+          time: (bar['time'] as int) * 1000,
+          open: (bar['open'] as num).toDouble(),
+          high: (bar['high'] as num).toDouble(),
+          low: (bar['low'] as num).toDouble(),
+          close: (bar['close'] as num).toDouble(),
+          volume: (bar['volume'] as num).toDouble(),
+        ),
+    ];
+    final previous = controller.data;
+    if (next.isEmpty) {
+      if (previous.isNotEmpty) controller.clearData();
+      return;
+    }
+    if (resetView || previous.isEmpty) {
+      controller.setData(next);
+      return;
+    }
+    var common = 0;
+    while (common < math.min(previous.length, next.length) &&
+        sameBar(previous[common], next[common])) {
+      common++;
+    }
+    if (common == previous.length && common == next.length) return;
+    if (next.length == previous.length &&
+        common == next.length - 1 &&
+        previous.last.time == next.last.time) {
+      controller.updateLast(next.last);
+    } else if (next.length == previous.length + 1 &&
+        common == previous.length) {
+      controller.append(next.last);
+    } else {
+      // History correction or the bounded 120-bar window advancing: keep zoom.
+      controller.setData(next, resetView: false);
     }
   }
 
   @override
   void dispose() {
-    timeout?.cancel();
     chartClock?.cancel();
+    controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => SizedBox(
     height: 330,
-    child: failed
-        ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const LText('图表暂不可用'),
-                TextButton(
-                  onPressed: () => unawaited(_initialize()),
-                  child: const LText('重试'),
-                ),
-              ],
-            ),
-          )
-        : Stack(
-            children: [
-              if (controller != null)
-                Positioned.fill(
-                  child: WebViewWidget(
-                    controller: controller!,
-                    gestureRecognizers: {
-                      Factory<OneSequenceGestureRecognizer>(
-                        () => EagerGestureRecognizer(),
+    child: controller.data.isEmpty
+        ? const Center(child: LText('暂无 K 线数据'))
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              controller.infoWidgetMaxWidth = math.min(
+                constraints.maxWidth - 16,
+                math.max(160, constraints.maxWidth * .7),
+              );
+              return Semantics(
+                label:
+                    '${widget.instrument.symbol} ${widget.period} MA VOL MACD',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: KLineView(
+                        key: ValueKey(marketKey(widget)),
+                        controller: controller,
                       ),
-                    },
-                  ),
+                    ),
+                    Text(
+                      'VOL · ${widget.instrument.baseAsset}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
                 ),
-              if (!ready) const Center(child: CircularProgressIndicator()),
-            ],
+              );
+            },
           ),
   );
 }

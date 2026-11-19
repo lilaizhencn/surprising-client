@@ -13,7 +13,7 @@ import 'package:surprising_client/src/price_chart.dart';
 import 'package:surprising_client/src/realtime_state.dart';
 import 'package:surprising_client/src/sensitive_screen.dart';
 import 'package:surprising_client/src/user_scanner_page.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:kline_chart/kline_chart.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +38,7 @@ void main() {
   }
 
   testWidgets(
-    'native home, market and bundled TradingView render with synthetic data',
+    'native home, market and Flutter K-line render with synthetic data',
     (tester) async {
       final state =
           AppState(
@@ -95,28 +95,12 @@ void main() {
       await tester.tap(find.byType(PublicMarketRow).first);
       await tester.pumpAndSettle(const Duration(milliseconds: 200));
       expect(find.byType(NativePriceChart), findsOneWidget);
-      expect(find.byType(WebViewWidget), findsOneWidget);
-      final view = tester
-          .widget<WebViewWidget>(find.byType(WebViewWidget))
-          .platform
-          .params
-          .controller;
-      expect(
-        (await view.runJavaScriptReturningResult(
-          'LightweightCharts.version()',
-        )).toString(),
-        contains('5.2.1'),
-      );
-      expect(
-        (await view.runJavaScriptReturningResult(
-          'document.getElementById("legend").textContent',
-        )).toString(),
-        contains('开'),
-      );
-      // WebView's compositor paints independently of Flutter's scheduler.
-      await Future<void>.delayed(const Duration(milliseconds: 750));
-      await tester.pump();
-      await captureScene('tradingview-dark');
+      expect(find.byType(KLineView), findsOneWidget);
+      final chart = tester.widget<KLineView>(find.byType(KLineView)).controller;
+      expect(chart.showMainIndicators, [IndicatorType.ma]);
+      expect(chart.showSubIndicators, [IndicatorType.vol, IndicatorType.macd]);
+      expect(chart.data, isNotEmpty);
+      await captureScene('native-kline-dark');
       await tester.tap(find.widgetWithText(ChoiceChip, '5m'));
       await tester.pumpAndSettle();
       expect(state.period, '5m');

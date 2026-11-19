@@ -97,7 +97,7 @@ with (output / 'native-run.log').open('w') as log:
             else:
                 Path(ack).touch()
     result = process.wait()
-required = {'home-dark', 'home-light', 'markets-dark', 'tradingview-dark',
+required = {'home-dark', 'home-light', 'markets-dark', 'native-kline-dark',
             'assets-dark', 'assets-light', 'deposit-entry', 'deposit-assets',
             'deposit-networks', 'deposit-address', 'deposit-menu', 'transfer-dark',
             'withdrawal-assets', 'withdrawal-networks', 'withdrawal-form',

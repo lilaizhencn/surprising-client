@@ -420,6 +420,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
+  kline_chart:
+    dependency: "direct main"
+    description:
+      name: kline_chart
+      sha256: c058b33623465231f165e193b7d20caf5978c6610c0e4b3d370d8370ff2b16be
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.2"
   leak_tracker:
     dependency: transitive
     description:

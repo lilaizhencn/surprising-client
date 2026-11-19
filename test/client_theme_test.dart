@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/app.dart';
 import 'package:surprising_client/src/app_state.dart';
-import 'package:surprising_client/src/price_chart.dart';
 import 'package:surprising_client/src/ui/client_theme.dart';
 import 'transfer_page_test.dart' show MemorySettings;
 
@@ -103,7 +102,6 @@ void main() {
           theme.brightness,
           palette.isLight ? Brightness.light : Brightness.dark,
         );
-        expect(chartColor(colors.surface), startsWith('rgba('));
       }
       expect(surfaces, hasLength(6));
       expect(ClientTheme.fromCode('unknown'), ClientTheme.dark);

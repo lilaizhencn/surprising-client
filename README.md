@@ -13,7 +13,7 @@ Flutter mobile client for Surprising Exchange.
 
 ## Features
 
-- Native Flutter K-line chart via `kline_chart`.
+- 原生 Flutter K 线使用固定版本 `kline_chart 1.0.2`（`KLineView`），行情详情与交易页共用；恢复 MA 主指标、VOL/MACD 副图及原生拖拽/双指缩放，不再内嵌图表 WebView。保留当前主题、instrument 价格精度、排序去重、120 根窗口和零成交补平规则；末根实时更新不重置用户缩放，切换产品/币对/周期重新定位。WebView 依赖仍供 KYC 等其他页面使用。
 - Email/phone registration, login with EMAIL/PHONE/TOTP challenges, email verification and password recovery through `surprising-gateway`.
 - Scrollable product tabs for spot, linear/inverse perpetuals, linear/inverse delivery and options; market list, candlestick, L2 order book and recent trades. Unconfigured products retain their page and show an explicit empty state.
 - Real order submit, cancel, market close, wallet balances, transfers, positions, risk, liquidation records, and WebSocket event feed. TP/SL forms support mark/last/index sources and market/limit execution; versioned private snapshots update open triggers and recover state after private WebSocket reconnect.

@@ -188,10 +188,28 @@ class _NativePriceChartState extends State<NativePriceChart> {
         money(value, digits: widget.instrument.pricePrecision.clamp(0, 12));
     controller.volumeFormatter = (value) =>
         value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
-    controller.indicatorFormatter = (value, type, period) =>
-        type == IndicatorType.vol || type == IndicatorType.maVol
-        ? controller.formatVolume(value)
-        : controller.formatPrice(value);
+    controller.indicatorFormatter = (value, type, period) => switch (type) {
+      IndicatorType.vol ||
+      IndicatorType.maVol => controller.formatVolume(value),
+      IndicatorType.macd => compactMacd(value),
+      _ => controller.formatPrice(value),
+    };
+  }
+
+  // MACD is a derived delta, not an order/price quote. Short notation keeps
+  // nonzero micro-price deltas readable without extending legends off-screen.
+  // Candle prices, rulers, crosshair and MA retain instrument pricePrecision.
+  String compactMacd(double value) {
+    if (value == 0) return '0';
+    var decimal = value.toStringAsPrecision(2);
+    if (!decimal.contains('e') && decimal.contains('.')) {
+      decimal = decimal.replaceFirst(RegExp(r'\.?0+$'), '');
+    }
+    final exponent = value
+        .toStringAsExponential(1)
+        .replaceFirst(RegExp(r'\.0(?=e)'), '')
+        .replaceFirst('e+', 'e');
+    return decimal.length <= exponent.length ? decimal : exponent;
   }
 
   @override

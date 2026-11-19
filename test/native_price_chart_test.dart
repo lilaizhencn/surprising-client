@@ -107,6 +107,12 @@ void main() {
       expect(controller.formatVolume(.000123), '0.000123');
       expect(controller.formatVolume(1000), '1000');
       expect(
+        controller.formatIndicator(-.00000025, IndicatorType.macd),
+        '-2.5e-7',
+      );
+      expect(controller.formatIndicator(0, IndicatorType.macd), '0');
+      expect(controller.formatPrice(.00000025), '0.00000025');
+      expect(
         controller.formatIndicator(.00001234, IndicatorType.ma),
         '0.00001234',
       );

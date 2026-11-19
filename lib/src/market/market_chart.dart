@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import '../models.dart';
 import '../price_chart.dart';
+import '../trading/private_trading.dart';
 import '../ui/client_components.dart';
 
 class MarketChartPage extends StatelessWidget {
@@ -39,6 +40,8 @@ class MarketChartPage extends StatelessWidget {
                 period: state.period,
                 onPeriod: (period) => unawaited(state.selectPeriod(period)),
               ),
+              const SizedBox(height: 12),
+              PrivateTradingPanel(state: state),
             ],
           ),
         ),

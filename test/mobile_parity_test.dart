@@ -303,7 +303,7 @@ void main() {
         await tester.pumpWidget(
           SurprisingClientApp(state: state, bootstrap: false),
         );
-        await tester.tap(find.text('行情').last);
+        await tester.tap(find.byTooltip('行情').last);
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey('market-search')),
@@ -317,7 +317,7 @@ void main() {
         );
         await tester.pump();
         expect(find.byType(PublicMarketRow), findsWidgets);
-        await tester.tap(find.text('交易').last);
+        await tester.tap(find.byTooltip('交易').last);
         await tester.pumpAndSettle();
         expect(state.mode, ProductMode.linear);
       },

@@ -61,30 +61,38 @@ class ExchangeBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = _exchangeItems(context);
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final bottomMargin = bottomInset > 0
+        ? (bottomInset - 14).clamp(8.0, 22.0)
+        : 10.0;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 4, 20, bottomMargin),
       child: Center(
         heightFactor: 1,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 620),
+          constraints: const BoxConstraints(maxWidth: 420),
           child: ClientGlassSurface(
+            radius: 28,
             child: SizedBox(
-              height: 68,
-              child: Row(
-                children: [
-                  for (var i = 0; i < items.length; i++)
-                    Expanded(
-                      child: _ExchangeNavButton(
-                        item: items[i],
-                        selected: selectedIndex == i,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          onSelected(i);
-                        },
+              height: 54,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < items.length; i++)
+                      Expanded(
+                        child: _ExchangeNavButton(
+                          item: items[i],
+                          selected: selectedIndex == i,
+                          showLabel: false,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            onSelected(i);
+                          },
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -159,10 +167,12 @@ class _ExchangeNavButton extends StatelessWidget {
     required this.item,
     required this.selected,
     required this.onTap,
+    this.showLabel = true,
   });
   final _ExchangeNavItem item;
   final bool selected;
   final VoidCallback onTap;
+  final bool showLabel;
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -170,52 +180,54 @@ class _ExchangeNavButton extends StatelessWidget {
       button: true,
       selected: selected,
       label: item.label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
-          child: ExcludeSemantics(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? colors.primaryContainer
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: selected ? colors.primary : Colors.transparent,
+      child: Tooltip(
+        message: item.label,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(22),
+            child: ExcludeSemantics(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 180),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: showLabel ? 14 : 16,
+                      vertical: showLabel ? 3 : 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? colors.primary.withValues(alpha: 0.16)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      selected ? item.selectedIcon : item.icon,
+                      color: selected ? colors.primary : colors.onSurfaceVariant,
+                      size: showLabel ? 24 : 25,
                     ),
                   ),
-                  child: Icon(
-                    selected ? item.selectedIcon : item.icon,
-                    color: selected ? colors.primary : colors.onSurfaceVariant,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                LText(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected
-                        ? colors.onSurface
-                        : colors.onSurfaceVariant,
-                    fontSize: 11,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  ),
-                ),
-              ],
+                  if (showLabel) ...[
+                    const SizedBox(height: 3),
+                    LText(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected
+                            ? colors.onSurface
+                            : colors.onSurfaceVariant,
+                        fontSize: 11,
+                        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ),

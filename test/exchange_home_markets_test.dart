@@ -47,14 +47,14 @@ void main() {
             expect(find.byTooltip('扫一扫'), findsOneWidget);
             expect(find.textContaining('Web3'), findsNothing);
             expect(tester.takeException(), isNull);
-            await tester.tap(find.text('行情').last);
+            await tester.tap(find.byTooltip('行情'));
             await tester.pumpAndSettle();
             expect(find.byType(ExchangeSearchField), findsOneWidget);
             expect(find.byTooltip('扫一扫'), findsNothing);
             expect(
-              find.text('行情'),
+              find.byTooltip('行情'),
               findsOneWidget,
-            ); // Only the bottom navigation label.
+            ); // Only the bottom navigation icon tooltip.
             expect(
               find.byKey(const ValueKey('market-product-tabs')),
               findsOneWidget,

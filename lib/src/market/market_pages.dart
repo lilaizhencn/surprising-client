@@ -56,7 +56,12 @@ class _HomePageState extends State<HomePage> {
         },
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            24 + MediaQuery.paddingOf(context).bottom,
+          ),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             Row(
@@ -377,7 +382,12 @@ class _MarketsPageState extends State<MarketsPage> {
               child: ListView(
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  24 + MediaQuery.paddingOf(context).bottom,
+                ),
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   if (items.isEmpty)
@@ -420,13 +430,16 @@ class PublicMarketRow extends StatelessWidget {
     final fiat = price == null || quoteRate == null || fiatRate == null
         ? null
         : price * quoteRate * fiatRate;
-    String volume(double? value) => value == null
-        ? '—'
-        : value >= 100000000
-        ? '${(value / 100000000).toStringAsFixed(2)}亿'
-        : value >= 10000
-        ? '${(value / 10000).toStringAsFixed(2)}万'
-        : money(value, digits: 2);
+    String volume(double? value) {
+      if (value == null) return '—';
+      final formatted = value >= 100000000
+          ? '${(value / 100000000).toStringAsFixed(2)}亿'
+          : value >= 10000
+          ? '${(value / 10000).toStringAsFixed(2)}万'
+          : groupedMoney(value, digits: 2);
+      final unit = instrument.baseAsset.trim();
+      return unit.isEmpty ? formatted : '$formatted $unit';
+    }
     return InkWell(
       onTap: () async {
         await state.selectInstrument(instrument);

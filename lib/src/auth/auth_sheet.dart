@@ -348,15 +348,29 @@ class _AuthSheetState extends State<AuthSheet> {
                       context,
                       mode == 'reset' ? '新密码' : '密码',
                     ),
-                    suffixIcon: IconButton(
-                      tooltip: clientLabel(
-                        context,
-                        showPassword ? '隐藏密码' : '显示密码',
-                      ),
-                      onPressed: () =>
-                          setState(() => showPassword = !showPassword),
-                      icon: Icon(
-                        showPassword ? Icons.visibility_off : Icons.visibility,
+                    suffixIcon: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: IconButton(
+                        tooltip: clientLabel(
+                          context,
+                          showPassword ? '隐藏密码' : '显示密码',
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          side: BorderSide.none,
+                          shape: const CircleBorder(),
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(36, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        iconSize: 20,
+                        onPressed: () =>
+                            setState(() => showPassword = !showPassword),
+                        icon: Icon(
+                          showPassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
                       ),
                     ),
                   ),
@@ -400,33 +414,40 @@ class _AuthSheetState extends State<AuthSheet> {
                 child: LText(message!, key: const ValueKey('auth-message')),
               ),
             const SizedBox(height: 20),
-            if (['login', 'register'].contains(mode))
+            if (['login', 'register'].contains(mode)) ...[
               LegalReview(
                 disabled: busy,
                 onReady: (value) {
                   if (mounted) setState(() => legalReady = value);
                 },
               ),
+              const SizedBox(height: 14),
+            ],
             FilledButton(
+              style: FilledButton.styleFrom(
+                shape: const StadiumBorder(),
+                minimumSize: const Size.fromHeight(48),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               onPressed:
                   busy || ['login', 'register'].contains(mode) && !legalReady
                   ? null
                   : () => submit(state),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: LText(
-                  busy
-                      ? '处理中…'
-                      : challenge != null
-                      ? '确认验证'
-                      : switch (mode) {
-                          'forgot' => '发送验证码',
-                          'reset' => '更新密码',
-                          'verify' => '完成邮箱验证',
-                          'register' => '创建账户',
-                          _ => '登录',
-                        },
-                ),
+              child: LText(
+                busy
+                    ? '处理中…'
+                    : challenge != null
+                    ? '确认验证'
+                    : switch (mode) {
+                        'forgot' => '发送验证码',
+                        'reset' => '更新密码',
+                        'verify' => '完成邮箱验证',
+                        'register' => '创建账户',
+                        _ => '登录',
+                      },
               ),
             ),
             if (challenge == null && ['login', 'register'].contains(mode)) ...[
@@ -439,7 +460,8 @@ class _AuthSheetState extends State<AuthSheet> {
                   disabledBackgroundColor: Colors.white,
                   disabledForegroundColor: const Color(0xFF747775),
                   side: const BorderSide(color: Color(0xFF747775)),
-                  minimumSize: const Size(0, 48),
+                  shape: const StadiumBorder(),
+                  minimumSize: const Size.fromHeight(48),
                   textStyle: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -468,6 +490,10 @@ class _AuthSheetState extends State<AuthSheet> {
                 ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  shape: const StadiumBorder(),
+                  minimumSize: const Size.fromHeight(48),
+                ),
                 onPressed: telegramBusy
                     ? () => setState(() {
                         ++telegramAttempt;

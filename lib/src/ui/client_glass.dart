@@ -1,7 +1,5 @@
 import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
 import 'theme/tokens.dart';
 
 /// Glass is confined to static navigation/overlays; financial content uses opaque surfaces.
@@ -12,74 +10,57 @@ class ClientGlassSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final t = context.tokens;
     final opaque =
         MediaQuery.highContrastOf(context) ||
         MediaQuery.accessibleNavigationOf(context) ||
         MediaQuery.disableAnimationsOf(context);
-    final native =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS && !opaque;
     final decoration = BoxDecoration(
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(
-        color: opaque ? t.borderStrong : t.borderDefault.withValues(alpha: 0.78),
+        color: opaque
+            ? t.borderStrong
+            : isDark
+            ? Colors.white.withValues(alpha: 0.18)
+            : Colors.white.withValues(alpha: 0.78),
+        width: 0.8,
       ),
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          t.bgElevated2.withValues(alpha: opaque ? 1 : SurprisingTokens.glass1Alpha),
-          Color.alphaBlend(
-            t.auroraCyan.withValues(alpha: 0.08),
-            t.bgElevated1,
-          ).withValues(alpha: opaque ? 1 : 0.86),
-        ],
+        colors: opaque
+            ? [t.bgElevated2, t.bgElevated1]
+            : isDark
+            ? [
+                Colors.white.withValues(alpha: 0.12),
+                t.bgElevated1.withValues(alpha: 0.38),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0.68),
+                Colors.white.withValues(alpha: 0.42),
+              ],
       ),
     );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: Stack(
-        children: [
-          if (native)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: ExcludeSemantics(
-                  child: UiKitView(
-                    key: ValueKey(
-                      '${colors.surface.toARGB32()}-${colors.primary.toARGB32()}-$radius',
-                    ),
-                    viewType: 'surprising/liquid-glass',
-                    creationParams: {
-                      'tint': t.bgElevated1.toARGB32(),
-                      'accent': t.auroraCyan.toARGB32(),
-                      'dark': colors.brightness == Brightness.dark,
-                      'radius': radius,
-                    },
-                    creationParamsCodec: const StandardMessageCodec(),
-                  ),
-                ),
-              ),
-            ),
-          if (native)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: t.borderDefault.withValues(alpha: 0.75)),
-                borderRadius: BorderRadius.circular(radius),
-              ),
-              child: child,
-            )
-          else if (opaque)
-            DecoratedBox(decoration: decoration, child: child)
-          else
-            BackdropFilter(
-              filter: ui.ImageFilter.blur(
-                sigmaX: SurprisingTokens.glass1Blur,
-                sigmaY: SurprisingTokens.glass1Blur,
-              ),
-              child: DecoratedBox(decoration: decoration, child: child),
-            ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.36 : 0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: opaque
+            ? DecoratedBox(decoration: decoration, child: child)
+            : BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                child: DecoratedBox(decoration: decoration, child: child),
+              ),
       ),
     );
   }

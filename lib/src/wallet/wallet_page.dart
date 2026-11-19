@@ -11,7 +11,6 @@ import '../exchange_widgets.dart';
 import '../funding_records_page.dart';
 import '../sensitive_screen.dart';
 import '../transfer_page.dart';
-import '../ui/client_components.dart';
 import '../ui/client_navigation.dart';
 import '../withdrawal_selection_page.dart';
 
@@ -21,6 +20,67 @@ class WalletPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    if (!state.isLoggedIn) {
+      return Material(
+        color: exchangeBackground(context),
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF00D2FF),
+                    Color(0xFF6366F1),
+                    Color(0xFFEC4899),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  key: const ValueKey('wallet-guest-login-button'),
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => showAuthSheet(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 34,
+                      vertical: 15,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.login, color: Colors.white, size: 20),
+                        const SizedBox(width: 8),
+                        LText(
+                          clientLabel(context, '登录 / 注册'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: exchangeBackground(context),
       child: RefreshIndicator(
@@ -31,7 +91,12 @@ class WalletPage extends StatelessWidget {
           ]);
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            24 + MediaQuery.paddingOf(context).bottom,
+          ),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             AssetOverview(
@@ -40,30 +105,16 @@ class WalletPage extends StatelessWidget {
               onDeposit: () => _openRechargeFlow(context, state),
               onWithdraw: () => _openWithdrawalFlow(context, state),
               onTools: () {
-                if (!state.isLoggedIn) {
-                  showAuthSheet(context);
-                  return;
-                }
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const TransferPage()),
                 );
               },
-              onRecords: state.isLoggedIn
-                  ? () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => FundingRecordsPage(state: state),
-                      ),
-                    )
-                  : null,
-            ),
-            if (!state.isLoggedIn) ...[
-              const SizedBox(height: 24),
-              PrimaryAction(
-                label: clientLabel(context, '登录 / 注册'),
-                icon: Icons.login,
-                onPressed: () => showAuthSheet(context),
+              onRecords: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FundingRecordsPage(state: state),
+                ),
               ),
-            ],
+            ),
           ],
         ),
       ),

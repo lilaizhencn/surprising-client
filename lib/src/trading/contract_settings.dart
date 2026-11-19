@@ -16,6 +16,7 @@ class TradeSymbolHeader extends StatelessWidget {
     required this.latestPrice,
     required this.onRefresh,
     required this.onChart,
+    this.onSelectSymbol,
     super.key,
   });
 
@@ -23,6 +24,7 @@ class TradeSymbolHeader extends StatelessWidget {
   final double? latestPrice;
   final VoidCallback onRefresh;
   final VoidCallback onChart;
+  final VoidCallback? onSelectSymbol;
 
   @override
   Widget build(BuildContext context) {
@@ -34,46 +36,57 @@ class TradeSymbolHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      instrument.displayName.replaceAll('-', ''),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  if (instrument.isDerivative)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: LText(
-                        instrument.contractLabel,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+              InkWell(
+                key: const ValueKey('trade-symbol-selector'),
+                onTap: onSelectSymbol,
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          instrument.displayName.replaceAll('-', ''),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    color: Theme.of(context).colorScheme.onSurface,
+                      const SizedBox(width: 5),
+                      if (instrument.isDerivative)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: LText(
+                            instrument.contractLabel,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -718,4 +731,200 @@ class _TradingLeverageSheetState extends State<TradingLeverageSheet> {
       ),
     ),
   );
+}
+
+Future<void> showSymbolPickerSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => const _SymbolPickerSheet(),
+  );
+}
+
+class _SymbolPickerSheet extends StatefulWidget {
+  const _SymbolPickerSheet();
+
+  @override
+  State<_SymbolPickerSheet> createState() => _SymbolPickerSheetState();
+}
+
+class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final query = _query.trim().toLowerCase();
+    final items = state.visibleInstruments.where((item) {
+      if (query.isEmpty) return true;
+      return item.symbol.toLowerCase().contains(query) ||
+          item.displayName.toLowerCase().contains(query) ||
+          item.baseAsset.toLowerCase().contains(query);
+    }).toList();
+
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            0,
+            16,
+            12 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: LText(
+                      '选择${state.mode.label}交易对',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                autofocus: false,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  hintText: clientLabel(context, '搜索币种 / 交易对'),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onChanged: (value) => setState(() => _query = value),
+              ),
+              const SizedBox(height: 10),
+              Flexible(
+                child: items.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 28),
+                        child: Center(child: LText('暂无匹配的交易对')),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: items.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final selected = item.symbol == state.selectedSymbol;
+                          final price =
+                              state.latestPriceFor(item) ?? item.lastPrice;
+                          final change = item.change24h;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            selected: selected,
+                            selectedTileColor: colors.primary.withValues(
+                              alpha: 0.08,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            title: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    item.displayName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                if (item.isDerivative) ...[
+                                  const SizedBox(width: 6),
+                                  LText(
+                                    item.contractLabel,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      price == null
+                                          ? '--'
+                                          : money(
+                                              price,
+                                              digits: item.pricePrecision,
+                                            ),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                    if (change != null)
+                                      Text(
+                                        '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: change >= 0
+                                              ? colors.tertiary
+                                              : colors.error,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(width: 8),
+                                if (selected)
+                                  Icon(
+                                    Icons.check,
+                                    size: 18,
+                                    color: colors.primary,
+                                  )
+                                else
+                                  const SizedBox(width: 18),
+                              ],
+                            ),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              unawaited(state.selectSymbol(item.symbol));
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

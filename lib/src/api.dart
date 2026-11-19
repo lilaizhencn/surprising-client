@@ -1257,6 +1257,15 @@ class ApiClient {
     return convertedAmount;
   }
 
+  Future<Map<String, dynamic>> latestFundingRate(
+    String instrumentId, {
+    required String productLine,
+  }) => get(
+    '/api/v1/funding/rates/latest',
+    query: {'instrumentId': instrumentId, 'productLine': productLine},
+    productLine: productLine,
+  );
+
   Future<List<ProductBalance>> productBalances(
     int userId, {
     String? accountType,
@@ -3141,7 +3150,7 @@ class ApiException implements Exception {
     };
     if (messages.containsKey(code)) return messages[code]!;
     if (messages.containsKey(detail)) return messages[detail]!;
-    if (RegExp(r'[\u4e00-\u9fff]').hasMatch(detail) &&
+    if (detail.isNotEmpty &&
         !RegExp(
           r'Aeron|Exception|Kafka|SQL|stack|<html',
           caseSensitive: false,

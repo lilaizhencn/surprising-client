@@ -101,18 +101,18 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+        tester.widget<Checkbox>(find.byType(Checkbox)).value,
         false,
       );
       expect(ready.last, false);
-      await tester.tap(find.byType(CheckboxListTile));
+      await tester.tap(find.byType(Checkbox));
       await tester.pumpAndSettle();
       expect(ready.last, true);
       expect(api.accepted.map((item) => item.revisionId), [29, 30]);
       state.selectLanguage(ClientLanguage.en);
       await tester.pumpAndSettle();
       expect(
-        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+        tester.widget<Checkbox>(find.byType(Checkbox)).value,
         false,
       );
       expect(api.accepted, isEmpty);

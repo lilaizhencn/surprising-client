@@ -66,7 +66,7 @@ void main() {
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
       );
-      await tester.tap(find.text('交易').last);
+      await tester.tap(find.byTooltip('交易').last);
       await tester.pumpAndSettle();
       final tabs = find.byKey(const ValueKey('product-line-tabs'));
       await tester.drag(tabs, const Offset(-400, 0));
@@ -134,7 +134,7 @@ void main() {
       await tester.pumpWidget(
         SurprisingClientApp(state: state, bootstrap: false),
       );
-      await tester.tap(find.text('交易').last);
+      await tester.tap(find.byTooltip('交易').last);
       await tester.pumpAndSettle();
       final tab = find.byKey(const ValueKey('product-tab-option'));
       await tester.ensureVisible(tab);

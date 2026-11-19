@@ -208,18 +208,49 @@ class _LegalReviewState extends State<LegalReview> {
   @override
   Widget build(BuildContext context) {
     final language = state!.language;
+    final colors = Theme.of(context).colorScheme;
+    void toggleChecked(bool next) {
+      if (widget.disabled) return;
+      setState(() => checked = next);
+      state!.api.setLegalAcceptance(checked ? documents : []);
+      widget.onReady(checked);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (loading) const LinearProgressIndicator(),
-        for (final document in documents)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton(
-              onPressed: widget.disabled
-                  ? null
-                  : () => openLegalDocument(context, document),
-              child: Text('${document.title} · ${document.revisionLabel}'),
+        if (documents.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Wrap(
+              spacing: 14,
+              runSpacing: 4,
+              children: [
+                for (final document in documents)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: widget.disabled
+                        ? null
+                        : () => openLegalDocument(context, document),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 2,
+                        horizontal: 2,
+                      ),
+                      child: Text(
+                        document.title,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: widget.disabled
+                              ? colors.onSurfaceVariant
+                              : colors.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         if (error != null) ...[
@@ -230,24 +261,44 @@ class _LegalReviewState extends State<LegalReview> {
           ),
         ],
         if (!loading && error == null)
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            title: LText(
-              clientText(
-                language,
-                '我已阅读并同意用户协议，且已了解隐私政策。',
-                'I have read and agree to the User Agreement and acknowledge the Privacy Policy.',
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: widget.disabled ? null : () => toggleChecked(!checked),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: Checkbox(
+                      value: checked,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      onChanged: widget.disabled
+                          ? null
+                          : (value) => toggleChecked(value == true),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: LText(
+                      clientText(
+                        language,
+                        '我已阅读并同意用户协议，且已了解隐私政策。',
+                        'I have read and agree to the User Agreement and acknowledge the Privacy Policy.',
+                      ),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            value: checked,
-            onChanged: widget.disabled
-                ? null
-                : (value) {
-                    setState(() => checked = value == true);
-                    state!.api.setLegalAcceptance(checked ? documents : []);
-                    widget.onReady(checked);
-                  },
           ),
         Align(
           alignment: AlignmentDirectional.centerStart,

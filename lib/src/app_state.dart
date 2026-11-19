@@ -1173,9 +1173,34 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  Future<void> refreshFundingRate() async {
+    final instrument = selectedInstrument;
+    if (offline ||
+        !instrument.isPerpetual ||
+        instrument.instrumentId.isEmpty) {
+      return;
+    }
+    final productLine = instrument.mode.productLine;
+    final symbol = instrument.symbol;
+    final metricKey = '$productLine:$symbol';
+    final beforeFunding = market.version('$metricKey:funding:');
+    try {
+      final latest = await api.latestFundingRate(
+        instrument.instrumentId,
+        productLine: productLine,
+      );
+      if (_disposed) return;
+      if (identical(beforeFunding, market.version('$metricKey:funding:'))) {
+        market.metrics[metricKey] = {...?market.metrics[metricKey], ...latest};
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
   Future<void> refreshPublicData({bool silent = false}) async {
     if (offline || selectedSymbol.isEmpty) return;
     unawaited(refreshOptionReference());
+    unawaited(refreshFundingRate());
     final requestVersion = ++_publicRequestVersion;
     loadingPublic = true;
     notifyListeners();

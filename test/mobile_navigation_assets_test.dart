@@ -37,7 +37,7 @@ void main() {
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         final product = state.mode;
-        await tester.tap(find.text('交易').last);
+        await tester.tap(find.byTooltip('交易').last);
         await tester.pumpAndSettle();
         expect(state.mode, product);
         final instrument = state.selectedInstrument;
@@ -50,12 +50,12 @@ void main() {
         expect(state.period, '5m');
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('C2C').last);
+        await tester.tap(find.byTooltip('C2C').last);
         await tester.pumpAndSettle();
         expect(find.byType(C2cPage), findsOneWidget);
         expect(find.byType(TradePage), findsNothing);
         expect(state.mode, product);
-        await tester.tap(find.text('资产').last);
+        await tester.tap(find.byTooltip('资产').last);
         await tester.pumpAndSettle();
         expect(find.text('钱包工具'), findsNothing);
         expect(find.text('资产估值'), findsNothing);

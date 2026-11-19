@@ -36,6 +36,7 @@ class _TradePageState extends State<TradePage> {
   bool bboEnabled = false;
   String bboPriceMode = 'OPPONENT_1';
   bool priceInitialized = false;
+  String? _lastInstrumentKey;
 
   @override
   void dispose() {
@@ -84,6 +85,13 @@ class _TradePageState extends State<TradePage> {
         ],
       );
     }
+    final instrumentKey = '${instrument.mode.productLine}:${instrument.symbol}';
+    if (_lastInstrumentKey != instrumentKey) {
+      _lastInstrumentKey = instrumentKey;
+      priceInitialized = false;
+      priceController.clear();
+      quantityController.clear();
+    }
     final latestPrice = state.latestPriceFor(instrument);
     if (state.orderBook.bids.isNotEmpty && !priceInitialized) {
       priceInitialized = true;
@@ -106,11 +114,17 @@ class _TradePageState extends State<TradePage> {
               await state.refreshPrivateData();
             },
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
+              padding: EdgeInsets.fromLTRB(
+                8,
+                6,
+                8,
+                20 + MediaQuery.paddingOf(context).bottom,
+              ),
               children: [
                 TradeSymbolHeader(
                   instrument: instrument,
                   latestPrice: latestPrice,
+                  onSelectSymbol: () => showSymbolPickerSheet(context),
                   onChart: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const MarketChartPage(),
@@ -154,12 +168,6 @@ class _TradePageState extends State<TradePage> {
                         unawaited(state.changePositionMode(mode)),
                   ),
                 ],
-                const SizedBox(height: 6),
-                SymbolStrip(
-                  instruments: state.visibleInstruments,
-                  selected: state.selectedSymbol,
-                  onSelected: (symbol) => unawaited(state.selectSymbol(symbol)),
-                ),
                 const SizedBox(height: 6),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -397,8 +405,6 @@ class _TradePageState extends State<TradePage> {
                 ),
                 const SizedBox(height: 8),
                 if (state.submittingOrder) const LinearProgressIndicator(),
-                RecentTradesPanel(state: state),
-                const SizedBox(height: 12),
                 PrivateTradingPanel(state: state),
                 if (instrument.isDerivative) ...[
                   Theme(

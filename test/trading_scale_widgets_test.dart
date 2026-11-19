@@ -94,6 +94,13 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final state = TicketState(CaptureOrderApi(), contract(ProductMode.linear));
     addTearDown(state.dispose);
+    final renderingErrors = <FlutterErrorDetails>[];
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) {
+      renderingErrors.add(details);
+      previousErrorHandler?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousErrorHandler);
     await tester.pumpWidget(
       AppScope(
         notifier: state,
@@ -145,6 +152,11 @@ void main() {
     expect(
       tester.renderObject<RenderParagraph>(find.text('市价单')).didExceedMaxLines,
       isFalse,
+    );
+    expect(
+      renderingErrors,
+      isEmpty,
+      reason: renderingErrors.map((details) => details.toString()).join('\n'),
     );
     expect(tester.takeException(), isNull);
   });

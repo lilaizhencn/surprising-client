@@ -339,7 +339,7 @@ class AuthState extends ChangeNotifier {
         () => api.login(username: identifier.trim(), password: password),
         failure: '登录失败',
         success: (session) =>
-            session.requiresEmailVerification ? '请完成邮箱验证' : '登录成功',
+            session.requiresEmailVerification ? '请完成邮箱验证' : '',
       );
 
   Future<AuthSession?> register(
@@ -356,7 +356,7 @@ class AuthState extends ChangeNotifier {
     ),
     failure: '注册失败',
     success: (session) =>
-        session.requiresEmailVerification ? '注册成功，请先完成邮箱验证' : '注册成功',
+        session.requiresEmailVerification ? '注册成功，请先完成邮箱验证' : '',
   );
 
   Future<AuthSession?> loginTelegram(
@@ -364,7 +364,7 @@ class AuthState extends ChangeNotifier {
   ) => _authenticate(
     authenticate,
     failure: 'Telegram 登录失败',
-    success: (_) => '登录成功',
+    success: (_) => '',
   );
 
   Future<AuthSession?> loginGoogle(
@@ -372,7 +372,7 @@ class AuthState extends ChangeNotifier {
   ) => _authenticate(
     authenticate,
     failure: 'Google 登录失败',
-    success: (_) => '登录成功',
+    success: (_) => '',
   );
 
   Future<AuthSession?> _authenticate(
@@ -395,7 +395,10 @@ class AuthState extends ChangeNotifier {
       if (!isCurrentRevision(operation)) return null;
       if (!await _acceptLogin(authenticated, operation)) return null;
       if (!isCurrentRevision(operation)) return null;
-      _feedback(notice: success(authenticated));
+      final notice = success(authenticated);
+      if (notice.isNotEmpty) {
+        _feedback(notice: notice);
+      }
       return authenticated;
     } on GoogleLoginCancelled {
       return null;

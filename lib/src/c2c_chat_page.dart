@@ -12,6 +12,7 @@ import 'ui/client_components.dart' show clientText;
 import 'app_state.dart';
 import 'c2c_models.dart';
 import 'models.dart';
+import 'ui/theme/tokens.dart';
 
 class C2cMessagingPage extends StatelessWidget {
   const C2cMessagingPage({super.key});
@@ -452,7 +453,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
   StreamSubscription<Map<String, dynamic>>? events;
   List<C2cMessage> messages = [];
   List<Map<String, dynamic>> orderEvents = [], reads = [], replies = [];
-  Map<String, dynamic>? pending;
+  Map<String, dynamic>? pending, liveOrder;
   C2cAttachment? attachment;
   PlatformFile? uploadFile;
   Uint8List? uploadBytes;
@@ -462,6 +463,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
       hasOlder = false,
       sending = false,
       uploading = false,
+      orderBusy = false,
       reading = false,
       pendingLoaded = false;
   String after = '0', afterEvent = '0', readMessage = '0', readEvent = '0';
@@ -492,6 +494,123 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
     });
     scroll.addListener(() => unawaited(markRead()));
     unawaited(initialize());
+    if (widget.conversation.orderId != null) {
+      unawaited(_refreshOrder());
+    }
+  }
+
+  Future<void> _refreshOrder() async {
+    final orderId = widget.conversation.orderId;
+    if (orderId == null) return;
+    try {
+      final value = await widget.state.api.c2cOrder(widget.owner, orderId);
+      if (current) setState(() => liveOrder = value);
+    } catch (_) {}
+  }
+
+  Future<void> _markPaidInChat() async {
+    final orderId = widget.conversation.orderId;
+    if (orderId == null || orderBusy) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const LText('确认已付款'),
+        content: const LText('请确认已按订单收款方式完成站外转账，上传付款截图可加速商户核验。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: const LText('返回'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const LText('我已付款'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !current) return;
+    setState(() {
+      orderBusy = true;
+      error = null;
+    });
+    try {
+      await widget.state.api.c2cBusinessPost(
+        widget.owner,
+        '/orders/$orderId/paid',
+        {'proofId': attachment?.id},
+      );
+      await _refreshOrder();
+    } catch (failure) {
+      if (current) setState(() => error = clientErrorMessage(failure));
+    } finally {
+      if (current) setState(() => orderBusy = false);
+    }
+  }
+
+  Future<void> _confirmReleaseInChat() async {
+    final orderId = widget.conversation.orderId;
+    if (orderId == null || orderBusy) return;
+    final emailCtrl = TextEditingController();
+    final totpCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const LText('确认收款并放币'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const LText('务必核对收款账户实际到账后再放币。'),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => unawaited(
+                widget.state.api.issueSecurityChallenge('WITHDRAWAL'),
+              ),
+              child: const LText('获取安全验证码'),
+            ),
+            TextField(
+              controller: emailCtrl,
+              decoration: const InputDecoration(labelText: '邮箱验证码'),
+            ),
+            TextField(
+              controller: totpCtrl,
+              decoration: const InputDecoration(labelText: '验证器验证码（已绑定时）'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: const LText('返回'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const LText('确认放币'),
+          ),
+        ],
+      ),
+    );
+    final emailCode = emailCtrl.text.trim();
+    final totpCode = totpCtrl.text.trim();
+    emailCtrl.dispose();
+    totpCtrl.dispose();
+    if (confirmed != true || !current) return;
+    setState(() {
+      orderBusy = true;
+      error = null;
+    });
+    try {
+      await widget.state.api.c2cBusinessPost(
+        widget.owner,
+        '/orders/$orderId/release',
+        {'emailCode': emailCode, 'totpCode': totpCode},
+      );
+      await _refreshOrder();
+    } catch (failure) {
+      if (current) setState(() => error = clientErrorMessage(failure));
+    } finally {
+      if (current) setState(() => orderBusy = false);
+    }
   }
 
   Future<void> initialize() async {
@@ -852,6 +971,74 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  Widget _buildChatOrderBar() {
+    final row = liveOrder;
+    if (row == null) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: LText(
+          '订单 ${widget.conversation.orderId}',
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      );
+    }
+    final status = asString(row['status']);
+    final m = asMap(row['market']);
+    final payment = asMap(row['payment']);
+    final isBuyer = '${row['buyerUserId']}' == '${widget.owner}';
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      color: colors.surfaceContainerHighest,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: LText(
+                  '${c2cOrderStatus(status)} · ${row['fiatAmount']} ${m['fiat']} (${row['quantity']} ${m['asset']})',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 18),
+                onPressed: orderBusy ? null : _refreshOrder,
+                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          if (payment.isNotEmpty)
+            Text(
+              '收款方式：${payment['methodCode'] ?? ''} ${payment['holderName'] ?? ''} ${payment['accountNumber'] ?? ''}',
+              style: TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant),
+            ),
+          if (status == 'PAYMENT_PENDING' && isBuyer)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FilledButton.tonal(
+                onPressed: orderBusy ? null : _markPaidInChat,
+                child: const LText('我已付款，通知卖家'),
+              ),
+            ),
+          if (status == 'PAID' && !isBuyer)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FilledButton(
+                onPressed: orderBusy ? null : _confirmReleaseInChat,
+                child: const LText('确认收款并放币'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (AppScope.of(context).session?.user.userId != widget.owner) {
@@ -884,13 +1071,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
         child: Column(
           children: [
             if (widget.conversation.orderId != null)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: LText(
-                  '订单 ${widget.conversation.orderId}',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
+              _buildChatOrderBar(),
             if (error != null)
               MaterialBanner(
                 content: LText(
@@ -926,16 +1107,30 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                             message = item.message;
                         if (message == null) {
                           final type = asString(item.event!['type']);
-                          return Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: LText(
-                              type == 'BUYER_MARKED_PAID'
-                                  ? '买方已标记付款，请另行核实实际到账。'
-                                  : type == 'ORDER_CREATED'
-                                  ? '订单已创建'
-                                  : '订单状态已更新',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall,
+                          return Center(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.72),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: LText(
+                                type == 'BUYER_MARKED_PAID'
+                                    ? '买方已标记付款，请另行核实实际到账。'
+                                    : type == 'ORDER_CREATED'
+                                    ? '订单已创建'
+                                    : '订单状态已更新',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(fontSize: 11),
+                              ),
                             ),
                           );
                         }
@@ -949,68 +1144,129 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                               BigInt.parse(c2cId(r['messageId'])) >=
                                   BigInt.parse(message.id),
                         );
-                        return Align(
-                          key: ValueKey(message.id),
-                          alignment: own
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: Container(
-                            constraints: BoxConstraints(
-                              maxWidth: MediaQuery.sizeOf(context).width * .82,
+                        final isDark =
+                            Theme.of(context).brightness == Brightness.dark;
+                        final peerInitial = widget.conversation.nickname
+                            .trim()
+                            .isEmpty
+                            ? 'U'
+                            : widget.conversation.nickname
+                                  .trim()
+                                  .characters
+                                  .first
+                                  .toUpperCase();
+                        final avatar = CircleAvatar(
+                          radius: 18,
+                          backgroundColor: own
+                              ? const Color(0xFF00C6FF).withValues(alpha: 0.20)
+                              : const Color(0xFF7B4397).withValues(alpha: 0.22),
+                          child: Text(
+                            own
+                                ? (message.authorKind == 'USER' ? '我' : 'S')
+                                : peerInitial,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: own
+                                  ? const Color(0xFF00C6FF)
+                                  : Theme.of(context).colorScheme.onSurface,
                             ),
-                            margin: const EdgeInsets.symmetric(vertical: 6),
+                          ),
+                        );
+                        final bubble = CustomPaint(
+                          painter: _SocialBubblePainter(
+                            isMe: own,
+                            isDark: isDark,
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              own ? 12 : 19,
+                              9,
+                              own ? 19 : 12,
+                              9,
+                            ),
                             child: Column(
-                              crossAxisAlignment: own
-                                  ? CrossAxisAlignment.end
-                                  : CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (message.authorKind != 'USER')
-                                  LText(
-                                    message.authorKind == 'SUPPORT'
-                                        ? '平台客服'
-                                        : '系统',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall,
+                                if (message.text.isNotEmpty)
+                                  Text(
+                                    message.text,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      height: 1.38,
+                                      color: own || isDark
+                                          ? Colors.white
+                                          : Theme.of(
+                                              context,
+                                            ).colorScheme.onSurface,
+                                    ),
                                   ),
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: own
-                                        ? Theme.of(
-                                            context,
-                                          ).colorScheme.primaryContainer
-                                        : Theme.of(
-                                            context,
-                                          ).colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(12),
+                                if (message.attachment != null)
+                                  _Attachment(
+                                    state: widget.state,
+                                    owner: widget.owner,
+                                    attachment: message.attachment!,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                        return Padding(
+                          key: ValueKey(message.id),
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            mainAxisAlignment: own
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (!own) ...[avatar, const SizedBox(width: 6)],
+                              Flexible(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth:
+                                        MediaQuery.sizeOf(context).width * .72,
                                   ),
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: own
+                                        ? CrossAxisAlignment.end
+                                        : CrossAxisAlignment.start,
                                     children: [
-                                      if (message.text.isNotEmpty)
-                                        Text(message.text),
-                                      if (message.attachment != null)
-                                        _Attachment(
-                                          state: widget.state,
-                                          owner: widget.owner,
-                                          attachment: message.attachment!,
+                                      if (message.authorKind != 'USER')
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 3,
+                                          ),
+                                          child: LText(
+                                            message.authorKind == 'SUPPORT'
+                                                ? '平台客服'
+                                                : '系统',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
                                         ),
+                                      bubble,
+                                      Padding(
+                                        padding: EdgeInsets.only(
+                                          top: 4,
+                                          left: own ? 0 : 8,
+                                          right: own ? 8 : 0,
+                                        ),
+                                        child: LText(
+                                          '${message.createdAt.toLocal().hour.toString().padLeft(2, '0')}:${message.createdAt.toLocal().minute.toString().padLeft(2, '0')}${own ? (read ? ' · 已读' : ' · 已发送') : ''}',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(fontSize: 10.5),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: LText(
-                                    '${message.createdAt.toLocal().hour.toString().padLeft(2, '0')}:${message.createdAt.toLocal().minute.toString().padLeft(2, '0')}${own ? (read ? ' · 已读' : ' · 已发送') : ''}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                              if (own) ...[const SizedBox(width: 6), avatar],
+                            ],
                           ),
                         );
                       },
@@ -1052,8 +1308,17 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                   ],
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 6, 12, 4),
+            Container(
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+              decoration: BoxDecoration(
+                color: context.tokens.bgElevated1,
+                border: Border(
+                  top: BorderSide(
+                    color: context.tokens.borderDefault.withValues(alpha: 0.6),
+                    width: 0.6,
+                  ),
+                ),
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -1061,7 +1326,11 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                     onPressed: pending != null || sending || uploading
                         ? null
                         : attach,
-                    icon: const Icon(Icons.attach_file),
+                    style: IconButton.styleFrom(
+                      backgroundColor: context.tokens.bgElevated2,
+                      shape: const CircleBorder(),
+                    ),
+                    icon: const Icon(Icons.add, size: 22),
                     tooltip: clientLabel(context, '添加附件'),
                   ),
                   if (replies.isNotEmpty)
@@ -1078,6 +1347,7 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                       ],
                       icon: const Icon(Icons.quickreply_outlined),
                     ),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: TextField(
                       controller: text,
@@ -1088,24 +1358,67 @@ class _C2cChatRoomState extends State<C2cChatRoom> with WidgetsBindingObserver {
                       decoration: InputDecoration(
                         hintText: clientLabel(context, '输入消息…'),
                         counterText: '',
+                        filled: true,
+                        fillColor: context.tokens.bgElevated2,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide(
+                            color: context.tokens.borderDefault.withValues(
+                              alpha: 0.5,
+                            ),
+                            width: 0.6,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide(
+                            color: context.tokens.borderDefault.withValues(
+                              alpha: 0.5,
+                            ),
+                            width: 0.6,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed:
-                        sending ||
-                            uploading ||
-                            uploadId != null ||
-                            !pendingLoaded
-                        ? null
-                        : send,
-                    child: LText(
-                      sending
-                          ? '发送中…'
-                          : pending != null
-                          ? '查询重试'
-                          : '发送',
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF00C6FF), Color(0xFF7B4397)],
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(64, 40),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed:
+                          sending ||
+                              uploading ||
+                              uploadId != null ||
+                              !pendingLoaded
+                          ? null
+                          : send,
+                      child: LText(
+                        sending
+                            ? '发送中…'
+                            : pending != null
+                            ? '查询重试'
+                            : '发送',
+                      ),
                     ),
                   ),
                 ],
@@ -1242,4 +1555,84 @@ class _AttachmentState extends State<_Attachment> {
       ),
     );
   }
+}
+
+class _SocialBubblePainter extends CustomPainter {
+  const _SocialBubblePainter({required this.isMe, required this.isDark});
+
+  final bool isMe;
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const r = 14.0;
+    const tw = 7.0;
+    const th = 6.0;
+    final ty = (size.height * 0.5).clamp(r + th, 20.0);
+    final path = Path();
+
+    if (!isMe) {
+      final bx = tw;
+      final ex = size.width;
+      path.moveTo(bx + r, 0);
+      path.lineTo(ex - r, 0);
+      path.quadraticBezierTo(ex, 0, ex, r);
+      path.lineTo(ex, size.height - r);
+      path.quadraticBezierTo(ex, size.height, ex - r, size.height);
+      path.lineTo(bx + r, size.height);
+      path.quadraticBezierTo(bx, size.height, bx, size.height - r);
+      path.lineTo(bx, ty + th);
+      path.lineTo(0, ty);
+      path.lineTo(bx, ty - th);
+      path.lineTo(bx, r);
+      path.quadraticBezierTo(bx, 0, bx + r, 0);
+      path.close();
+    } else {
+      final ex = size.width - tw;
+      path.moveTo(r, 0);
+      path.lineTo(ex - r, 0);
+      path.quadraticBezierTo(ex, 0, ex, r);
+      path.lineTo(ex, ty - th);
+      path.lineTo(size.width, ty);
+      path.lineTo(ex, ty + th);
+      path.lineTo(ex, size.height - r);
+      path.quadraticBezierTo(ex, size.height, ex - r, size.height);
+      path.lineTo(r, size.height);
+      path.quadraticBezierTo(0, size.height, 0, size.height - r);
+      path.lineTo(0, r);
+      path.quadraticBezierTo(0, 0, r, 0);
+      path.close();
+    }
+
+    final rect = Offset.zero & size;
+    final gradient = isMe
+        ? const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF00C6FF), Color(0xFF7B4397)],
+          )
+        : LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? const [Color(0xFF1A1D2E), Color(0xFF242040)]
+                : const [Color(0xFFF3F4F8), Color(0xFFEBEFF7)],
+          );
+    final fillPaint = Paint()..shader = gradient.createShader(rect);
+    canvas.drawPath(path, fillPaint);
+
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..color = isMe
+          ? Colors.white.withValues(alpha: 0.18)
+          : isDark
+          ? const Color(0xFF2F2F43)
+          : const Color(0xFFD7DCE6);
+    canvas.drawPath(path, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SocialBubblePainter oldDelegate) =>
+      oldDelegate.isMe != isMe || oldDelegate.isDark != isDark;
 }

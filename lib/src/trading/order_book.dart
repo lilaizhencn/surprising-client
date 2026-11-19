@@ -8,7 +8,7 @@ import '../ui/client_colors.dart';
 import '../ui/client_components.dart';
 import 'trading_details.dart';
 
-class OrderBookPanel extends StatelessWidget {
+class OrderBookPanel extends StatefulWidget {
   const OrderBookPanel({
     required this.instrument,
     required this.orderBook,
@@ -25,7 +25,18 @@ class OrderBookPanel extends StatelessWidget {
   final ValueChanged<String> onPrice;
 
   @override
+  State<OrderBookPanel> createState() => _OrderBookPanelState();
+}
+
+class _OrderBookPanelState extends State<OrderBookPanel> {
+  int _tab = 0;
+
+  @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final instrument = widget.instrument;
+    final orderBook = widget.orderBook;
     final maxQuantity = [
       ...orderBook.asks.take(5),
       ...orderBook.bids.take(5),
@@ -47,7 +58,7 @@ class OrderBookPanel extends StatelessWidget {
         ? bids.first.priceTicks
         : (asks.isNotEmpty ? asks.last.priceTicks : 0);
     final displayPrice =
-        latestPrice ??
+        widget.latestPrice ??
         (fallbackPriceTicks == 0
             ? null
             : instrument.priceFromTicks(fallbackPriceTicks));
@@ -55,83 +66,273 @@ class OrderBookPanel extends StatelessWidget {
       padding: const EdgeInsets.all(6),
       child: Column(
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: LText(
-                  '价格',
+              _BookTabChip(
+                label: '盘口',
+                selected: _tab == 0,
+                onTap: () => setState(() => _tab = 0),
+              ),
+              _BookTabChip(
+                label: '逐笔成交',
+                selected: _tab == 1,
+                onTap: () => setState(() => _tab = 1),
+              ),
+              if (_tab == 0)
+                InkWell(
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => AppScope(
+                      notifier: state,
+                      child: FullOrderBookSheet(onPrice: widget.onPrice),
+                    ),
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: LText(
+                      '20档',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (_tab == 0) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: LText(
+                    '价格',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+                LText(
+                  instrument.isSpot ? '数量 (${instrument.baseAsset})' : '数量（张）',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: colors.onSurfaceVariant,
                     fontSize: 10,
                   ),
                 ),
-              ),
-              LText(
-                instrument.isSpot ? '数量 (${instrument.baseAsset})' : '数量（张）',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 10,
+              ],
+            ),
+            const SizedBox(height: 3),
+            if (widget.recovering)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: LText(
+                  '盘口恢复中',
+                  key: ValueKey('depth-recovering'),
+                  style: TextStyle(fontSize: 10),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          if (recovering)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 4),
-              child: LText(
-                '盘口恢复中',
-                key: ValueKey('depth-recovering'),
-                style: TextStyle(fontSize: 10),
+            for (final level in asks)
+              BookLine(
+                level: level,
+                maxQuantity: maxQuantity,
+                instrument: instrument,
+                color: colors.error,
+                onTap: widget.onPrice,
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                displayPrice == null
+                    ? '--'
+                    : money(displayPrice, digits: instrument.pricePrecision),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: colors.tertiary,
+                ),
               ),
             ),
-          for (final level in asks)
-            BookLine(
-              level: level,
-              maxQuantity: maxQuantity,
-              instrument: instrument,
-              color: Theme.of(context).colorScheme.error,
-              onTap: onPrice,
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Text(
-              displayPrice == null
-                  ? '--'
-                  : money(displayPrice, digits: instrument.pricePrecision),
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.tertiary,
+            for (final level in bids)
+              BookLine(
+                level: level,
+                maxQuantity: maxQuantity,
+                instrument: instrument,
+                color: colors.tertiary,
+                onTap: widget.onPrice,
               ),
+            const Spacer(),
+            if (bids.isNotEmpty || asks.isNotEmpty)
+              OrderBookRatioBar(buyRatio: buyRatio)
+            else
+              const SizedBox(height: 4),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: LText(
+                    '价格',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+                LText(
+                  instrument.isSpot ? '数量' : '张数',
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 46,
+                  child: LText(
+                    '时间',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          for (final level in bids)
-            BookLine(
-              level: level,
-              maxQuantity: maxQuantity,
-              instrument: instrument,
-              color: Theme.of(context).colorScheme.tertiary,
-              onTap: onPrice,
+            const SizedBox(height: 4),
+            Expanded(
+              child: state.recentTrades.isEmpty
+                  ? const Center(
+                      child: LText('暂无成交', style: TextStyle(fontSize: 11)),
+                    )
+                  : ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: math.min(state.recentTrades.length, 30),
+                      itemBuilder: (context, index) {
+                        final trade = state.recentTrades[index];
+                        final price = _recentTradePrice(trade, instrument);
+                        final qty = _recentTradeQuantity(trade, instrument);
+                        final time =
+                            asNullableDateTime(
+                              trade['eventTime'],
+                            )?.toLocal().toIso8601String().substring(11, 19) ??
+                            '--';
+                        final isBuy = trade['side'] == 'BUY';
+                        return InkWell(
+                          onTap: () => widget.onPrice(price),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    price,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isBuy
+                                          ? colors.tertiary
+                                          : colors.error,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  qty,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 46,
+                                  child: Text(
+                                    time,
+                                    textAlign: TextAlign.end,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: colors.onSurfaceVariant,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
-          const Spacer(),
-          if (bids.isNotEmpty || asks.isNotEmpty)
-            OrderBookRatioBar(buyRatio: buyRatio)
-          else
-            const SizedBox(height: 16),
-          const SizedBox(height: 6),
-          TextButton(
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              builder: (_) => AppScope(
-                notifier: AppScope.of(context),
-                child: FullOrderBookSheet(onPrice: onPrice),
-              ),
-            ),
-            child: const LText('查看20档', style: TextStyle(fontSize: 11)),
-          ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _BookTabChip extends StatelessWidget {
+  const _BookTabChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LText(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? colors.onSurface : colors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              height: 2,
+              width: 18,
+              decoration: BoxDecoration(
+                color: selected ? colors.primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

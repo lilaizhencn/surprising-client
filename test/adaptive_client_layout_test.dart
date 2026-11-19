@@ -123,7 +123,7 @@ void main() {
         find.byType(ExchangeSideNav),
         size.width >= 600 ? findsOneWidget : findsNothing,
       );
-      await tester.tap(find.text('交易').last);
+      await tester.tap(find.byTooltip('交易').last);
       await tester.pumpAndSettle();
       expect(find.byType(TradePage), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -143,7 +143,7 @@ void main() {
       SurprisingClientApp(state: state, bootstrap: false),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('交易').last);
+    await tester.tap(find.byTooltip('交易').last);
     await tester.pumpAndSettle();
     final fields = find.descendant(
       of: find.byType(TradePage),

@@ -277,6 +277,7 @@ class _ClientShellState extends State<ClientShell> {
             final wide =
                 constraints.maxWidth >= 600 && constraints.maxHeight >= 360;
             return Scaffold(
+              extendBody: !wide,
               body: Row(
                 children: [
                   if (wide)
@@ -289,7 +290,7 @@ class _ClientShellState extends State<ClientShell> {
                     child: ClientNavigation(
                       openBuyCrypto: () => setTab(3),
                       openAnnouncements: openAnnouncements,
-                      child: SafeArea(child: content),
+                      child: SafeArea(bottom: wide, child: content),
                     ),
                   ),
                 ],

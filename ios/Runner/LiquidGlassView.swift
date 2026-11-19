@@ -37,7 +37,8 @@ final class LiquidGlassView: NSObject, FlutterPlatformView {
       surface.backgroundColor = color
     } else if #available(iOS 26.0, *) {
       let glass = UIGlassEffect(style: .regular)
-      glass.tintColor = color.withAlphaComponent(0.72)
+      let isDark = surface.overrideUserInterfaceStyle == .dark
+      glass.tintColor = color.withAlphaComponent(isDark ? 0.14 : 0.18)
       glass.isInteractive = true
       surface.backgroundColor = .clear
       surface.effect = glass

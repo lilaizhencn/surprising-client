@@ -42,6 +42,25 @@ extension C2cApi on ApiClient {
   ) => _c2cPost(owner, path, body);
 
   Future<Map<String, dynamic>> c2cStatus() => get('/api/v1/c2c/status');
+  Future<Map<String, dynamic>> c2cPublicMarkets() => get('/api/v1/c2c/markets');
+  Future<Map<String, dynamic>> c2cPublicAds({
+    required String marketId,
+    required String side,
+    String? amount,
+    String? methodCode,
+    int offset = 0,
+    int limit = 20,
+  }) => get(
+    '/api/v1/c2c/ads',
+    query: {
+      'marketId': marketId,
+      'side': side,
+      'offset': '$offset',
+      'limit': '$limit',
+      if (amount != null && amount.isNotEmpty) 'amount': amount,
+      if (methodCode != null && methodCode.isNotEmpty) 'methodCode': methodCode,
+    },
+  );
   Future<({List<C2cConversation> items, bool hasMore})> c2cConversations(
     int owner, {
     String search = '',
@@ -171,11 +190,52 @@ extension C2cApi on ApiClient {
     String name,
     String contentType,
     Uint8List bytes,
-  ) {
+  ) => _c2cUploadMultipart(
+    owner: owner,
+    id: id,
+    name: name,
+    contentType: contentType,
+    bytes: bytes,
+    allowedTypes: const ['image/jpeg', 'image/png', 'application/pdf'],
+    invalidTypeMessage: '请选择 10 MB 以内的 JPG、PNG 或 PDF',
+    fields: {
+      'purpose': 'MESSAGE',
+      'conversationId': conversation.id,
+      if (conversation.orderId != null) 'orderId': conversation.orderId!,
+    },
+  );
+
+  Future<C2cAttachment> c2cUploadPaymentQr(
+    int owner,
+    String id,
+    String name,
+    String contentType,
+    Uint8List bytes,
+  ) => _c2cUploadMultipart(
+    owner: owner,
+    id: id,
+    name: name,
+    contentType: contentType,
+    bytes: bytes,
+    allowedTypes: const ['image/jpeg', 'image/png'],
+    invalidTypeMessage: '请选择 10 MB 以内的 JPG 或 PNG 收款码图片',
+    fields: const {'purpose': 'PAYMENT_QR'},
+  );
+
+  Future<C2cAttachment> _c2cUploadMultipart({
+    required int owner,
+    required String id,
+    required String name,
+    required String contentType,
+    required Uint8List bytes,
+    required List<String> allowedTypes,
+    required String invalidTypeMessage,
+    required Map<String, String> fields,
+  }) {
     if (bytes.isEmpty ||
         bytes.length > 10485760 ||
-        !['image/jpeg', 'image/png', 'application/pdf'].contains(contentType)) {
-      throw const FormatException('请选择 10 MB 以内的 JPG、PNG 或 PDF');
+        !allowedTypes.contains(contentType)) {
+      throw FormatException(invalidTypeMessage);
     }
     return _c2cMedia(owner, (token, scope) async {
       final request = await scope.open(
@@ -195,11 +255,7 @@ extension C2cApi on ApiClient {
         parameters: {'boundary': boundary},
       );
       request.headers.set('Authorization', 'Bearer $token');
-      for (final entry in {
-        'purpose': 'MESSAGE',
-        'conversationId': conversation.id,
-        if (conversation.orderId != null) 'orderId': conversation.orderId!,
-      }.entries) {
+      for (final entry in fields.entries) {
         request.write(
           '--$boundary\r\nContent-Disposition: form-data; name="${entry.key}"\r\n\r\n${entry.value}\r\n',
         );
@@ -220,7 +276,7 @@ extension C2cApi on ApiClient {
       final attachment = C2cAttachment.fromJson(asMap(jsonDecode(raw)));
       scope.checkActive();
       if (attachment.id != id || attachment.status != 'READY') {
-        throw const FormatException('上传结果待确认，请查询原请求');
+        throw const FormatException('上传未完成，请重试');
       }
       return attachment;
     }, timeout: uploadTimeout);

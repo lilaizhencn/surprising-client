@@ -3145,14 +3145,21 @@ class ApiException implements Exception {
     if (statusCode == 429 && retryAfterSeconds != null) {
       return '操作过于频繁，请在 $retryAfterSeconds 秒后重试';
     }
-    String code = '', detail = message;
+    String code = '', detail = message, reason = '', frozenUntil = '';
     try {
       final payload = asMap(jsonDecode(message));
       final error = payload['error'];
       final value = error is Map ? asMap(error) : payload;
       code = asString(value['code']);
       detail = asString(value['message'] ?? value['detail']);
+      reason = asString(value['reason']).trim();
+      frozenUntil = asString(value['frozenUntil']).trim();
     } catch (_) {}
+    if (code == 'ACCOUNT_FROZEN') {
+      final reasonText = reason.isEmpty ? '管理员封禁' : reason;
+      final untilText = _formatFrozenUntil(frozenUntil);
+      return '账号已被封禁\n原因：$reasonText\n解封时间：$untilText';
+    }
     const messages = {
       'INVALID_COMMAND': '操作未完成，请刷新状态后重试',
       'INSUFFICIENT_BALANCE': '可用余额不足',
@@ -3186,6 +3193,15 @@ class ApiException implements Exception {
       >= 500 => '服务暂时不可用，请稍后重试',
       _ => '操作未完成，请检查输入后重试',
     };
+  }
+
+  static String _formatFrozenUntil(String iso) {
+    if (iso.isEmpty) return '永久封禁';
+    final parsed = DateTime.tryParse(iso)?.toLocal();
+    if (parsed == null) return iso;
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} '
+        '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 }
 

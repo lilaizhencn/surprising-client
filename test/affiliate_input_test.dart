@@ -1,6 +1,8 @@
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surprising_client/src/models.dart';
 import 'package:surprising_client/src/affiliate/affiliate_page.dart';
+import 'package:surprising_client/src/affiliate/affiliate_poster.dart';
 
 void main() {
   test(
@@ -32,5 +34,37 @@ void main() {
     expect(affiliateCode('https://ex.tokdou.com/affiliate?invite=$code'), code);
     expect(affiliateCode('surprising://affiliate?invite=$code'), code);
     expect(affiliateCode(code.toLowerCase()), code);
+    expect(
+      affiliateRegistrationLink('https://ex.tokdou.com/', 'ABCD2345'),
+      'https://ex.tokdou.com/auth/register?invite=ABCD2345',
+    );
+    expect(formatAffiliateRatePercent(30.0), '30');
+    expect(formatAffiliateRatePercent(30.5), '30.5');
+  });
+
+  testWidgets('invitation poster card renders brand, code, rate, and UID', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 360,
+              child: AffiliateInvitationPosterCard(
+                inviteCode: 'ABCD2345',
+                inviteLink: 'https://ex.tokdou.com/auth/register?invite=ABCD2345',
+                rebateRatePercent: 40.0,
+                userId: '10086',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('AETERN'), findsOneWidget);
+    expect(find.text('ABCD2345'), findsOneWidget);
+    expect(find.textContaining('最高 40% 手续费回馈'), findsOneWidget);
+    expect(find.textContaining('邀请人 UID 10086'), findsOneWidget);
   });
 }

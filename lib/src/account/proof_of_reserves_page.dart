@@ -54,7 +54,7 @@ class _ProofOfReservesPageState extends State<ProofOfReservesPage> {
       final res = await widget.state.api.verifyPorProof(
         _userProof!.userId,
         rootHash: _userProof!.rootHash.isNotEmpty ? _userProof!.rootHash : _snapshot!.rootHash,
-        userLiabilityUsd: _userProof!.userLiabilityUsd,
+        userLiabilityUsd: _userProof!.userLiabilityUsdRaw,
         userNonce: _userProof!.userNonce,
         proofPath: _userProof!.proofPath,
       );

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:material_ui/material_ui.dart';
+import '../account_records.dart' show exactAmountUnits;
 import '../app_state.dart';
 import '../models.dart';
 import '../ui/client_components.dart';
@@ -24,13 +25,18 @@ class _SubAccountPageState extends State<SubAccountPage> {
   }
 
   Future<void> _loadSubAccounts() async {
-    if (!widget.state.isLoggedIn || widget.state.session == null) return;
+    final userId = widget.state.loginUserId;
+    if (!widget.state.isLoggedIn || widget.state.session == null || userId == null) return;
     setState(() => _loading = true);
     try {
-      final list = await widget.state.api.loadSubAccounts(widget.state.loginUserId!);
+      final list = await widget.state.api.loadSubAccounts(userId);
       if (mounted) setState(() => _subAccounts = list);
-    } catch (_) {
-      // 容错降级
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载子账户失败: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -98,13 +104,14 @@ class _SubAccountPageState extends State<SubAccountPage> {
                       ? null
                       : () async {
                           final name = nameController.text.trim();
-                          if (name.isEmpty) return;
+                          final userId = widget.state.loginUserId;
+                          if (name.isEmpty || userId == null) return;
                           final messenger = ScaffoldMessenger.of(context);
                           final nav = Navigator.of(dialogCtx);
                           setDialogState(() => creating = true);
                           try {
                             await widget.state.api.createSubAccount(
-                              widget.state.loginUserId!,
+                              userId,
                               subAccountName: name,
                               permissions: permissions,
                             );
@@ -122,7 +129,9 @@ class _SubAccountPageState extends State<SubAccountPage> {
                               );
                             }
                           } finally {
-                            setDialogState(() => creating = false);
+                            if (dialogCtx.mounted) {
+                              setDialogState(() => creating = false);
+                            }
                           }
                         },
                   child: Text(creating ? '创建中...' : '确定创建'),
@@ -132,7 +141,7 @@ class _SubAccountPageState extends State<SubAccountPage> {
           },
         );
       },
-    );
+    ).whenComplete(nameController.dispose);
   }
 
   void _showTransferSheet(SubAccountModel subAccount, bool fromParentToSub) {
@@ -202,15 +211,17 @@ class _SubAccountPageState extends State<SubAccountPage> {
                         onPressed: transferring
                             ? null
                             : () async {
-                                final amt = double.tryParse(amountController.text) ?? 0;
-                                if (amt <= 0) return;
+                                final userId = widget.state.loginUserId;
+                                final rawAmount = amountController.text.trim();
+                                if (userId == null || rawAmount.isEmpty) return;
                                 final messenger = ScaffoldMessenger.of(context);
                                 final nav = Navigator.of(sheetCtx);
                                 setSheetState(() => transferring = true);
                                 try {
-                                  final units = (amt * 10000).toInt();
+                                  final scales = await widget.state.api.assetScales();
+                                  final units = exactAmountUnits(rawAmount, scales[asset] ?? '');
                                   final res = await widget.state.api.transferSubAccount(
-                                    widget.state.loginUserId!,
+                                    userId,
                                     subUserId: subAccount.subUserId,
                                     fromParentToSub: fromParentToSub,
                                     asset: asset,
@@ -229,7 +240,9 @@ class _SubAccountPageState extends State<SubAccountPage> {
                                     );
                                   }
                                 } finally {
-                                  setSheetState(() => transferring = false);
+                                  if (sheetCtx.mounted) {
+                                    setSheetState(() => transferring = false);
+                                  }
                                 }
                               },
                         child: Text(transferring ? '划转中...' : '确认划转'),
@@ -242,7 +255,7 @@ class _SubAccountPageState extends State<SubAccountPage> {
           },
         );
       },
-    );
+    ).whenComplete(amountController.dispose);
   }
 
   @override

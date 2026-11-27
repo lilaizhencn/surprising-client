@@ -2428,7 +2428,6 @@ class AppState extends ChangeNotifier {
     _announcementRefreshTimer?.cancel();
     _realtimeNotifyTimer?.cancel();
     _realtimeReconnectTimer?.cancel();
-    _realtimeAuthRetryTimer?.cancel();
     _realtimeGeneration++;
     unawaited(realtime.close());
     super.dispose();

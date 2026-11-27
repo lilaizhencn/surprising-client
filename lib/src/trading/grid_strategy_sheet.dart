@@ -62,7 +62,8 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
   }
 
   Future<void> _createStrategy() async {
-    if (!widget.state.isLoggedIn) {
+    final userId = widget.state.userId;
+    if (!widget.state.isLoggedIn || userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先登录')),
       );
@@ -71,13 +72,12 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
     final lowTicks = widget.instrument.priceTicksFromText(_lowerPriceController.text);
     final highTicks = widget.instrument.priceTicksFromText(_upperPriceController.text);
     final count = int.tryParse(_gridCountController.text) ?? 0;
-    final investUnits = widget.instrument.isSpot
-        ? decimalIncrement(
-            _investmentController.text,
-            widget.instrument.quantityStepUnits,
-            scaleUnits: widget.instrument.quoteScaleUnits ?? 2,
-          )
-        : int.tryParse(_investmentController.text);
+    final investScaleUnits = widget.instrument.quoteScaleUnits ?? 100000000;
+    final investUnits = decimalIncrement(
+      _investmentController.text,
+      1,
+      scaleUnits: investScaleUnits,
+    );
 
     if (lowTicks == null || lowTicks <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -107,12 +107,13 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
     setState(() => _submitting = true);
     try {
       final latest = widget.state.latestPriceFor(widget.instrument);
-      final currentTicks = latest != null
-          ? (widget.instrument.priceTicksFromText('$latest') ?? 0)
-          : 0;
+      final latestText = latest?.toStringAsFixed(12).replaceFirst(RegExp(r'\.?0+$'), '');
+      final currentTicks = latestText != null
+          ? (widget.instrument.priceTicksFromText(latestText) ?? ((lowTicks + highTicks) ~/ 2))
+          : ((lowTicks + highTicks) ~/ 2);
 
       await widget.state.api.createGridStrategy(
-        userId: widget.state.userId!,
+        userId: userId,
         instrumentId: widget.instrument.instrumentId,
         productLine: widget.instrument.mode.productLine,
         lowerPriceTicks: lowTicks,
@@ -340,7 +341,16 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+                _GridPreviewBanner(
+                  lowerText: _lowerPriceController.text,
+                  upperText: _upperPriceController.text,
+                  countText: _gridCountController.text,
+                  investText: _investmentController.text,
+                  isArithmetic: _isArithmetic,
+                  quoteAsset: widget.instrument.quoteAsset,
+                ),
+                const SizedBox(height: 14),
                 FilledButton(
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF00C6FF),
@@ -392,7 +402,7 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
                   )
                 else
                   ..._strategies.map((st) {
-                    final isRunning = st.status == 'RUNNING';
+                    final isRunning = st.status == 'ACTIVE' || st.status == 'RUNNING';
                     final isStopping = _stoppingId == st.strategyId;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -408,12 +418,28 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                st.instrumentId,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    st.instrumentId,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white10,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      st.isArithmetic ? '等差' : '等比',
+                                      style: const TextStyle(fontSize: 10, color: Colors.white70),
+                                    ),
+                                  ),
+                                ],
                               ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -424,7 +450,7 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  st.status,
+                                  isRunning ? '运行中' : '已停止',
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
@@ -462,6 +488,8 @@ class _GridStrategySheetState extends State<GridStrategySheet> {
                       ),
                     );
                   }),
+                const SizedBox(height: 16),
+                const _GridHowItWorksCard(),
               ],
             ),
           ),
@@ -501,6 +529,94 @@ class _GridInput extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
         ),
+      ),
+    );
+  }
+}
+
+class _GridPreviewBanner extends StatelessWidget {
+  const _GridPreviewBanner({
+    required this.lowerText,
+    required this.upperText,
+    required this.countText,
+    required this.investText,
+    required this.isArithmetic,
+    required this.quoteAsset,
+  });
+
+  final String lowerText;
+  final String upperText;
+  final String countText;
+  final String investText;
+  final bool isArithmetic;
+  final String quoteAsset;
+
+  @override
+  Widget build(BuildContext context) {
+    final low = double.tryParse(lowerText.trim());
+    final high = double.tryParse(upperText.trim());
+    final count = int.tryParse(countText.trim());
+    final invest = double.tryParse(investText.trim());
+    if (low == null || high == null || count == null || low <= 0 || high <= low || count < 2 || count > 150) {
+      return const SizedBox.shrink();
+    }
+    final stepText = isArithmetic
+        ? '${((high - low) / count).toStringAsFixed(2)} $quoteAsset/格'
+        : '等比区间 ($count 格)';
+    final perGrid = invest != null && invest > 0
+        ? '${(invest / count).toStringAsFixed(2)} $quoteAsset/格'
+        : '—';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0x1400C6FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x3300C6FF)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('间距: $stepText', style: const TextStyle(fontSize: 11, color: Color(0xFF00C6FF))),
+          Text('单格投入: $perGrid', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+}
+
+class _GridHowItWorksCard extends StatelessWidget {
+  const _GridHowItWorksCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0x33141422),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '网格交易如何工作？',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '在设定的价格区间内自动划分多个买卖档位，震荡行情中自动低买高卖赚取格间差价，无需人工盯盘。',
+            style: TextStyle(fontSize: 12, color: Colors.white70, height: 1.45),
+          ),
+          SizedBox(height: 8),
+          Text(
+            '• 自动铺单与补单：低于市价挂买单、高于市价挂卖单；买单成交后自动在上一格挂卖单，卖单成交后在下一格挂买单。\n'
+            '• 等差 vs 等比：等差每格价差固定（适合窄幅震荡）；等比每格比例固定（适合宽幅波动）。\n'
+            '• 风险提示：单边跌破下限或涨破上限时将暂停新开套利单，请确保账户余额/保证金充足。',
+            style: TextStyle(fontSize: 11.5, color: Colors.white60, height: 1.5),
+          ),
+        ],
       ),
     );
   }

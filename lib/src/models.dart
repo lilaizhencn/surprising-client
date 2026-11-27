@@ -154,7 +154,7 @@ const productAccountTypes = [
 
 String productAccountLabel(String type) {
   return switch (type) {
-    'FUNDING' => '资金账户',
+    'FUNDING' => '资金与现货',
     'SPOT' => '现货',
     'USDT_PERPETUAL' => 'U本位永续',
     'COIN_PERPETUAL' => '币本位永续',
@@ -3334,6 +3334,7 @@ class UserPorProofModel {
     required this.snapshotId,
     required this.rootHash,
     required this.userLiabilityUsd,
+    required this.userLiabilityUsdRaw,
     required this.userNonce,
     required this.proofPath,
     required this.snapshotTime,
@@ -3341,11 +3342,13 @@ class UserPorProofModel {
 
   factory UserPorProofModel.fromJson(Map<String, dynamic> json) {
     final list = json['proofPath'] is List ? json['proofPath'] as List : const [];
+    final rawLiability = json['userLiabilityUsd']?.toString() ?? '0';
     return UserPorProofModel(
       userId: json['userId'] is num ? (json['userId'] as num).toInt() : int.tryParse('${json['userId']}') ?? 0,
       snapshotId: json['snapshotId']?.toString() ?? '',
       rootHash: json['rootHash']?.toString() ?? '',
-      userLiabilityUsd: json['userLiabilityUsd'] is num ? (json['userLiabilityUsd'] as num).toDouble() : double.tryParse('${json['userLiabilityUsd']}') ?? 0.0,
+      userLiabilityUsd: json['userLiabilityUsd'] is num ? (json['userLiabilityUsd'] as num).toDouble() : double.tryParse(rawLiability) ?? 0.0,
+      userLiabilityUsdRaw: rawLiability,
       userNonce: json['userNonce']?.toString() ?? '',
       proofPath: list.map((item) => MerkleProofStepModel.fromJson(item as Map<String, dynamic>)).toList(),
       snapshotTime: json['snapshotTime']?.toString() ?? '',
@@ -3356,6 +3359,7 @@ class UserPorProofModel {
   final String snapshotId;
   final String rootHash;
   final double userLiabilityUsd;
+  final String userLiabilityUsdRaw;
   final String userNonce;
   final List<MerkleProofStepModel> proofPath;
   final String snapshotTime;

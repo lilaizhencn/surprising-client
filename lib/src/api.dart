@@ -2528,7 +2528,7 @@ class ApiClient {
   Future<VerifyPorResult> verifyPorProof(
     int userId, {
     required String rootHash,
-    required double userLiabilityUsd,
+    required Object userLiabilityUsd,
     required String userNonce,
     required List<MerkleProofStepModel> proofPath,
     String? productLine,
@@ -3456,7 +3456,11 @@ class RealtimeClient {
     _applicationHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
       if (generation == _connectionGeneration &&
           socket.readyState == WebSocket.open) {
-        socket.add(jsonEncode({'op': 'ping'}));
+        try {
+          socket.add(jsonEncode({'op': 'ping'}));
+        } catch (_) {
+          // Socket may transition to closing concurrently.
+        }
       }
     });
     _installed.clear();
@@ -3618,6 +3622,9 @@ class RealtimeClient {
   Future<void> close() async {
     _connectionGeneration++;
     await _closeCurrent();
+    if (!_c2cEvents.isClosed) {
+      await _c2cEvents.close();
+    }
   }
 
   Future<void> _closeCurrent() async {

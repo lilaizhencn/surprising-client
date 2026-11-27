@@ -1873,6 +1873,7 @@ class _TradingState extends State<_Trading> with WidgetsBindingObserver {
                                         final mime = lower.endsWith('.png')
                                             ? 'image/png'
                                             : 'image/jpeg';
+                                        if (!sheet.mounted) return;
                                         setSheetState(() {
                                           uploadingQr = true;
                                           formError = null;
